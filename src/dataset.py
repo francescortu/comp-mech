@@ -27,9 +27,8 @@ class Dataset(TorchDataset):
         else:
             length = choose_lenght
       
-      
-        self.pos_dataset = self.target_dataset_per_length[length]
-        self.neg_dataset = self.orthogonal_dataset_per_length[length]
+        self.pos_dataset = self.target_dataset_per_length[length][:n]
+        self.neg_dataset = self.orthogonal_dataset_per_length[length][:n]
 
         
     def split_for_lenght(self):
