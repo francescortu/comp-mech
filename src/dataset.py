@@ -12,9 +12,9 @@ class Dataset(TorchDataset):
         self.target_dataset_per_length, self.orthogonal_dataset_per_length = self.split_for_lenght()
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.pos_dataset)
     def __getitem__(self, idx):
-        return self.dataset
+        return {"pos_dataset": self.pos_dataset[idx], "neg_dataset": self.neg_dataset[idx]}
 
     def random_sample(self, n, choose_lenght=None):
         possible_lengths = []
@@ -27,11 +27,10 @@ class Dataset(TorchDataset):
         else:
             length = choose_lenght
       
-        self.dataset_per_length = {length: random.sample(self.target_dataset_per_length[length], n) + random.sample(self.orthogonal_dataset_per_length[length], n)}
-        # shuffle
-        random.shuffle(self.dataset_per_length[length])
-        self.dataset = self.dataset_per_length[length]
-        
+      
+        self.pos_dataset = self.target_dataset_per_length[length]
+        self.neg_dataset = self.orthogonal_dataset_per_length[length]
+
         
     def split_for_lenght(self):
         target_dataset_per_length = {}

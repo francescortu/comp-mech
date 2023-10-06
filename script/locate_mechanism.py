@@ -30,11 +30,8 @@ torch.set_grad_enabled(False)
 MODEL_NAME = "gpt2small"
 MAX_LEN = 14
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-
 model = WrapHookedTransformer.from_pretrained("gpt2", device=DEVICE)
 target_data = json.load(open("../data/target_win_dataset_{}.json".format(MODEL_NAME)))
-# suffhle
 orthogonal_data = json.load(
     open("../data/orthogonal_win_dataset_{}.json".format(MODEL_NAME))
 )
@@ -43,6 +40,9 @@ dataset = Dataset(target_data, orthogonal_data, model)
 dataset.random_sample(150, 14)
 
 print("Dataset loaed")
+
+dataloader = torch.utils.data.DataLoader(dataset, batch_size=5, shuffle=False)
+
 
 logits_per_length = dataset.logits(model)
 tokens_dict_per_length = dataset.get_tensor_token(model)
@@ -127,7 +127,6 @@ neg_delta_corrupted = (
     ]
 )
 
-corrupted_logit, corrupted_cache = model.run_with_cache_from_embed(pos_embs_corrupted)
 
 
 def indirect_effect(logits, corrupted_logits, first_ids_pos):
