@@ -2,6 +2,7 @@ import torch
 from transformer_lens import HookedTransformer
 from typing import List
 from functools import partial
+import einops
 
 from .utils import C, get_predictions
 
@@ -15,17 +16,6 @@ class WrapHookedTransformer(HookedTransformer):
         super().__init__(*args, **kwargs)
 
     def predict(self, prompt: str, k: int = 1, return_type: str = "logits"):
-        """
-        Predict the next token(s) given a prompt, return a tuple of (logits/probas, tokens)
-        
-        Args:
-            prompt (str): The prompt to predict from
-            k (int): The number of tokens to return in descending order of probability
-            return_type (str): Either "logits" or "probabilities"
-        
-        Returns:
-            Tuple of (logits/probas, tokens)
-        """
         logits = self(prompt)
         return get_predictions(self, logits, k, return_type)
     
@@ -47,43 +37,39 @@ class WrapHookedTransformer(HookedTransformer):
             else:
                 print(f"{i} {prediction_tkns[i]} {C.GREEN}{logits[i].item():5.2f}{C.END}")
                 
-                
-    # def add_noise(self, prompt: List[str], max_pos_noise):
-    #     tokens = self.to_tokens(prompt)
-    #     input_embeddings = self.embed(tokens) # (batch_size, seq_len, emb_dim)
-        
-    #     # add noise to the input embeddings
-    #     noise = torch.normal(mean=0, std=0.8, size=input_embeddings.shape, device=input_embeddings.device)
-    #     # remove noise from tokens in position >= max_pos_noise
-    #     noise_index = torch.arange(input_embeddings.shape[0], device=input_embeddings.device)
-    #     # put noise to 0 except for the first token and the max_pos_noise token
-    #     noise_index = torch.where((noise_index != 0) & (noise_index != max_pos_noise), torch.tensor(0, device=input_embeddings.device), noise_index)
-        
-    #     # add noise to the input embeddings
-    #     corrupted_embeddings = input_embeddings + noise
-    #     return corrupted_embeddings
-    def add_noise(self, prompt: List[str], noise_index):
+
+    def add_noise(self, prompt: List[str], noise_index, target_win=None, noise_mlt=1):
         tokens = self.to_tokens(prompt)
-        input_embeddings = self.embed(tokens) # (batch_size, seq_len, emb_dim)
+        input_embeddings = self.embed(tokens)  # (batch_size, seq_len, emb_dim)
 
-        # create noise
-        noise = torch.normal(mean=0, std=0.8, size=input_embeddings.shape, device=input_embeddings.device)
+        # noise = torch.normal(mean=0, std=0.04, size=input_embeddings.shape, device=input_embeddings.device)
+        # Load noise standard deviation and create noise tensor
+        noise_mean = torch.load("../data/noise_mean.pt")
+        noise_std = torch.load("../data/noise_std.pt") * noise_mlt
+        noise_std = einops.repeat(noise_std, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
+        noise_mean = einops.repeat(noise_mean, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
+        noise = torch.normal(mean=noise_mean, std=noise_std)
 
-        # create a mask for positions 0 and max_pos_noise
+        # Create a mask for positions specified in noise_index
         seq_len = input_embeddings.shape[1]
         noise_mask = torch.zeros(seq_len, device=input_embeddings.device)
         noise_mask[noise_index] = 1
 
-        # noise_mask[max_pos_noise] = 1
+        # If target_win is an integer, modify the noise_mask and noise tensor
+        if isinstance(target_win, int):
+            for idx in noise_index:
+                if idx + target_win < seq_len:
+                    noise_mask[idx + target_win] = 1
+                    noise[:, idx + target_win, :] = noise[:, idx, :]
 
-        # expand the mask dimensions to match the noise tensor shape
-        noise_mask = noise_mask.unsqueeze(0).unsqueeze(2) # (1, seq_len, 1)
-        noise_mask = noise_mask.expand_as(input_embeddings) # (batch_size, seq_len, emb_dim)
+        # Expand the mask dimensions to match the noise tensor shape
+        noise_mask = noise_mask.unsqueeze(0).unsqueeze(2)  # (1, seq_len, 1)
+        noise_mask = noise_mask.expand_as(input_embeddings)  # (batch_size, seq_len, emb_dim)
 
-        # apply the mask to the noise tensor
+        # Apply the mask to the noise tensor
         masked_noise = noise * noise_mask
 
-        # add the masked noise to the input embeddings
+        # Add the masked noise to the input embeddings
         corrupted_embeddings = input_embeddings + masked_noise
         return corrupted_embeddings
 
@@ -107,31 +93,6 @@ class WrapHookedTransformer(HookedTransformer):
                                     return_type="logits")
         
 
-        
-            
-
-        
-    # def to_orthogonal_tokens(self, string_token: str, alpha: float = 1):
-    #     """
-    #     Convert a token to its orthogonal representation
-        
-    #     Args:
-    #         string_token (str): The token to convert
-    #         alpha (float): The amount of orthogonalization to apply
-    #     """
-    #     token = self.to_tokens(string_token, prepend_bos=False)
-
-        
-    #     token = token[0]
-    #     embedding = self.W_E[token].mean(dim=0).squeeze(0)
-
-    #     random_embedding = torch.randn_like(embedding)
-    #     orthogonal_embedding = random_embedding - (random_embedding @ embedding) / (embedding @ embedding) * embedding
-    
-    #     new_embedding = embedding + alpha * (orthogonal_embedding - embedding)
-    #     # from the orthogonal embedding, find the closest token
-    #     new_embedding = torch.argmin(torch.norm(self.W_E - orthogonal_embedding, dim=-1))
-    #     return self.to_string(new_embedding.item())
     
     def to_orthogonal_tokens(self, string_token: str, alpha: float = 1):
         """
