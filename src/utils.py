@@ -1,63 +1,29 @@
 import torch
 from transformer_lens import HookedTransformer
 
+# from src.model import WrapHookedTransformer
+from src.patching import (
+    get_act_patch_block_every,
+    get_act_patch_resid_pre,
+    get_act_patch_attn_head_out_all_pos,
+    get_act_patch_attn_head_out_by_pos
+)
+import transformer_lens.patching as patching
+
 from typing import List
 import warnings
-
-
-
+import einops
 
 
 class C:
     """Color class for printing colored text in terminal"""
+
     RED = "\033[91m"
     GREEN = "\033[92m"
     BLUE = "\033[94m"
     YELLOW = "\033[93m"
     END = "\033[0m"
-    
-    
-class ModelWrapper:
-    """Wrapper class for the HookedTransformer model to make it easier to use in the notebook"""
-    def __init__(self, model_name: str):
-        self.model = HookedTransformer.from_pretrained(model_name)
 
-    def __call__(self, prompt: str):
-        return self.predict(prompt)
-
-    def predict(self, prompt: str):
-        logits = self.model(prompt)
-        return self.model.to_string(logits[0, -1, :].argmax(dim=-1))
-
-    def get_probs(self, prompt: str, list_of_words: List[str], logit: bool = False):
-        
-        
-        
-        logits = self.model(prompt)
-        probas = torch.softmax(logits[0, -1, :], dim=-1)
-        tkns = self.model.to_tokens(list_of_words, prepend_bos=False)
-        if logit:
-            return logits[0, -1, tkns].mean().item()
-        return probas[tkns].mean().item()
-        
-        
-        # return probas[self.model.to_tokens(word, prepend_bos=False)].item()
-    
-    def print_top(self, prompt:str, k:int = 10, print_pred:bool = False):
-        logits = self.model(prompt)
-        probas = torch.softmax(logits[0, -1, :], dim=-1)
-        pred_ids = logits[0, -1, :].topk(k).indices
-        pred_ids = pred_ids.detach().numpy()
-        if print_pred:
-            for i in range(k):
-                print(
-                    f" {i} .{self.model.to_string(pred_ids[i])}  {logits[0,-1,pred_ids[i]].item():5.2f} {C.GREEN}{probas[pred_ids[i]].item():6.2%}{C.END} "
-                )
-        return [self.model.to_string(pred_ids[i]) for i in range(k)]
-    
-    
-    
-    
 
 def get_predictions(model, logits, k, return_type):
     if return_type == "probabilities":
@@ -69,6 +35,7 @@ def get_predictions(model, logits, k, return_type):
 
     return best_logits, prediction_tkns
 
+
 def squeeze_last_dims(tensor):
     if len(tensor.shape) == 3 and tensor.shape[1] == 1 and tensor.shape[2] == 1:
         return tensor.squeeze(-1).squeeze(-1)
@@ -76,7 +43,6 @@ def squeeze_last_dims(tensor):
         return tensor.squeeze(-1)
     else:
         return tensor
-    
 
 
 def suppress_warnings(fn):
@@ -89,4 +55,114 @@ def suppress_warnings(fn):
         finally:
             # Restore the warnings state
             warnings.filters = current_filters
+
     return wrapper
+
+
+def embs_to_tokens_ids(noisy_embs, model):
+    input_embedding_norm = torch.functional.F.normalize(noisy_embs, p=2, dim=2)
+    embedding_matrix_norm = torch.functional.F.normalize(model.W_E, p=2, dim=1)
+    similarity = torch.matmul(input_embedding_norm, embedding_matrix_norm.T)
+    corrupted_tokens = torch.argmax(similarity, dim=2)
+    return corrupted_tokens
+
+
+def patch_resid_pre(model, input_ids, input_ids_corrupted, clean_cache, metric, corrupted_embeddings):
+    resid_pre_act_patch_results = get_act_patch_resid_pre(
+        model, input_ids_corrupted, clean_cache, metric, corrupted_embeddings
+    )
+    return resid_pre_act_patch_results
+
+
+def patch_attn_head_out_all_pos(
+    model, input_ids, input_ids_corrupted, clean_cache, metric, corrupted_embeddings
+):
+    attn_head_out_all_pos_act_patch_results = get_act_patch_attn_head_out_all_pos(
+        model,
+        input_ids_corrupted,
+        clean_cache,
+        metric,
+        corrupted_embeddings=corrupted_embeddings,
+    )
+    return attn_head_out_all_pos_act_patch_results
+
+
+def patch_attn_head_by_pos(model, input_ids, input_ids_corrupted, clean_cache, metric, corrupted_embeddings):
+    ALL_HEAD_LABELS = [
+        f"L{i}H{j}" for i in range(model.cfg.n_layers) for j in range(model.cfg.n_heads)
+    ]
+    import einops
+
+    attn_head_out_act_patch_results = get_act_patch_attn_head_out_by_pos(
+        model, input_ids_corrupted, clean_cache, metric, corrupted_embeddings
+    )
+    attn_head_out_act_patch_results = einops.rearrange(
+        attn_head_out_act_patch_results, "layer pos head -> (layer head) pos"
+    )
+    return attn_head_out_act_patch_results
+
+
+def patch_per_block_all_poss(
+    model,
+    input_ids_corrupted,
+    input_ids,
+    clean_cache,
+    metric,
+    interval,
+    corrupted_embeddings,
+):
+    every_block_result = get_act_patch_block_every(
+        model,
+        input_ids_corrupted,
+        clean_cache,
+        metric,
+        patch_interval=interval,
+        corrupted_embeddings=corrupted_embeddings,
+    )
+    return every_block_result
+
+
+def patch_attn_head_all_pos_every(
+    model, input_ids_corrupted, input_ids, clean_cache, metric
+):
+    every_head_all_pos_act_patch_result = (
+        patching.get_act_patch_attn_head_all_pos_every(
+            model, input_ids_corrupted, clean_cache, metric
+        )
+    )
+    return every_head_all_pos_act_patch_result
+
+
+def logit_lens(cache, model, input_ids, target_ids, orthogonal_ids):
+    accumulater_residual, labels = cache.accumulated_resid(
+        layer=-1, incl_mid=True, return_labels=True, pos_slice=-1
+    )
+    accumulater_residual = cache.apply_ln_to_stack(
+        accumulater_residual, layer=-1, pos_slice=-1
+    )
+    unembed_accumulated_residual = einops.einsum(
+        accumulater_residual,
+        model.W_U,
+        "n_comp batch d_model, d_model vocab -> n_comp batch vocab",
+    )
+    batch_index = torch.arange(input_ids.shape[0])
+    target_lens = (
+        unembed_accumulated_residual[:, batch_index, target_ids]
+        .mean(-1)
+        .detach()
+        .cpu()
+        .numpy()
+    )
+    orthogonal_lens = (
+        unembed_accumulated_residual[:, batch_index, orthogonal_ids]
+        .mean(-1)
+        .detach()
+        .cpu()
+        .numpy()
+    )
+
+    return {
+        "target_lens": target_lens,
+        "orthogonal_lens": orthogonal_lens,
+        "labels": labels,
+    }
