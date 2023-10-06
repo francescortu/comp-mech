@@ -167,3 +167,26 @@ def logit_lens(cache, model, input_ids, target_ids, orthogonal_ids):
         "orthogonal_lens": orthogonal_lens,
         "labels": labels,
     }
+
+
+def list_of_dicts_to_dict_of_lists(list_of_dicts):
+    # Initialize an empty dictionary to store the result
+    dict_of_lists = {}
+    
+    # Iterate over each dictionary in the list
+    for d in list_of_dicts:
+        # Iterate over each key-value pair in the dictionary
+        for key, value in d.items():
+            # If the key is not already in the result dictionary, add it with an empty list as its value
+            if key not in dict_of_lists:
+                dict_of_lists[key] = []
+            # Append the value to the list corresponding to the key in the result dictionary
+            dict_of_lists[key].append(value)
+    
+    return dict_of_lists
+
+def dict_of_lists_to_dict_of_tensors(dict_of_lists):
+    dict_of_tensors = {}
+    for key, tensor_list in dict_of_lists.items():
+        dict_of_tensors[key] = torch.stack(tensor_list)
+    return dict_of_tensors
