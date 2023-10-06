@@ -1,8 +1,7 @@
-import sys
-sys.path.append('..')
-sys.path.append('../src')
-sys.path.append('../data')
 
+import sys
+import os
+sys.path.append(os.path.expanduser("~/Competition_of_Mechanisms"))
 import torch
 from transformer_lens import HookedTransformer
 import json
@@ -14,11 +13,17 @@ from transformer_lens.utils import get_act_name
 from functools import partial
 from transformer_lens import patching
 
-LOAD = True
+LOAD = False
+SAVE_PATH_TARGET = "target_win_dataset_gpt2-xl.json"
+SAVE_PATH_ORHTOGONAL = "orthogonal_win_dataset_gpt2-xl.json"
 
 
-data = json.load(open("../data/counterfact.json"))
-model = WrapHookedTransformer.from_pretrained("gpt2", device="cuda")
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+json_path = os.path.join(script_dir, '..', 'data', 'counterfact.json')
+data = json.load(open(json_path))
+
+model = WrapHookedTransformer.from_pretrained("gpt2-xl", device="cuda")
 
 
 dataset = []
@@ -37,7 +42,9 @@ for d in tqdm(data, total=len(data)):
 print(len(dataset))
 
 if LOAD:
-    dataset_per_length = json.load(open("../data/dataset_per_length.json"))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_path = os.path.join(script_dir, '..', 'data', 'dataset_per_length.json')
+    dataset_per_length = json.load(open(json_path))
 
 else:
     dataset_per_length = {}
@@ -122,10 +129,22 @@ target_win = sum(target_win.values())
 orthogonal_win = sum(orthogonal_win.values())
 target_win_over_orthogonal = sum(target_win_over_orthogonal.values())
 
+n_samples = sum([len(dataset_per_length[length]) for length in dataset_per_length.keys()])
 #print percentages over the total number of examples
-print("target win", target_win / len(dataset))
-print("orthogonal win", orthogonal_win / len(dataset))
-print("target win over orthogonal", target_win_over_orthogonal / len(dataset))
+print("target win", target_win / n_samples)
+print("orthogonal win", orthogonal_win / n_samples)
+print("target win over orthogonal", target_win_over_orthogonal / n_samples)
 
-json.dump(target_win_dataset, open("../data/target_win_dataset_partial.json", "w"), indent=4)
-json.dump(orthogonal_win_dataset, open("../data/orthogonal_win_dataset_partial.json", "w"), indent=4)
+# Get the directory of the current script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Construct the paths to the JSON files
+target_win_path = os.path.join(script_dir, '..', 'data', SAVE_PATH_TARGET)
+orthogonal_win_path = os.path.join(script_dir, '..', 'data', SAVE_PATH_ORHTOGONAL)
+
+# Dump the data to the JSON files
+with open(target_win_path, 'w') as target_file:
+    json.dump(target_win_dataset, target_file, indent=4)
+
+with open(orthogonal_win_path, 'w') as orthogonal_file:
+    json.dump(orthogonal_win_dataset, orthogonal_file, indent=4)

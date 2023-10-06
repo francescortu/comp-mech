@@ -142,19 +142,21 @@ class WrapHookedTransformer(HookedTransformer):
             alpha (float): The amount of orthogonalization to apply
         """
         token = self.to_tokens(string_token, prepend_bos=False)
-
-        
         token = token[0]
         embedding = self.W_E[token].mean(dim=0).squeeze(0)
 
         random_embedding = torch.randn_like(embedding)
-        orthogonal_embedding = random_embedding - (random_embedding @ embedding) / (embedding @ embedding) * embedding
-    
+        orthogonal_embedding = random_embedding - ((random_embedding @ embedding) / (embedding @ embedding)) * embedding
+
         new_embedding = embedding + alpha * (orthogonal_embedding - embedding)
-        # from the orthogonal embedding, find the closest token
         new_embedding_normalize = torch.functional.F.normalize(new_embedding, dim=-1)
         embedding_normalize = torch.functional.F.normalize(self.W_E, dim=-1)
         similarity = embedding_normalize @ new_embedding_normalize
-        new_embedding = torch.argmax(similarity)
 
-        return self.to_string(new_embedding.item())
+        # Exclude the original token and find the closest token
+        sorted_indices = torch.argsort(similarity, descending=True)
+        sorted_indices = sorted_indices[sorted_indices != token]
+        new_token = sorted_indices[0]
+
+        # print(string_token, self.to_string(new_token.item()), alpha)
+        return self.to_string(new_token.item())
