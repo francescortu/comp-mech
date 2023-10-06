@@ -42,7 +42,7 @@ orthogonal_data = random.sample(orthogonal_data, len(target_data))
 dataset = Dataset(target_data, orthogonal_data, model)
 dataset.random_sample(150, 14)
 
-print("Dataset loaded")
+print("Dataset loaed")
 
 logits_per_length = dataset.logits(model)
 tokens_dict_per_length = dataset.get_tensor_token(model)

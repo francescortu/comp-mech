@@ -2,13 +2,19 @@ import torch
 import transformer_lens
 from src.model import WrapHookedTransformer
 import random
+from torch.utils.data import Dataset as TorchDataset
 
 
-class Dataset:
+class Dataset(TorchDataset):
     def __init__(self, target_dataset, orthogonal_dataset, model:WrapHookedTransformer):
         self.target_dataset = target_dataset
         self.orthogonal_dataset = orthogonal_dataset
         self.target_dataset_per_length, self.orthogonal_dataset_per_length = self.split_for_lenght()
+
+    def __len__(self):
+        return len(self.dataset)
+    def __getitem__(self, idx):
+        return self.dataset
 
     def random_sample(self, n, choose_lenght=None):
         possible_lengths = []
@@ -22,6 +28,10 @@ class Dataset:
             length = choose_lenght
       
         self.dataset_per_length = {length: random.sample(self.target_dataset_per_length[length], n) + random.sample(self.orthogonal_dataset_per_length[length], n)}
+        # shuffle
+        random.shuffle(self.dataset_per_length[length])
+        self.dataset = self.dataset_per_length[length]
+        
         
     def split_for_lenght(self):
         target_dataset_per_length = {}
@@ -39,24 +49,4 @@ class Dataset:
             orthogonal_dataset_per_length[length].append(d)
         return target_dataset_per_length, orthogonal_dataset_per_length
     
-    def logits(self, model:WrapHookedTransformer):
-        logits_per_length = {}
-        for length, dataset in self.dataset_per_length.items():
-            input_ids = model.to_tokens([d["premise"] for d in dataset])
-            logits_per_length[length] = model(input_ids)
-        return logits_per_length
-  
-    def get_tensor_token(self,model):
-        tensor_token_per_length = {}
-        for length, dataset in self.dataset_per_length.items():
-            if length not in tensor_token_per_length:
-                tensor_token_per_length[length] = {}
-            tensor_token_per_length[length]["target"] = model.to_tokens([d["target"] for d in dataset], prepend_bos=False)
-            tensor_token_per_length[length]["orthogonal_token"] = model.to_tokens([d["orthogonal_token"] for d in dataset], prepend_bos=False)
-        
-        for length, tensor in tensor_token_per_length.items():
-            tensor_token_per_length[length]["target"] = tensor_token_per_length[length]["target"].squeeze(1)
-            if len(tensor_token_per_length[length]["orthogonal_token"].shape) > 1 :
-                tensor_token_per_length[length]["orthogonal_token"] = tensor_token_per_length[length]["orthogonal_token"][:,0]
-            tensor_token_per_length[length]["orthogonal_token"] = tensor_token_per_length[length]["orthogonal_token"]
-        return tensor_token_per_length
+
