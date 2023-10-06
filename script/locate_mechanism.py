@@ -1,6 +1,12 @@
+import sys
+sys.path.append('..')
+sys.path.append('../src')
+sys.path.append('../data')
+
 import torch
 from transformer_lens import HookedTransformer
 import json
+from src.patching import get_act_patch_mlp_out
 from src.model import WrapHookedTransformer
 from src.dataset import Dataset
 import transformer_lens.utils as utils
@@ -19,6 +25,7 @@ from src.utils import (
     logit_lens,
 )
 
+torch.set_grad_enabled(False)
 
 MODEL_NAME = "gpt2small"
 MAX_LEN = 14
@@ -33,7 +40,9 @@ orthogonal_data = json.load(
 )
 orthogonal_data = random.sample(orthogonal_data, len(target_data))
 dataset = Dataset(target_data, orthogonal_data, model)
-dataset.random_sample(1000, 14)
+dataset.random_sample(150, 14)
+
+print("Dataset loaded")
 
 logits_per_length = dataset.logits(model)
 tokens_dict_per_length = dataset.get_tensor_token(model)
@@ -121,12 +130,12 @@ neg_delta_corrupted = (
 corrupted_logit, corrupted_cache = model.run_with_cache_from_embed(pos_embs_corrupted)
 
 
-def indirect_effect(logits, corrupted_logits, first_ids_pos, second_ids_pos):
+def indirect_effect(logits, corrupted_logits, first_ids_pos):
     logits = torch.softmax(logits, dim=-1)
     corrupted_logits = torch.softmax(corrupted_logits, dim=-1)
     batch_index = torch.arange(logits.shape[0])
     delta_value = (
-        logits[batch_index, -1, first_ids_pos] - logits[batch_index, -1, second_ids_pos]
+        logits[batch_index, -1, first_ids_pos] - corrupted_logits[batch_index, -1, first_ids_pos]
     )
     return delta_value.mean()
 
@@ -143,17 +152,20 @@ neg_clean_logit, neg_clean_cache = model.run_with_cache(neg_input_ids)
 pos_metric = partial(
     indirect_effect,
     corrupted_logits=pos_corrupted_logit,
-    first_ids_pos=pos_target_ids["target"],
-    second_ids_pos=pos_target_ids["orthogonal_token"],
+    first_ids_pos=pos_target_ids["target"]
 )
 neg_metric = partial(
     indirect_effect,
     corrupted_logits=neg_corrupted_logit,
-    first_ids_pos=neg_target_ids["target"],
-    second_ids_pos=neg_target_ids["orthogonal_token"],
+    first_ids_pos=neg_target_ids["orthogonal_token"]
 )
+print("pos metric", pos_metric(logits=pos_clean_logit))
+print("neg metric", neg_metric(logits=neg_clean_logit))
+
+print("Computing results")
 
 pos_result = {
+    "example_str_token": model.to_str_tokens(pos_input_ids[0]),
     "logit_lens": logit_lens(
         pos_clean_cache,
         model,
@@ -194,9 +206,11 @@ pos_result = {
         1,
         pos_embs_corrupted
     ),
+       "patch_mlp_out": get_act_patch_mlp_out(model, pos_input_ids_corrupted, pos_clean_cache, pos_metric, patch_interval=2, corrupted_embeddings=pos_embs_corrupted)
 }
 
 neg_result = {
+    "example_str_token": model.to_str_tokens(neg_input_ids[0]),
     "logit_lens": logit_lens(
         neg_clean_cache,
         model,
@@ -237,6 +251,7 @@ neg_result = {
         1,
         neg_embs_corrupted
     ),
+    "patch_mlp_out": get_act_patch_mlp_out(model, neg_input_ids_corrupted, neg_clean_cache, neg_metric, patch_interval=2, corrupted_embeddings=neg_embs_corrupted)
 }
 
 

@@ -66,6 +66,8 @@ class WrapHookedTransformer(HookedTransformer):
         noise_mask = noise_mask.unsqueeze(0).unsqueeze(2)  # (1, seq_len, 1)
         noise_mask = noise_mask.expand_as(input_embeddings)  # (batch_size, seq_len, emb_dim)
 
+        noise = noise.to(input_embeddings.device)
+        noise_mask = noise_mask.to(input_embeddings.device)
         # Apply the mask to the noise tensor
         masked_noise = noise * noise_mask
 

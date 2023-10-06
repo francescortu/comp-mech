@@ -69,7 +69,7 @@ def embs_to_tokens_ids(noisy_embs, model):
 
 def patch_resid_pre(model, input_ids, input_ids_corrupted, clean_cache, metric, corrupted_embeddings):
     resid_pre_act_patch_results = get_act_patch_resid_pre(
-        model, input_ids_corrupted, clean_cache, metric, corrupted_embeddings
+        model = model, corrupted_tokens=input_ids_corrupted, clean_cache=clean_cache, patching_metric= metric, corrupted_embeddings=corrupted_embeddings
     )
     return resid_pre_act_patch_results
 
@@ -94,7 +94,8 @@ def patch_attn_head_by_pos(model, input_ids, input_ids_corrupted, clean_cache, m
     import einops
 
     attn_head_out_act_patch_results = get_act_patch_attn_head_out_by_pos(
-        model, input_ids_corrupted, clean_cache, metric, corrupted_embeddings
+        model = model, corrupted_tokens=input_ids_corrupted, clean_cache=clean_cache, patching_metric= metric, corrupted_embeddings=corrupted_embeddings
+
     )
     attn_head_out_act_patch_results = einops.rearrange(
         attn_head_out_act_patch_results, "layer pos head -> (layer head) pos"
