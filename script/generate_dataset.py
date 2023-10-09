@@ -135,6 +135,8 @@ print("target win", target_win / n_samples)
 print("orthogonal win", orthogonal_win / n_samples)
 print("target win over orthogonal", target_win_over_orthogonal / n_samples)
 
+target_win_dataset = [d for d in target_win_dataset if d["target_probs"] < 0.2]
+orthogonal_win_dataset = [d for d in orthogonal_win_dataset if d["orthogonal_probs"] < 0.2]
 # Get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
 

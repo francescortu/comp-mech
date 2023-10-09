@@ -7,6 +7,7 @@ import torch
 from transformer_lens import HookedTransformer
 import json
 from src.model import WrapHookedTransformer
+from src.utils import float_range
 from tqdm import tqdm
 
 import transformer_lens.utils as utils
@@ -39,7 +40,7 @@ orthogonal_win = np.zeros([num_alphas, num_samples])
 target_win_over_orthogonal = np.zeros([num_alphas, num_samples])
 
 
-for i, alpha in enumerate(range(0.001, 0.4, 0.001)):
+for i, alpha in enumerate(float_range(0.001, 0.04, 0.001)):
     for sample in range(num_samples):
         tmp_target_win = 0
         tmp_orthogonal_win = 0
