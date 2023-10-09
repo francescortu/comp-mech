@@ -47,4 +47,11 @@ class Dataset(TorchDataset):
             orthogonal_dataset_per_length[length].append(d)
         return target_dataset_per_length, orthogonal_dataset_per_length
     
+    def mean_var(self):
+        target_prob = [d["target_probs"] for d in self.target_dataset]
+        orthogonal_prob = [d["orthogonal_probs"] for d in self.orthogonal_dataset]
 
+        target_prob = torch.tensor(target_prob)
+        orthogonal_prob = torch.tensor(orthogonal_prob)
+        print(target_prob.mean(), target_prob.var(), orthogonal_prob.mean(), orthogonal_prob.var())
+        return target_prob.mean(), target_prob.var(), orthogonal_prob.mean(), orthogonal_prob.var()
