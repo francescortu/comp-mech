@@ -29,11 +29,11 @@ from dataclasses import dataclass
 
 
 class Config:
-    num_samples: int = 1000
+    num_samples: int = 100
     batch_size: int = 100
-    mem_win_noise_position = [1,2,3,6,7]
-    mem_win_noise_mlt = 15
-    cp_win_noise_position = [7]
+    mem_win_noise_position = [1,2,3,7,8]
+    mem_win_noise_mlt = 20
+    cp_win_noise_position = [8]
     cp_win_noise_mlt = 20
 config = Config()
 
@@ -60,7 +60,7 @@ def dict_of_lists_to_dict_of_tensors(dict_of_lists):
 torch.set_grad_enabled(False)
 
 MODEL_NAME = "gpt2small"
-MAX_LEN = 14
+MAX_LEN = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 model = WrapHookedTransformer.from_pretrained("gpt2", device=DEVICE)
 target_data = json.load(open("../data/target_win_dataset_{}_filtered.json".format(MODEL_NAME)))
@@ -69,7 +69,7 @@ orthogonal_data = json.load(
 )
 orthogonal_data = random.sample(orthogonal_data, len(target_data))
 dataset = Dataset(target_data, orthogonal_data, model)
-dataset.random_sample(config.num_samples, 14)
+dataset.random_sample(config.num_samples, MAX_LEN)
 
 
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
@@ -79,6 +79,8 @@ pos_result = []
 pos_result_var = []
 neg_result = []
 neg_result_var = []
+pos_clean_caches = []
+neg_clean_caches = []
 for batch in dataloader:
 
     pos_batch = batch["pos_dataset"]
@@ -110,6 +112,9 @@ for batch in dataloader:
     pos_clean_logit, pos_clean_cache = model.run_with_cache(pos_batch["premise"])
     neg_corrupted_logit, neg_corrupted_cache = model.run_with_cache_from_embed(neg_embs_corrupted)
     neg_clean_logit, neg_clean_cache = model.run_with_cache(neg_batch["premise"])
+    
+    pos_clean_caches.append(pos_clean_cache)
+    neg_clean_caches.append(neg_clean_cache)
     
     def check_reversed_probs( corrupted_logits, target_pos, orthogonal_pos):
         corrupted_logits = torch.softmax(corrupted_logits, dim=-1)
@@ -198,14 +203,14 @@ for batch in dataloader:
                         pos_clean_cache,
                         pos_metric,
                         pos_embs_corrupted),
-        # "patch_attn_head_by_pos": patch_attn_head_by_pos(
-        #     model,
-        #     pos_input_ids,
-        #     pos_input_ids,
-        #     pos_clean_cache,
-        #     pos_metric,
-        #     pos_embs_corrupted
-        # ),
+        "patch_attn_head_by_pos": patch_attn_head_by_pos(
+            model,
+            pos_input_ids,
+            pos_input_ids,
+            pos_clean_cache,
+            pos_metric,
+            pos_embs_corrupted
+        ),
         "patch_per_block":  patch_per_block_all_poss(model,
                         pos_input_ids,
                         pos_input_ids,
@@ -240,14 +245,14 @@ for batch in dataloader:
                         pos_clean_cache,
                         pos_metric_var,
                         pos_embs_corrupted),
-        # "patch_attn_head_by_pos": patch_attn_head_by_pos(
-        #     model,
-        #     pos_input_ids,
-        #     pos_input_ids,
-        #     pos_clean_cache,
-        #     pos_metric_var,
-        #     pos_embs_corrupted
-        # ),
+        "patch_attn_head_by_pos": patch_attn_head_by_pos(
+            model,
+            pos_input_ids,
+            pos_input_ids,
+            pos_clean_cache,
+            pos_metric_var,
+            pos_embs_corrupted
+        ),
         "patch_per_block":  patch_per_block_all_poss(model,
                         pos_input_ids,
                         pos_input_ids,
@@ -285,14 +290,14 @@ for batch in dataloader:
             neg_metric,
             neg_embs_corrupted
         ),
-        # "patch_attn_head_by_pos": patch_attn_head_by_pos(
-        #     model,
-        #     neg_input_ids,
-        #     neg_input_ids,
-        #     neg_clean_cache,
-        #     neg_metric,
-        #     neg_embs_corrupted
-        # ),
+        "patch_attn_head_by_pos": patch_attn_head_by_pos(
+            model,
+            neg_input_ids,
+            neg_input_ids,
+            neg_clean_cache,
+            neg_metric,
+            neg_embs_corrupted
+        ),
         "patch_per_block": patch_per_block_all_poss(
             model,
             neg_input_ids,
@@ -330,14 +335,14 @@ for batch in dataloader:
                 neg_metric_var,
                 neg_embs_corrupted
             ),
-            # "patch_attn_head_by_pos": patch_attn_head_by_pos(
-            #     model,
-            #     neg_input_ids,
-            #     neg_input_ids,
-            #     neg_clean_cache,
-            #     neg_metric_var,
-            #     neg_embs_corrupted
-            # ),
+            "patch_attn_head_by_pos": patch_attn_head_by_pos(
+                model,
+                neg_input_ids,
+                neg_input_ids,
+                neg_clean_cache,
+                neg_metric_var,
+                neg_embs_corrupted
+            ),
             "patch_per_block": patch_per_block_all_poss(
                 model,
                 neg_input_ids,
@@ -347,7 +352,7 @@ for batch in dataloader:
                 1,
                 neg_embs_corrupted
             ),
-            "patch_mlp_out": get_act_patch_mlp_out(model, neg_input_ids, neg_clean_cache, neg_metric_var, patch_interval=2, corrupted_embeddings=neg_embs_corrupted)
+            "patch_mlp_out": get_act_patch_mlp_out(model, neg_input_ids, neg_clean_cache, neg_metric_var, patch_interval=1, corrupted_embeddings=neg_embs_corrupted)
         })
 
 pos_result = list_of_dicts_to_dict_of_lists(pos_result)
@@ -394,9 +399,10 @@ result_var = {
         for key, value in neg_result_var.items() if key not in  ["example_str_token", "logit_lens"] 
     }
 }
-## COMPUTE pooled variance
 
-
+# compute the mean and std of the caches
+torch.save(pos_clean_caches[-1], "../results/pos_clean_caches_{}.pt".format(MODEL_NAME))
+torch.save(neg_clean_caches[-1], "../results/neg_clean_caches_{}.pt".format(MODEL_NAME))
 
 
 

@@ -22,11 +22,13 @@ class Dataset(TorchDataset):
             if len(self.target_dataset_per_length[length]) >= n and len(self.orthogonal_dataset_per_length[length]) >= n:
                 possible_lengths.append(length)
         print(f"possible_lengths for sampling {n}: {possible_lengths}")
+        assert len(possible_lengths) > 0, "No possible lengths for sampling"
+        assert choose_lenght is None or choose_lenght in possible_lengths, "choose_lenght not in possible_lengths"
         if length is None:
             length = random.choice(possible_lengths)
         else:
             length = choose_lenght
-      
+
         self.pos_dataset = self.target_dataset_per_length[length][:n]
         self.neg_dataset = self.orthogonal_dataset_per_length[length][:n]
 

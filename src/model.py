@@ -123,3 +123,31 @@ class WrapHookedTransformer(HookedTransformer):
 
         # print(string_token, self.to_string(new_token.item()), alpha)
         return self.to_string(new_token.item())
+    
+    def to_orthogonal_tokens2(self, string_token: str, alpha: float = 1):
+        """
+        Convert a token to its orthogonal representation
+        
+        Args:
+            string_token (str): The token to convert
+            alpha (float): The amount of orthogonalization to apply
+        """
+        token = self.to_tokens(string_token, prepend_bos=False)
+        token = token[0]
+        embedding = self.W_E[token].mean(dim=0).squeeze(0)
+
+        random_embedding = torch.randn_like(embedding)
+        orthogonal_embedding = random_embedding - ((random_embedding @ embedding) / (embedding @ embedding)) * embedding
+
+        # Use linear interpolation between the original embedding and the orthogonal embedding
+        new_embedding = (1 - alpha) * embedding + alpha * orthogonal_embedding
+        new_embedding_normalize = torch.functional.F.normalize(new_embedding, dim=-1)
+        embedding_normalize = torch.functional.F.normalize(self.W_E, dim=-1)
+        similarity = embedding_normalize @ new_embedding_normalize
+
+        # Exclude the original token and find the closest token
+        sorted_indices = torch.argsort(similarity, descending=True)
+        sorted_indices = sorted_indices[sorted_indices != token]
+        new_token = sorted_indices[0]
+
+        return self.to_string(new_token.item())
