@@ -39,7 +39,7 @@ orthogonal_win = np.zeros([num_alphas, num_samples])
 target_win_over_orthogonal = np.zeros([num_alphas, num_samples])
 
 
-for i, alpha in enumerate(alphas):
+for i, alpha in enumerate(range(0.001, 0.4, 0.001)):
     for sample in range(num_samples):
         tmp_target_win = 0
         tmp_orthogonal_win = 0
