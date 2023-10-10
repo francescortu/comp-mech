@@ -191,7 +191,3 @@ def dict_of_lists_to_dict_of_tensors(dict_of_lists):
         dict_of_tensors[key] = torch.stack(tensor_list)
     return dict_of_tensors
 
-def float_range(start, stop, step):
-    while start < stop:
-        yield start
-        start += step

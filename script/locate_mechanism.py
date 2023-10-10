@@ -29,12 +29,16 @@ from dataclasses import dataclass
 
 
 class Config:
-    num_samples: int = 1000
+    num_samples: int = 100
     batch_size: int = 100
-    mem_win_noise_position = [1,2,3,6,7]
-    mem_win_noise_mlt = 15
-    cp_win_noise_position = [7]
+    mem_win_noise_position = [1,2,3,8,9,10,11]
+    mem_win_noise_mlt = 20
+    cp_win_noise_position = [1,2,3,8,9,10,11]
     cp_win_noise_mlt = 20
+    name_save_file = "gpt2small"
+    name_dataset = "dataset_gpt2small.json"
+    max_len = 16
+    
 config = Config()
 
 def dict_of_lists_to_dict_of_tensors(dict_of_lists):
@@ -60,16 +64,15 @@ def dict_of_lists_to_dict_of_tensors(dict_of_lists):
 torch.set_grad_enabled(False)
 
 MODEL_NAME = "gpt2small"
-MAX_LEN = 14
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 model = WrapHookedTransformer.from_pretrained("gpt2", device=DEVICE)
-target_data = json.load(open("../data/target_win_dataset_{}_filtered.json".format(MODEL_NAME)))
-orthogonal_data = json.load(
-    open("../data/orthogonal_win_dataset_{}_filtered.json".format(MODEL_NAME))
-)
+dataset = json.load(open("../data/{}.json".format(config.name_dataset)))
+target_data = dataset["memorization_win"]
+orthogonal_data = dataset["copy_win"]
 orthogonal_data = random.sample(orthogonal_data, len(target_data))
 dataset = Dataset(target_data, orthogonal_data, model)
-dataset.random_sample(config.num_samples, 14)
+dataset.random_sample(config.num_samples, config.max_len)
 
 
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
@@ -79,6 +82,8 @@ pos_result = []
 pos_result_var = []
 neg_result = []
 neg_result_var = []
+pos_clean_caches = []
+neg_clean_caches = []
 for batch in dataloader:
 
     pos_batch = batch["pos_dataset"]
@@ -96,13 +101,13 @@ for batch in dataloader:
     pos_embs_corrupted = model.add_noise(
         pos_batch["premise"],
         noise_index = torch.tensor(config.mem_win_noise_position),
-        target_win=7,
+        target_win=8,
         noise_mlt=config.mem_win_noise_mlt
     )
     neg_embs_corrupted = model.add_noise(
         neg_batch["premise"],
         noise_index = torch.tensor(config.cp_win_noise_position),
-        target_win=7,
+        target_win=8,
         noise_mlt=config.cp_win_noise_mlt
     )
 
@@ -110,6 +115,9 @@ for batch in dataloader:
     pos_clean_logit, pos_clean_cache = model.run_with_cache(pos_batch["premise"])
     neg_corrupted_logit, neg_corrupted_cache = model.run_with_cache_from_embed(neg_embs_corrupted)
     neg_clean_logit, neg_clean_cache = model.run_with_cache(neg_batch["premise"])
+    
+    pos_clean_caches.append(pos_clean_cache)
+    neg_clean_caches.append(neg_clean_cache)
     
     def check_reversed_probs( corrupted_logits, target_pos, orthogonal_pos):
         corrupted_logits = torch.softmax(corrupted_logits, dim=-1)
@@ -120,10 +128,58 @@ for batch in dataloader:
     print("Traget - Orthogonal", check_reversed_probs( pos_corrupted_logit,  pos_target_ids["target"], pos_target_ids["orthogonal"],))
     print("Target - orthogonal", check_reversed_probs( neg_corrupted_logit, neg_target_ids["target"], neg_target_ids["orthogonal"]))
     
+    
+    # def delta(logits, first_ids_pos, second_ids_pos):
+    #     # logits = torch.softmax(logits, dim=-1)
+    #     # corrupted_logits = torch.softmax(corrupted_logits, dim=-1)
+    #     logits_values_target = torch.gather(logits[:, -1, :], 1, first_ids_pos).squeeze()
+    #     logits_values_orthogonal = torch.gather(logits[:, -1, :], 1, second_ids_pos).squeeze()
 
+    #     delta_value = (logits_values_target - logits_values_orthogonal) 
+    #     return delta_value
+    
+    # POS_BASELINE_CLEAN = delta(
+    #     logits=pos_clean_logit,
+    #     first_ids_pos=pos_target_ids["target"],
+    #     second_ids_pos=pos_target_ids["orthogonal"]
+    # )
+    # POS_BASELINE_CORRUPTED = delta(
+    #     logits=pos_corrupted_logit,
+    #     first_ids_pos=pos_target_ids["target"],
+    #     second_ids_pos=pos_target_ids["orthogonal"]
+    # )
+    
+    # NEG_BASELINE_CLEAN = delta(
+    #     logits=neg_clean_logit,
+    #     first_ids_pos=neg_target_ids["target"],
+    #     second_ids_pos=neg_target_ids["orthogonal"]
+    # )
+    
+    # NEG_BASELINE_CORRUPTED = delta(
+    #     logits=neg_corrupted_logit,
+    #     first_ids_pos=neg_target_ids["target"],
+    #     second_ids_pos=neg_target_ids["orthogonal"]
+    # )
+    
+    # def pos_metric(logits):
+    #     return ((delta(logits, pos_target_ids["target"], pos_target_ids["orthogonal"]) - POS_BASELINE_CORRUPTED)/ (POS_BASELINE_CLEAN - POS_BASELINE_CORRUPTED )).mean()
+    
+    # def neg_metric(logits):
+    #     return ((delta(logits, neg_target_ids["target"], neg_target_ids["orthogonal"]) - NEG_BASELINE_CORRUPTED)/ (NEG_BASELINE_CLEAN - NEG_BASELINE_CORRUPTED)).mean()
+    
+    # def pos_metric_var(logits):
+    #     return ((delta(logits, pos_target_ids["target"], pos_target_ids["orthogonal"]) - POS_BASELINE_CORRUPTED)/ (POS_BASELINE_CLEAN - POS_BASELINE_CORRUPTED )).std()
+    
+    # def neg_metric_var(logits):
+    #     return ((delta(logits, neg_target_ids["target"], neg_target_ids["orthogonal"]) - NEG_BASELINE_CORRUPTED)/ (NEG_BASELINE_CLEAN - NEG_BASELINE_CORRUPTED)).std()
+    
+  
+
+    
+    
     def indirect_effect(logits, corrupted_logits, first_ids_pos, return_type="mean"):
-        logits = torch.softmax(logits, dim=-1)
-        corrupted_logits = torch.softmax(corrupted_logits, dim=-1)
+        logits = torch.nn.functional.log_softmax(logits, dim=-1)
+        corrupted_logits = torch.nn.functional.log_softmax(corrupted_logits, dim=-1)
         # Use torch.gather to get the desired values
         logits_values = torch.gather(logits[:, -1, :], 1, first_ids_pos).squeeze()
         corrupted_logits_values = torch.gather(corrupted_logits[:, -1, :], 1, first_ids_pos).squeeze()
@@ -154,7 +210,9 @@ for batch in dataloader:
         if return_type == "mean":
             return improved.mean()
         elif return_type == "var":
-            return improved.var()
+            return improved.std()
+        elif return_type == "mad":
+            return (improved - improved.median()).abs().median()
         
     def neg_metric(logits, return_type="mean"):
         improved = indirect_effect(
@@ -164,12 +222,14 @@ for batch in dataloader:
         )
         # improved = improved/NEG_BASELINE
         if return_type == "mean":
-            return improved.mean(dim=0)
+            return improved.mean()
         elif return_type == "var":
-            return improved.var(dim=0)
+            return improved.std(dim=0)
+        elif return_type == "mad":
+            return (improved - improved.median()).abs().median()
     
-    pos_metric_var = partial(pos_metric, return_type="var")
-    neg_metric_var = partial(neg_metric, return_type="var")
+    pos_metric_var = partial(pos_metric, return_type="mad")
+    neg_metric_var = partial(neg_metric, return_type="mad")
 
     
     print("pos metric", pos_metric(logits=pos_clean_logit), "var", pos_metric_var(logits=pos_clean_logit))
@@ -214,7 +274,7 @@ for batch in dataloader:
                         1,
                         pos_embs_corrupted
                       ),
-        "patch_mlp_out": get_act_patch_mlp_out(model, pos_input_ids, pos_clean_cache, pos_metric, patch_interval=2, corrupted_embeddings=pos_embs_corrupted)
+        "patch_mlp_out": get_act_patch_mlp_out(model, pos_input_ids, pos_clean_cache, pos_metric, patch_interval=10, corrupted_embeddings=pos_embs_corrupted)
     })
 
     pos_result_var.append({
@@ -256,7 +316,7 @@ for batch in dataloader:
                         1,
                         pos_embs_corrupted
                       ),
-        "patch_mlp_out": get_act_patch_mlp_out(model, pos_input_ids, pos_clean_cache, pos_metric_var, patch_interval=2, corrupted_embeddings=pos_embs_corrupted)
+        "patch_mlp_out": get_act_patch_mlp_out(model, pos_input_ids, pos_clean_cache, pos_metric_var, patch_interval=10, corrupted_embeddings=pos_embs_corrupted)
     })
     
 
@@ -302,7 +362,7 @@ for batch in dataloader:
             1,
             neg_embs_corrupted
         ),
-        "patch_mlp_out": get_act_patch_mlp_out(model, neg_input_ids, neg_clean_cache, neg_metric, patch_interval=2, corrupted_embeddings=neg_embs_corrupted)
+        "patch_mlp_out": get_act_patch_mlp_out(model, neg_input_ids, neg_clean_cache, neg_metric, patch_interval=10, corrupted_embeddings=neg_embs_corrupted)
     })
     
     neg_result_var.append({
@@ -347,7 +407,7 @@ for batch in dataloader:
                 1,
                 neg_embs_corrupted
             ),
-            "patch_mlp_out": get_act_patch_mlp_out(model, neg_input_ids, neg_clean_cache, neg_metric_var, patch_interval=2, corrupted_embeddings=neg_embs_corrupted)
+            "patch_mlp_out": get_act_patch_mlp_out(model, neg_input_ids, neg_clean_cache, neg_metric_var, patch_interval=10, corrupted_embeddings=neg_embs_corrupted)
         })
 
 pos_result = list_of_dicts_to_dict_of_lists(pos_result)
@@ -364,39 +424,28 @@ print({key: value.shape for key, value in pos_result.items() if key not in  ["ex
 # compute the mean and std of the metrics
 result = {
     "pos": {
-        key: {
-            "mean": value.clone().detach().mean(0),
-            "std": value.clone().detach().std(0)
-        }
+        key: value.clone().detach()
         for key, value in pos_result.items() if key not in  ["example_str_token", "logit_lens"]    
     },
     "neg": {
-        key: {
-            "mean": value.clone().detach().mean(0),
-            "std": value.clone().detach().std(0)
-        }
+        key: value.clone().detach()
         for key, value in neg_result.items() if key not in  ["example_str_token", "logit_lens"] 
     }
 }
 result_var = {
     "pos": {
-        key: {
-            "mean": value.clone().detach().mean(0),
-            "std": value.clone().detach().std(0)
-        }
+        key:  value.clone().detach()
         for key, value in pos_result_var.items() if key not in  ["example_str_token", "logit_lens"]    
     },
     "neg": {
-        key: {
-            "mean": value.clone().detach().mean(0),
-            "std": value.clone().detach().std(0)
-        }
+        key: value.clone().detach()
         for key, value in neg_result_var.items() if key not in  ["example_str_token", "logit_lens"] 
     }
 }
-## COMPUTE pooled variance
 
-
+# compute the mean and std of the caches
+torch.save(pos_clean_caches[-1], "../results/locate_mechanism/{pos_clean_caches_{}.pt".format(config.name_save_file))
+torch.save(neg_clean_caches[-1], "../results/locate_mechanism/{neg_clean_caches_{}.pt".format(config.name_save_file))
 
 
 
@@ -404,5 +453,9 @@ result["pos"]["example_str_token"] = pos_result["example_str_token"][0]
 result["pos"]["logit_lens"] = pos_result["logit_lens"][0]
 result["neg"]["example_str_token"] = neg_result["example_str_token"][0]
 result["neg"]["logit_lens"] = neg_result["logit_lens"][0]
-torch.save(result, "../results/indirect_effect_{}.pt".format(MODEL_NAME))
-torch.save(result_var, "../results/indirect_effect_var_{}.pt".format(MODEL_NAME))
+
+full_result = {
+    "var": result_var,
+    "mean": result,
+}
+torch.save(full_result, "../results/locate_mechanism/{}_full_result.pt".format(config.name_save_file))
