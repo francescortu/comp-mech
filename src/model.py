@@ -44,7 +44,7 @@ class WrapHookedTransformer(HookedTransformer):
 
         # noise = torch.normal(mean=0, std=0.04, size=input_embeddings.shape, device=input_embeddings.device)
         # Load noise standard deviation and create noise tensor
-        noise_mean = torch.load("../data/noise_mean.pt")
+        noise_mean = torch.load("../data/noise_mean.pt") * 0
         noise_std = torch.load("../data/noise_std.pt") * noise_mlt
         noise_std = einops.repeat(noise_std, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
         noise_mean = einops.repeat(noise_mean, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
