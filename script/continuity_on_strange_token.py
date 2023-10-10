@@ -24,8 +24,8 @@ class Config:
     dataset_slice = 1000
     batch_size = 100
     start = 0
-    step = 0.1
-    end = 1
+    step = 0.01
+    end = 0.5
     num_steps = int((end - start) / step) + 1
     
 
@@ -63,7 +63,7 @@ for j,alpha in enumerate([x for x in np.arange(config.start, config.end + config
             
             # add orthogonal token
             for i, d in enumerate(pos_batch["prompt"]):
-                orthogonal_token = model.to_orthogonal_tokens2(d, alpha=alpha)
+                orthogonal_token = model.to_orthogonal_tokens2(pos_batch["target"][i], alpha=alpha)
                 pos_batch["premise"][i] = d + orthogonal_token + " " + d
                 if f"sample_{sample}" not in orthogonal_word_per_sample:
                     orthogonal_word_per_sample[f"sample_{sample}"] = []
@@ -77,7 +77,7 @@ for j,alpha in enumerate([x for x in np.arange(config.start, config.end + config
             
             target_win_tmp += (probabilities[:,-1,:].argmax(dim=-1) == pos_target_ids["target"].squeeze(-1)).sum().item()
             
-        target_win[j,sample] = target_win_tmp / len(dataset)
+        target_win[j,sample] = target_win_tmp / (len(dataset)/2)
     # save orthogonal words
     dataframe = pd.DataFrame(orthogonal_word_per_sample)
     dataframe.to_csv("../results/continuity_cp_token/orthogonal_words_{}_alpha_{}.csv".format(MODEL_NAME, alpha))
