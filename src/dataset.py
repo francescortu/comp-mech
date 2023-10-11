@@ -4,13 +4,14 @@ from src.model import WrapHookedTransformer
 import random
 from torch.utils.data import Dataset as TorchDataset
 import json
+import copy
 import einops
 
 
 class Dataset(TorchDataset):
     def __init__(self, dataset_path):
         self.dataset = json.load(open(dataset_path))
-        self.target_dataset_per_length, self.orthogonal_dataset_per_length = self.split_for_lenght()
+        
 
     def __len__(self):
         return len(self.pos_dataset)
@@ -18,6 +19,7 @@ class Dataset(TorchDataset):
         return {"pos_dataset": self.pos_dataset[idx], "neg_dataset": self.neg_dataset[idx]}
 
     def random_sample(self, n, choose_lenght=None):
+        self.target_dataset_per_length, self.orthogonal_dataset_per_length = self.split_for_lenght()
         possible_lengths = []
         for length in self.target_dataset_per_length.keys():
             if len(self.target_dataset_per_length[length]) >= n and len(self.orthogonal_dataset_per_length[length]) >= n:
@@ -71,6 +73,8 @@ class Dataset(TorchDataset):
         self.noise_std = (input_embeddings.std(dim=-2)).squeeze(0)
         
     def add_noise(self, model, prompt, noise_index, target_win=None, noise_mlt=2):
+        if not hasattr(self, "noise_std"):
+            self.compute_noise_level(model)
         tokens = model.to_tokens(prompt)
         input_embeddings = model.embed(tokens)  # (batch_size, seq_len, emb_dim)
 
@@ -111,3 +115,12 @@ class Dataset(TorchDataset):
         print("----------------------------")
         print("Memorizing win number of examples:", len(self.dataset["memorizing_win"]))
         print("Copying win number of examples:", len(self.dataset["copying_win"]))
+        print("Mean of of memorized token probs in memorizing win:", torch.tensor([d["target_probs"] for d in self.dataset["memorizing_win"]]).mean())
+        print("Mean of of memorized token probs in copying win:", torch.tensor([d["target_probs"] for d in self.dataset["copying_win"]]).mean())
+        print("Mean of of orthogonal token probs in copying win:", torch.tensor([d["orthogonal_probs"] for d in self.dataset["copying_win"]]).mean())
+        print("Mean of of orthogonal token probs in memorizing win:", torch.tensor([d["orthogonal_probs"] for d in self.dataset["memorizing_win"]]).mean())
+        
+    def filter(self, filter_key="orthogonal_probs", filter_value=0.1):
+        new_copy =  [d for d in self.dataset["copying_win"] if d["orthogonal_probs"] < filter_value]
+        print(len(new_copy), len(self.dataset["copying_win"]))
+        self.dataset["copying_win"] = new_copy
