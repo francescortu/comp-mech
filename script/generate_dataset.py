@@ -14,8 +14,9 @@ from functools import partial
 from transformer_lens import patching
 
 LOAD = False
-SAVE_PATH_TARGET = "target_win_dataset_gpt2-xl.json"
-SAVE_PATH_ORHTOGONAL = "orthogonal_win_dataset_gpt2-xl.json"
+MODEL_NAME = "gpt2"
+SAVE_PATH = "dataset_{}.json".format(MODEL_NAME)
+
 
 
 
@@ -23,7 +24,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 json_path = os.path.join(script_dir, '..', 'data', 'counterfact.json')
 data = json.load(open(json_path))
 
-model = WrapHookedTransformer.from_pretrained("gpt2-xl", device="cuda")
+model = WrapHookedTransformer.from_pretrained(MODEL_NAME, device="cuda")
 
 
 dataset = []
@@ -141,12 +142,13 @@ orthogonal_win_dataset = [d for d in orthogonal_win_dataset if d["orthogonal_pro
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Construct the paths to the JSON files
-target_win_path = os.path.join(script_dir, '..', 'data', SAVE_PATH_TARGET)
-orthogonal_win_path = os.path.join(script_dir, '..', 'data', SAVE_PATH_ORHTOGONAL)
+dataset_path = os.path.join(script_dir, '..', 'data', SAVE_PATH)
+
+dataset = {
+    "memorizing_win": target_win_dataset,
+    "copying_win": orthogonal_win_dataset,
+}
 
 # Dump the data to the JSON files
-with open(target_win_path, 'w') as target_file:
-    json.dump(target_win_dataset, target_file, indent=4)
-
-with open(orthogonal_win_path, 'w') as orthogonal_file:
-    json.dump(orthogonal_win_dataset, orthogonal_file, indent=4)
+with open(dataset_path, 'w') as target_file:
+    json.dump(dataset, target_file, indent=4)

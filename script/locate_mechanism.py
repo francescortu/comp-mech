@@ -6,7 +6,6 @@ sys.path.append('../data')
 import torch
 from transformer_lens import HookedTransformer
 import json
-from src.patching import get_act_patch_mlp_out
 from src.model import WrapHookedTransformer
 from src.dataset import Dataset
 import transformer_lens.utils as utils
@@ -15,29 +14,30 @@ from functools import partial
 from transformer_lens import patching
 import plotly.express as px
 import random
-from src.utils import (
-    embs_to_tokens_ids,
-    patch_resid_pre,
-    patch_attn_head_out_all_pos,
-    patch_attn_head_by_pos,
-    patch_per_block_all_poss,
-    patch_attn_head_all_pos_every,
-    logit_lens,
-    list_of_dicts_to_dict_of_lists,
-)
+from src.locate_mechanism import construct_result_dict
+from src.utils import list_of_dicts_to_dict_of_lists
 from dataclasses import dataclass
 
 
 class Config:
-    num_samples: int = 100
-    batch_size: int = 100
+    num_samples: int = 5
+    batch_size: int = 5
     mem_win_noise_position = [1,2,3,8,9,10,11]
     mem_win_noise_mlt = 20
     cp_win_noise_position = [1,2,3,8,9,10,11]
     cp_win_noise_mlt = 20
-    name_save_file = "gpt2small"
-    name_dataset = "dataset_gpt2small.json"
+    name_save_file = "gpt2"
+    name_dataset = "dataset_gpt2.json"
     max_len = 16
+    keys_to_compute = [
+        "logit_lens_mem",
+        "logit_lens_cp",
+        # "resid_pos",
+        # "attn_head_out",
+        # "attn_head_by_pos",
+        # "per_block",
+        # "mlp_out"
+    ]
     
 config = Config()
 
@@ -45,7 +45,7 @@ def dict_of_lists_to_dict_of_tensors(dict_of_lists):
     dict_of_tensors = {}
     for key, tensor_list in dict_of_lists.items():
         # If the key is "example_str_token", keep it as a list of strings
-        if key == "example_str_token" or key == "logit_lens":
+        if key == "example_str_tokens":
             dict_of_tensors[key] = tensor_list
             continue
         
@@ -63,20 +63,17 @@ def dict_of_lists_to_dict_of_tensors(dict_of_lists):
 
 torch.set_grad_enabled(False)
 
-MODEL_NAME = "gpt2small"
+
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 model = WrapHookedTransformer.from_pretrained("gpt2", device=DEVICE)
-dataset = json.load(open("../data/{}.json".format(config.name_dataset)))
-target_data = dataset["memorization_win"]
-orthogonal_data = dataset["copy_win"]
-orthogonal_data = random.sample(orthogonal_data, len(target_data))
-dataset = Dataset(target_data, orthogonal_data, model)
+dataset = Dataset("../data/{}".format(config.name_dataset))
 dataset.random_sample(config.num_samples, config.max_len)
-
+dataset.compute_noise_level(model)
 
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
 
+print("Method used to compute the metric: {}".format(config.keys_to_compute))
 
 pos_result = []
 pos_result_var = []
@@ -98,13 +95,15 @@ for batch in dataloader:
     }
     pos_input_ids = model.to_tokens(pos_batch["premise"], prepend_bos=True)
     neg_input_ids = model.to_tokens(neg_batch["premise"], prepend_bos=True)
-    pos_embs_corrupted = model.add_noise(
+    pos_embs_corrupted = dataset.add_noise(
+        model,
         pos_batch["premise"],
         noise_index = torch.tensor(config.mem_win_noise_position),
         target_win=8,
         noise_mlt=config.mem_win_noise_mlt
     )
-    neg_embs_corrupted = model.add_noise(
+    neg_embs_corrupted = dataset.add_noise(
+        model,
         neg_batch["premise"],
         noise_index = torch.tensor(config.cp_win_noise_position),
         target_win=8,
@@ -234,181 +233,69 @@ for batch in dataloader:
     
     print("pos metric", pos_metric(logits=pos_clean_logit), "var", pos_metric_var(logits=pos_clean_logit))
     print("neg metric", neg_metric(logits=neg_clean_logit), "var", neg_metric_var(logits=neg_clean_logit))
-
-    pos_result.append({
-        "example_str_token": model.to_str_tokens(pos_input_ids[0]),
-        "logit_lens": logit_lens(
-            pos_clean_cache,
-            model,
-            pos_input_ids,
-            pos_target_ids["target"],
-            pos_target_ids["orthogonal"],
-        ),
-        "patch_resid_position": patch_resid_pre(
-                        model,
-                        pos_input_ids,
-                        pos_input_ids,
-                        pos_clean_cache,
-                        pos_metric,
-                        pos_embs_corrupted),
-        "patch_attn_head_out": patch_attn_head_out_all_pos(
-                        model,
-                        pos_input_ids,
-                        pos_input_ids,
-                        pos_clean_cache,
-                        pos_metric,
-                        pos_embs_corrupted),
-        # "patch_attn_head_by_pos": patch_attn_head_by_pos(
-        #     model,
-        #     pos_input_ids,
-        #     pos_input_ids,
-        #     pos_clean_cache,
-        #     pos_metric,
-        #     pos_embs_corrupted
-        # ),
-        "patch_per_block":  patch_per_block_all_poss(model,
-                        pos_input_ids,
-                        pos_input_ids,
-                        pos_clean_cache,
-                        pos_metric,
-                        1,
-                        pos_embs_corrupted
-                      ),
-        "patch_mlp_out": get_act_patch_mlp_out(model, pos_input_ids, pos_clean_cache, pos_metric, patch_interval=10, corrupted_embeddings=pos_embs_corrupted)
-    })
-
-    pos_result_var.append({
-        "example_str_token": model.to_str_tokens(pos_input_ids[0]),
-        "logit_lens": logit_lens(
-            pos_clean_cache,
-            model,
-            pos_input_ids,
-            pos_target_ids["target"],
-            pos_target_ids["orthogonal"],
-        ),
-        "patch_resid_position": patch_resid_pre(
-                        model,
-                        pos_input_ids,
-                        pos_input_ids,
-                        pos_clean_cache,
-                        pos_metric_var,
-                        pos_embs_corrupted),
-        "patch_attn_head_out": patch_attn_head_out_all_pos(
-                        model,  
-                        pos_input_ids,
-                        pos_input_ids,
-                        pos_clean_cache,
-                        pos_metric_var,
-                        pos_embs_corrupted),
-        # "patch_attn_head_by_pos": patch_attn_head_by_pos(
-        #     model,
-        #     pos_input_ids,
-        #     pos_input_ids,
-        #     pos_clean_cache,
-        #     pos_metric_var,
-        #     pos_embs_corrupted
-        # ),
-        "patch_per_block":  patch_per_block_all_poss(model,
-                        pos_input_ids,
-                        pos_input_ids,
-                        pos_clean_cache,
-                        pos_metric_var,
-                        1,
-                        pos_embs_corrupted
-                      ),
-        "patch_mlp_out": get_act_patch_mlp_out(model, pos_input_ids, pos_clean_cache, pos_metric_var, patch_interval=10, corrupted_embeddings=pos_embs_corrupted)
-    })
+    
     
 
-    neg_result.append({
-        "example_str_token": model.to_str_tokens(neg_input_ids[0]),
-        "logit_lens": logit_lens(
-            neg_clean_cache,
-            model,
-            neg_input_ids,
-            neg_target_ids["target"],
-            neg_target_ids["orthogonal"],
-        ),
-        "patch_resid_position": patch_resid_pre(
-            model,
-            neg_input_ids,
-            neg_input_ids,
-            neg_clean_cache,
-            neg_metric,
-            neg_embs_corrupted
-        ),
-        "patch_attn_head_out": patch_attn_head_out_all_pos(
-            model,
-            neg_input_ids,
-            neg_input_ids,
-            neg_clean_cache,
-            neg_metric,
-            neg_embs_corrupted
-        ),
-        # "patch_attn_head_by_pos": patch_attn_head_by_pos(
-        #     model,
-        #     neg_input_ids,
-        #     neg_input_ids,
-        #     neg_clean_cache,
-        #     neg_metric,
-        #     neg_embs_corrupted
-        # ),
-        "patch_per_block": patch_per_block_all_poss(
-            model,
-            neg_input_ids,
-            neg_input_ids,
-            neg_clean_cache,
-            neg_metric,
-            1,
-            neg_embs_corrupted
-        ),
-        "patch_mlp_out": get_act_patch_mlp_out(model, neg_input_ids, neg_clean_cache, neg_metric, patch_interval=10, corrupted_embeddings=neg_embs_corrupted)
-    })
+        
+    shared_args = {
+        "model": model,
+        "input_ids": pos_input_ids,
+        "clean_cache": pos_clean_cache,
+        "metric": pos_metric,
+        "embs_corrupted": pos_embs_corrupted,
+        "interval": 1,
+        "target_ids": pos_target_ids,
+    }
+    pos_result.append(
+        construct_result_dict(shared_args, config.keys_to_compute),
+    )
+    pos_result[0]["example_str_tokens"] = pos_batch["premise"][0]
     
-    neg_result_var.append({
-            "example_str_token": model.to_str_tokens(neg_input_ids[0]),
-            "logit_lens": logit_lens(
-                neg_clean_cache,
-                model,
-                neg_input_ids,
-                neg_target_ids["target"],
-                neg_target_ids["orthogonal"],
-            ),
-            "patch_resid_position": patch_resid_pre(
-                model,
-                neg_input_ids,
-                neg_input_ids,
-                neg_clean_cache,
-                neg_metric_var,
-                neg_embs_corrupted
-            ),
-            "patch_attn_head_out": patch_attn_head_out_all_pos(
-                model,
-                neg_input_ids,
-                neg_input_ids,
-                neg_clean_cache,
-                neg_metric_var,
-                neg_embs_corrupted
-            ),
-            # "patch_attn_head_by_pos": patch_attn_head_by_pos(
-            #     model,
-            #     neg_input_ids,
-            #     neg_input_ids,
-            #     neg_clean_cache,
-            #     neg_metric_var,
-            #     neg_embs_corrupted
-            # ),
-            "patch_per_block": patch_per_block_all_poss(
-                model,
-                neg_input_ids,
-                neg_input_ids,
-                neg_clean_cache,
-                neg_metric_var,
-                1,
-                neg_embs_corrupted
-            ),
-            "patch_mlp_out": get_act_patch_mlp_out(model, neg_input_ids, neg_clean_cache, neg_metric_var, patch_interval=10, corrupted_embeddings=neg_embs_corrupted)
-        })
+    shared_args = {
+        "model": model,
+        "input_ids": pos_input_ids,
+        "clean_cache": pos_clean_cache,
+        "metric": pos_metric_var,
+        "embs_corrupted": pos_embs_corrupted,
+        "interval": 1,
+        "target_ids": pos_target_ids,
+    }
+    pos_result_var.append(
+        construct_result_dict(shared_args, config.keys_to_compute),
+    )
+    pos_result_var[0]["example_str_tokens"] = pos_batch["premise"][0]
+    
+    shared_args = {
+        "model": model,
+        "input_ids": neg_input_ids,
+        "clean_cache": neg_clean_cache,
+        "metric": neg_metric,
+        "embs_corrupted": neg_embs_corrupted,
+        "interval": 1,
+        "target_ids": neg_target_ids,
+    }
+    
+    neg_result.append(
+        construct_result_dict(shared_args, config.keys_to_compute),
+    )
+    neg_result[0]["example_str_tokens"] = neg_batch["premise"][0]
+    
+    shared_args = {
+        "model": model,
+        "input_ids": neg_input_ids,
+        "clean_cache": neg_clean_cache,
+        "metric": neg_metric_var,
+        "embs_corrupted": neg_embs_corrupted,
+        "interval": 1,
+        "target_ids": neg_target_ids,
+    }
+    
+    neg_result_var.append(
+        construct_result_dict(shared_args, config.keys_to_compute)
+    )
+    neg_result_var[0]["example_str_tokens"] = neg_batch["premise"][0]
+    
+
 
 pos_result = list_of_dicts_to_dict_of_lists(pos_result)
 neg_result = list_of_dicts_to_dict_of_lists(neg_result)
@@ -419,43 +306,39 @@ neg_result_var = list_of_dicts_to_dict_of_lists(neg_result_var)
 pos_result_var = dict_of_lists_to_dict_of_tensors(pos_result_var)
 neg_result_var = dict_of_lists_to_dict_of_tensors(neg_result_var)
 
+#create a list of ["example_str_token", "logit_lens"] if they are present in the keys_to_compute
+
+print(pos_result)
 #print shape of the results
-print({key: value.shape for key, value in pos_result.items() if key not in  ["example_str_token", "logit_lens"]})
+print({key: value.shape for key, value in pos_result.items() if key not in  ["example_str_tokens"]})
 # compute the mean and std of the metrics
 result = {
     "pos": {
         key: value.clone().detach()
-        for key, value in pos_result.items() if key not in  ["example_str_token", "logit_lens"]    
+        for key, value in pos_result.items() if key not in  ["example_str_tokens"]    
     },
     "neg": {
         key: value.clone().detach()
-        for key, value in neg_result.items() if key not in  ["example_str_token", "logit_lens"] 
+        for key, value in neg_result.items() if key not in  ["example_str_tokens"] 
     }
 }
 result_var = {
     "pos": {
         key:  value.clone().detach()
-        for key, value in pos_result_var.items() if key not in  ["example_str_token", "logit_lens"]    
+        for key, value in pos_result_var.items() if key not in  ["example_str_tokens"]    
     },
     "neg": {
         key: value.clone().detach()
-        for key, value in neg_result_var.items() if key not in  ["example_str_token", "logit_lens"] 
+        for key, value in neg_result_var.items() if key not in  ["example_str_tokens"] 
     }
 }
 
-# compute the mean and std of the caches
-torch.save(pos_clean_caches[-1], "../results/locate_mechanism/{pos_clean_caches_{}.pt".format(config.name_save_file))
-torch.save(neg_clean_caches[-1], "../results/locate_mechanism/{neg_clean_caches_{}.pt".format(config.name_save_file))
 
 
-
-result["pos"]["example_str_token"] = pos_result["example_str_token"][0]
-result["pos"]["logit_lens"] = pos_result["logit_lens"][0]
-result["neg"]["example_str_token"] = neg_result["example_str_token"][0]
-result["neg"]["logit_lens"] = neg_result["logit_lens"][0]
 
 full_result = {
     "var": result_var,
     "mean": result,
+    "config": config.__dict__,
 }
 torch.save(full_result, "../results/locate_mechanism/{}_full_result.pt".format(config.name_save_file))

@@ -38,42 +38,42 @@ class WrapHookedTransformer(HookedTransformer):
                 print(f"{i} {prediction_tkns[i]} {C.GREEN}{logits[i].item():5.2f}{C.END}")
                 
 
-    def add_noise(self, prompt: List[str], noise_index, target_win=None, noise_mlt=1):
-        tokens = self.to_tokens(prompt)
-        input_embeddings = self.embed(tokens)  # (batch_size, seq_len, emb_dim)
+    # def add_noise(self, prompt: List[str], noise_index, target_win=None, noise_mlt=1):
+    #     tokens = self.to_tokens(prompt)
+    #     input_embeddings = self.embed(tokens)  # (batch_size, seq_len, emb_dim)
 
-        # noise = torch.normal(mean=0, std=0.04, size=input_embeddings.shape, device=input_embeddings.device)
-        # Load noise standard deviation and create noise tensor
-        noise_mean = torch.load("../data/noise_mean.pt") * 0
-        noise_std = torch.load("../data/noise_std.pt") * noise_mlt
-        noise_std = einops.repeat(noise_std, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
-        noise_mean = einops.repeat(noise_mean, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
-        noise = torch.normal(mean=noise_mean, std=noise_std)
-        # noise = torch.normal(mean=torch.zeros_like(input_embeddings), std=0.001)
-        # Create a mask for positions specified in noise_index
-        seq_len = input_embeddings.shape[1]
-        noise_mask = torch.zeros(seq_len, device=input_embeddings.device)
-        noise_mask[noise_index] = 1
+    #     # noise = torch.normal(mean=0, std=0.04, size=input_embeddings.shape, device=input_embeddings.device)
+    #     # Load noise standard deviation and create noise tensor
+    #     noise_mean = torch.load("../data/noise_mean.pt") * 0
+    #     noise_std = torch.load("../data/noise_std.pt") * noise_mlt
+    #     noise_std = einops.repeat(noise_std, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
+    #     noise_mean = einops.repeat(noise_mean, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
+    #     noise = torch.normal(mean=noise_mean, std=noise_std)
+    #     # noise = torch.normal(mean=torch.zeros_like(input_embeddings), std=0.001)
+    #     # Create a mask for positions specified in noise_index
+    #     seq_len = input_embeddings.shape[1]
+    #     noise_mask = torch.zeros(seq_len, device=input_embeddings.device)
+    #     noise_mask[noise_index] = 1
 
-        # If target_win is an integer, modify the noise_mask and noise tensor
-        if isinstance(target_win, int):
-            for idx in noise_index:
-                if idx + target_win < seq_len:
-                    noise_mask[idx + target_win] = 1
-                    noise[:, idx + target_win, :] = noise[:, idx, :]
+    #     # If target_win is an integer, modify the noise_mask and noise tensor
+    #     if isinstance(target_win, int):
+    #         for idx in noise_index:
+    #             if idx + target_win < seq_len:
+    #                 noise_mask[idx + target_win] = 1
+    #                 noise[:, idx + target_win, :] = noise[:, idx, :]
 
-        # Expand the mask dimensions to match the noise tensor shape
-        noise_mask = noise_mask.unsqueeze(0).unsqueeze(2)  # (1, seq_len, 1)
-        noise_mask = noise_mask.expand_as(input_embeddings)  # (batch_size, seq_len, emb_dim)
+    #     # Expand the mask dimensions to match the noise tensor shape
+    #     noise_mask = noise_mask.unsqueeze(0).unsqueeze(2)  # (1, seq_len, 1)
+    #     noise_mask = noise_mask.expand_as(input_embeddings)  # (batch_size, seq_len, emb_dim)
 
-        noise = noise.to(input_embeddings.device)
-        noise_mask = noise_mask.to(input_embeddings.device)
-        # Apply the mask to the noise tensor
-        masked_noise = noise * noise_mask
+    #     noise = noise.to(input_embeddings.device)
+    #     noise_mask = noise_mask.to(input_embeddings.device)
+    #     # Apply the mask to the noise tensor
+    #     masked_noise = noise * noise_mask
 
-        # Add the masked noise to the input embeddings
-        corrupted_embeddings = input_embeddings + masked_noise
-        return corrupted_embeddings
+    #     # Add the masked noise to the input embeddings
+    #     corrupted_embeddings = input_embeddings + masked_noise
+    #     return corrupted_embeddings
 
     
     
