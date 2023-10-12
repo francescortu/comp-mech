@@ -128,51 +128,7 @@ for batch in dataloader:
     print("Target - orthogonal", check_reversed_probs( neg_corrupted_logit, neg_target_ids["target"], neg_target_ids["orthogonal"]))
     
     
-    # def delta(logits, first_ids_pos, second_ids_pos):
-    #     # logits = torch.softmax(logits, dim=-1)
-    #     # corrupted_logits = torch.softmax(corrupted_logits, dim=-1)
-    #     logits_values_target = torch.gather(logits[:, -1, :], 1, first_ids_pos).squeeze()
-    #     logits_values_orthogonal = torch.gather(logits[:, -1, :], 1, second_ids_pos).squeeze()
 
-    #     delta_value = (logits_values_target - logits_values_orthogonal) 
-    #     return delta_value
-    
-    # POS_BASELINE_CLEAN = delta(
-    #     logits=pos_clean_logit,
-    #     first_ids_pos=pos_target_ids["target"],
-    #     second_ids_pos=pos_target_ids["orthogonal"]
-    # )
-    # POS_BASELINE_CORRUPTED = delta(
-    #     logits=pos_corrupted_logit,
-    #     first_ids_pos=pos_target_ids["target"],
-    #     second_ids_pos=pos_target_ids["orthogonal"]
-    # )
-    
-    # NEG_BASELINE_CLEAN = delta(
-    #     logits=neg_clean_logit,
-    #     first_ids_pos=neg_target_ids["target"],
-    #     second_ids_pos=neg_target_ids["orthogonal"]
-    # )
-    
-    # NEG_BASELINE_CORRUPTED = delta(
-    #     logits=neg_corrupted_logit,
-    #     first_ids_pos=neg_target_ids["target"],
-    #     second_ids_pos=neg_target_ids["orthogonal"]
-    # )
-    
-    # def pos_metric(logits):
-    #     return ((delta(logits, pos_target_ids["target"], pos_target_ids["orthogonal"]) - POS_BASELINE_CORRUPTED)/ (POS_BASELINE_CLEAN - POS_BASELINE_CORRUPTED )).mean()
-    
-    # def neg_metric(logits):
-    #     return ((delta(logits, neg_target_ids["target"], neg_target_ids["orthogonal"]) - NEG_BASELINE_CORRUPTED)/ (NEG_BASELINE_CLEAN - NEG_BASELINE_CORRUPTED)).mean()
-    
-    # def pos_metric_var(logits):
-    #     return ((delta(logits, pos_target_ids["target"], pos_target_ids["orthogonal"]) - POS_BASELINE_CORRUPTED)/ (POS_BASELINE_CLEAN - POS_BASELINE_CORRUPTED )).std()
-    
-    # def neg_metric_var(logits):
-    #     return ((delta(logits, neg_target_ids["target"], neg_target_ids["orthogonal"]) - NEG_BASELINE_CORRUPTED)/ (NEG_BASELINE_CLEAN - NEG_BASELINE_CORRUPTED)).std()
-    
-  
 
     
     
