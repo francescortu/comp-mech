@@ -120,7 +120,8 @@ class Dataset(TorchDataset):
         print("Mean of of orthogonal token probs in copying win:", torch.tensor([d["orthogonal_probs"] for d in self.dataset["copying_win"]]).mean())
         print("Mean of of orthogonal token probs in memorizing win:", torch.tensor([d["orthogonal_probs"] for d in self.dataset["memorizing_win"]]).mean())
         
-    def filter(self, filter_key="orthogonal_probs", filter_value=0.1):
-        new_copy =  [d for d in self.dataset["copying_win"] if d["orthogonal_probs"] < filter_value]
-        print(len(new_copy), len(self.dataset["copying_win"]))
-        self.dataset["copying_win"] = new_copy
+    def filter(self, filter_key="cp", filter_interval=(0,1)):
+        if filter_key == "cp":
+            self.dataset["copying_win"] = [d for d in self.dataset["copying_win"] if d["orthogonal_probs"] < filter_interval[1] and d["orthogonal_probs"] > filter_interval[0]]
+        elif filter_key == "mem":
+            self.dataset["memorizing_win"] = [d for d in self.dataset["memorizing_win"] if d["target_probs"] < filter_interval[1] and d["target_probs"] > filter_interval[0]]
