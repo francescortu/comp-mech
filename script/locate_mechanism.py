@@ -18,11 +18,12 @@ from src.locate_mechanism import construct_result_dict, indirect_effect
 from src.utils import list_of_dicts_to_dict_of_lists
 from dataclasses import dataclass
 from scipy.stats import ttest_1samp
+import einops
 
 
 class Config:
-    num_samples: int = 10
-    batch_size: int = 2
+    num_samples: int = 15
+    batch_size: int = 5
     mem_win_noise_position = [1,2,3,9,10,11]
     mem_win_noise_mlt = 1.4
     cp_win_noise_position = [1,2,3,8,9,10,11]
@@ -86,7 +87,6 @@ neg_result_var = []
 pos_clean_caches = []
 neg_clean_caches = []
 for batch in dataloader:
-
     pos_batch = batch["pos_dataset"]
     neg_batch = batch["neg_dataset"]
     pos_target_ids = {
@@ -172,8 +172,19 @@ for batch in dataloader:
         construct_result_dict(shared_args, config.keys_to_compute),
     )
     pos_result[0]["example_str_tokens"] = model.to_str_tokens(pos_batch["premise"][0])
-    pos_result[-1]["clean_logit"] = pos_clean_logit[:,-1,:].cpu()
-    pos_result[-1]["corrupted_logit"] = pos_corrupted_logit[:,-1,:].cpu()
+    
+    pos_clean_probs = torch.softmax(pos_clean_logit, dim=-1)[:,-1,:]
+    pos_corrupted_logit = torch.softmax(pos_corrupted_logit, dim=-1)[:,-1,:]
+    pos_target_probs_clean = pos_clean_probs.gather(-1, index=pos_target_ids["target"]).squeeze(-1)
+    pos_target_probs_corrupted = pos_corrupted_logit.gather(-1, index=pos_target_ids["target"]).squeeze(-1)
+    pos_orthogonal_probs_clean = pos_clean_probs.gather(-1, index=pos_target_ids["orthogonal"]).squeeze(-1)
+    pos_orthogonal_probs_corrupted = pos_corrupted_logit.gather(-1, index=pos_target_ids["orthogonal"]).squeeze(-1)
+    
+    pos_result[-1]["clean_logit_mem"] = pos_target_probs_clean.cpu()
+    pos_result[-1]["corrupted_logit_mem"] = pos_target_probs_corrupted.cpu()
+    pos_result[-1]["clean_logit_cp"] = pos_orthogonal_probs_clean.cpu()
+    pos_result[-1]["corrupted_logit_cp"] = pos_orthogonal_probs_corrupted.cpu()
+
 
     
     shared_args = {
@@ -190,8 +201,19 @@ for batch in dataloader:
         construct_result_dict(shared_args, config.keys_to_compute),
     )
     neg_result[0]["example_str_tokens"] = model.to_str_tokens(neg_batch["premise"][0])
-    neg_result[-1]["clean_logit"] = neg_clean_logit[:,-1,:].cpu()
-    neg_result[-1]["corrupted_logit"] = neg_corrupted_logit[:,-1,:].cpu()
+
+    neg_clean_probs = torch.softmax(neg_clean_logit, dim=-1)[:,-1,:]
+    neg_corrputed_probs = torch.softmax(neg_corrupted_logit, dim=-1)[:,-1,:]
+    neg_target_probs_clean = neg_clean_probs.gather(-1, index=neg_target_ids["target"]).squeeze(-1)
+    neg_target_probs_corrupted = neg_corrputed_probs.gather(-1, index=neg_target_ids["target"]).squeeze(-1)
+    neg_orthogonal_probs_clean = neg_clean_probs.gather(-1, index=neg_target_ids["orthogonal"]).squeeze(-1)
+    neg_orthogonal_probs_corrupted = neg_corrputed_probs.gather(-1, index=neg_target_ids["orthogonal"]).squeeze(-1)
+    
+    neg_result[-1]["clean_logit_mem"] = neg_target_probs_clean.cpu()
+    neg_result[-1]["corrupted_logit_mem"] = neg_target_probs_corrupted.cpu()
+    neg_result[-1]["clean_logit_cp"] = neg_orthogonal_probs_clean.cpu()
+    neg_result[-1]["corrupted_logit_cp"] = neg_orthogonal_probs_corrupted.cpu()
+    
 
     
 
@@ -205,15 +227,20 @@ full_result = {
 }
 for key in full_result.keys():
     for subkey in full_result[key].keys():
-        if subkey not in ["clean_logit", "corrupted_logit", "example_str_tokens"]:
+        if subkey not in ["clean_logit_mem", "corrupted_logit_mem", "clean_logit_cp", "corrupted_logit_cp", "example_str_tokens"]:
             full_result[key][subkey] = {k: [d[k] for d in full_result[key][subkey]] for k in full_result[key][subkey][0].keys()}
-        for subsubkey in full_result[key][subkey].keys():
-            if subsubkey not in ["patched_logits"]:
-                full_result[key][subkey][subsubkey] = torch.stack(full_result[key][subkey][subsubkey])
-            if subsubkey == "patched_logits":
-                full_result[key][subkey][subsubkey] = torch.cat(full_result[key][subkey][subsubkey], dim=2)
-                full_result[key][subkey][subsubkey] = einops.rearrange(full_result[key][subkey][subsubkey], "c1 c2 b v -> b c1 c2 v")
-    full_result[key]["clean_logit"] = torch.cat(full_result[key]["clean_logit"], dim=0)
-    full_result[key]["corrupted_logit"] = torch.cat(full_result[key]["corrupted_logit"], dim=0)
+            for subsubkey in full_result[key][subkey].keys():
+                if subsubkey in ['patched_logits_mem', 'patched_logits_cp', 'full_delta']:
+                    # here we have list of tensor of shape (component, component, batch)
+                    full_result[key][subkey][subsubkey] = torch.cat(full_result[key][subkey][subsubkey], dim=-1)
+                    full_result[key][subkey][subsubkey] = einops.rearrange(full_result[key][subkey][subsubkey], 'c1 c2 b -> b c1 c2')
+                else:
+                    #here we have list of tensor of shape (component, component)
+                    full_result[key][subkey][subsubkey] = torch.stack(full_result[key][subkey][subsubkey])
+            
+    full_result[key]["clean_logit_mem"] = torch.cat(full_result[key]["clean_logit_mem"], dim=0)
+    full_result[key]["corrupted_logit_mem"] = torch.cat(full_result[key]["corrupted_logit_mem"], dim=0)
+    full_result[key]["clean_logit_cp"] = torch.cat(full_result[key]["clean_logit_cp"], dim=0)
+    full_result[key]["corrupted_logit_cp"] = torch.cat(full_result[key]["corrupted_logit_cp"], dim=0)
 
 torch.save(full_result, "../results/locate_mechanism/{}_full_result.pt".format(config.name_save_file))

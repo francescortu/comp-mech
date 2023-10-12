@@ -53,8 +53,6 @@ PatchedActivation = torch.Tensor
 from typing import Sequence
 
 
-
-
 def generic_activation_patch_stacked(
     model: HookedTransformer,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
@@ -71,6 +69,7 @@ def generic_activation_patch_stacked(
     index_df: Optional[pd.DataFrame] = None,
     return_index_df: bool = False,
     patch_interval: Optional[int] = 1,
+    target_ids=None,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, pd.DataFrame]]:
     """
     A generic function to do activation patching, will be specialised to specific use cases.
@@ -132,11 +131,11 @@ def generic_activation_patch_stacked(
     # Create an empty tensor to show the patched metric for each patch
     if flattened_output:
         patched_metric_output = {
-           "mean": torch.zeros(len(index_df), device=model.cfg.device),
-           "std": torch.zeros(len(index_df), device=model.cfg.device),
-           "t-value": torch.zeros(len(index_df), device=model.cfg.device),
-           "p-value": torch.zeros(len(index_df), device=model.cfg.device),
-           "patched_logits": torch.zeros(len(index_df), device=model.cfg.device),
+            "mean": torch.zeros(len(index_df), device=model.cfg.device),
+            "std": torch.zeros(len(index_df), device=model.cfg.device),
+            "t-value": torch.zeros(len(index_df), device=model.cfg.device),
+            "p-value": torch.zeros(len(index_df), device=model.cfg.device),
+            "patched_logits": torch.zeros(len(index_df), device=model.cfg.device),
         }
     else:
         # DEVICE = model.cfg.device
@@ -146,28 +145,33 @@ def generic_activation_patch_stacked(
             "std": torch.zeros(index_axis_max_range, device=DEVICE),
             "t-value": torch.zeros(index_axis_max_range, device=DEVICE),
             "p-value": torch.zeros(index_axis_max_range, device=DEVICE),
-            "patched_logits": torch.zeros(index_axis_max_range + [batch_size, model.cfg.d_vocab], device=DEVICE),
-            "full_delta": torch.zeros(index_axis_max_range + [batch_size], device=DEVICE),
+            "patched_logits_mem": torch.zeros(
+                index_axis_max_range + [batch_size], device=DEVICE
+            ),
+            "patched_logits_cp": torch.zeros(
+                index_axis_max_range + [batch_size], device=DEVICE
+            ),
+            "full_delta": torch.zeros(
+                index_axis_max_range + [batch_size], device=DEVICE
+            ),
         }
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
     def patching_hook(corrupted_activation, hook, index, clean_activation):
         return patch_setter(corrupted_activation, index, clean_activation)
 
-
     # Iterate over every list of indices, and make the appropriate patch!
     for c, index_row in enumerate(tqdm((list(index_df.iterrows())))):
         # print("-------------------")
-        index = index_row[1].to_list() # (layer, pos)
+        index = index_row[1].to_list()  # (layer, pos)
 
         if patch_interval > 1:
             if index[0] + patch_interval > model.cfg.n_layers:
                 continue
             # create a tuple from index[0] to index[0] + stack_patch_size
             layer = tuple(range(index[0], index[0] + patch_interval))
-            index = [ layer, index[1]]
+            index = [layer, index[1]]
 
-            
             hooks = []
             for l in index[0]:
                 current_activation_name = utils.get_act_name(activation_name, layer=l)
@@ -179,12 +183,14 @@ def generic_activation_patch_stacked(
                 # print(current_activation_name)
                 hooks.append((current_activation_name, current_hook))
             # Run the model with the patching hook and get the logits!
-        
-        else:
-        # The current activation name is just the activation name plus the layer (assumed to be the first element of the input)
-            current_activation_name = utils.get_act_name(activation_name, layer=index[0])
 
-        # The hook function cannot receive additional inputs, so we use partial to include the specific index and the corresponding clean activation
+        else:
+            # The current activation name is just the activation name plus the layer (assumed to be the first element of the input)
+            current_activation_name = utils.get_act_name(
+                activation_name, layer=index[0]
+            )
+
+            # The hook function cannot receive additional inputs, so we use partial to include the specific index and the corresponding clean activation
             current_hook = partial(
                 patching_hook,
                 index=index,
@@ -194,35 +200,52 @@ def generic_activation_patch_stacked(
 
         # Run the model with the patching hook and get the logits!
         if corrupted_embeddings is not None:
+
             def embed_hook(cache, hook, corrupted_embeddings):
-                cache[:,:,:] = corrupted_embeddings
+                cache[:, :, :] = corrupted_embeddings
                 return cache
+
             embeds_hook = partial(embed_hook, corrupted_embeddings=corrupted_embeddings)
             hooks.append(("hook_embed", embeds_hook))
-            
-        patched_logits = model.run_with_hooks(
-            corrupted_tokens, fwd_hooks=hooks
-        )
+
+        patched_logits = model.run_with_hooks(corrupted_tokens, fwd_hooks=hooks)
 
         # Calculate the patching metric and store
         if flattened_output:
             patched_metric_output[c] = patching_metric(patched_logits).item()
         else:
+            
+            # from two tensor of shape [batch_size]
             output_metric = patching_metric(patched_logits)
-            patched_metric_output["mean"][tuple(index)] = output_metric["mean"].to(DEVICE).item()
-            patched_metric_output["std"][tuple(index)] = output_metric["std"].to(DEVICE).item()
-            patched_metric_output["t-value"][tuple(index)] = output_metric["t-value"].to(DEVICE).item()
-            patched_metric_output["p-value"][tuple(index)] = output_metric["p-value"].to(DEVICE).item()
-            patched_metric_output["patched_logits"][tuple(index)][:,:] = patched_logits[:,-1,:].to(DEVICE)
-            patched_metric_output["full_delta"][tuple(index)][:] = output_metric["full_delta"].to(DEVICE)
-
+            patched_metric_output["mean"][tuple(index)] = (
+                output_metric["mean"].to(DEVICE).item()
+            )
+            patched_metric_output["std"][tuple(index)] = (
+                output_metric["std"].to(DEVICE).item()
+            )
+            patched_metric_output["t-value"][tuple(index)] = (
+                output_metric["t-value"].to(DEVICE).item()
+            )
+            patched_metric_output["p-value"][tuple(index)] = (
+                output_metric["p-value"].to(DEVICE).item()
+            )
+            patched_metric_output["patched_logits_mem"][tuple(index)][:] = (
+                torch.softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["target"]).squeeze(-1).to(DEVICE)
+            )
+            patched_metric_output["patched_logits_cp"][tuple(index)][:] = (
+                torch.softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["orthogonal"]).squeeze(-1).to(DEVICE)
+            )
+            patched_metric_output["full_delta"][tuple(index)][:] = output_metric[
+                "full_delta"
+            ].to(DEVICE)
 
     if return_index_df:
         return patched_metric_output, index_df
     else:
         return patched_metric_output
-    
-get_act_patch_mlp_out= partial(
+
+
+get_act_patch_mlp_out = partial(
     generic_activation_patch_stacked,
     patch_setter=tlens_patch.layer_pos_patch_setter,
     activation_name="mlp_out",
@@ -258,9 +281,14 @@ get_act_patch_attn_head_out_by_pos = partial(
 )
 
 
-
 def get_act_patch_block_every(
-    model, corrupted_tokens, clean_cache, metric, patch_interval=1, corrupted_embeddings=None
+    model,
+    corrupted_tokens,
+    clean_cache,
+    patching_metric,
+    patch_interval=1,
+    corrupted_embeddings=None,
+    target_ids = None
 ) -> Float[torch.Tensor, "patch_type layer pos"]:
     """Helper function to get activation patching results for the residual stream (at the start of each block), output of each Attention layer and output of each MLP layer. Wrapper around each's patching function, returns a stacked tensor of shape [3, n_layers, pos]
 
@@ -275,13 +303,33 @@ def get_act_patch_block_every(
     """
     act_patch_results = []
     act_patch_results.append(
-        get_act_patch_resid_pre(model, corrupted_tokens, clean_cache, metric, corrupted_embeddings=corrupted_embeddings)
+        get_act_patch_resid_pre(
+            model,
+            corrupted_tokens,
+            clean_cache,
+            patching_metric,
+            corrupted_embeddings=corrupted_embeddings,
+            target_ids=target_ids,
+        )
     )
     act_patch_results.append(
-        get_act_patch_attn_out(model, corrupted_tokens, clean_cache, metric, patch_interval=patch_interval, corrupted_embeddings=corrupted_embeddings)
+        get_act_patch_attn_out(
+            model,
+            corrupted_tokens,
+            clean_cache,
+            patching_metric,
+            corrupted_embeddings=corrupted_embeddings,
+            target_ids=target_ids,
+        )
     )
     act_patch_results.append(
-        get_act_patch_mlp_out(model, corrupted_tokens, clean_cache, metric, patch_interval=patch_interval, corrupted_embeddings=corrupted_embeddings)
+        get_act_patch_mlp_out(
+            model,
+            corrupted_tokens,
+            clean_cache,
+            patching_metric,
+            corrupted_embeddings=corrupted_embeddings,
+            target_ids=target_ids,
+        )
     )
     return torch.stack(act_patch_results, dim=0)
-
