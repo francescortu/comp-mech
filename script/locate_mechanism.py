@@ -17,6 +17,7 @@ import random
 from src.locate_mechanism import construct_result_dict
 from src.utils import list_of_dicts_to_dict_of_lists
 from dataclasses import dataclass
+from scipy.stats import ttest_1samp
 
 
 class Config:
@@ -30,10 +31,10 @@ class Config:
     name_dataset = "dataset_gpt2.json"
     max_len = 16
     keys_to_compute = [
-        "logit_lens_mem",
-        "logit_lens_cp",
+        # "logit_lens_mem",
+        # "logit_lens_cp",
         # "resid_pos",
-        # "attn_head_out",
+        "attn_head_out",
         # "attn_head_by_pos",
         # "per_block",
         # "mlp_out"
@@ -133,26 +134,21 @@ for batch in dataloader:
     
     
     def indirect_effect(logits, corrupted_logits, first_ids_pos, return_type="mean"):
-        logits = torch.nn.functional.log_softmax(logits, dim=-1)
-        corrupted_logits = torch.nn.functional.log_softmax(corrupted_logits, dim=-1)
+        logits = torch.nn.functional.softmax(logits, dim=-1)
+        corrupted_logits = torch.nn.functional.softmax(corrupted_logits, dim=-1)
         # Use torch.gather to get the desired values
         logits_values = torch.gather(logits[:, -1, :], 1, first_ids_pos).squeeze()
         corrupted_logits_values = torch.gather(corrupted_logits[:, -1, :], 1, first_ids_pos).squeeze()
         
         delta_value = logits_values - corrupted_logits_values
-
-        return delta_value
+        ttest = ttest_1samp(delta_value, 0)
+        return {
+            "mean": delta_value.mean(),
+            "std": delta_value.std(),
+            "t-value": torch.tensor(ttest[0]),
+            "p-value": torch.tensor(ttest[1])
+        }
             
-    POS_BASELINE = indirect_effect(
-        logits=pos_clean_logit,
-        corrupted_logits=pos_corrupted_logit,
-        first_ids_pos=pos_target_ids["target"]
-    )
-    NEG_BASELINE = indirect_effect(
-        logits=neg_clean_logit,
-        corrupted_logits=neg_corrupted_logit,
-        first_ids_pos=neg_target_ids["orthogonal"]
-    )
 
 
     def pos_metric(logits, return_type="mean"):
@@ -162,12 +158,7 @@ for batch in dataloader:
             first_ids_pos=pos_target_ids["target"]
         )
         # improved = improved/POS_BASELINE
-        if return_type == "mean":
-            return improved.mean()
-        elif return_type == "var":
-            return improved.std()
-        elif return_type == "mad":
-            return (improved - improved.median()).abs().median()
+        return improved
         
     def neg_metric(logits, return_type="mean"):
         improved = indirect_effect(
@@ -175,20 +166,13 @@ for batch in dataloader:
             corrupted_logits=neg_corrupted_logit,
             first_ids_pos=neg_target_ids["orthogonal"]
         )
-        # improved = improved/NEG_BASELINE
-        if return_type == "mean":
-            return improved.mean()
-        elif return_type == "var":
-            return improved.std(dim=0)
-        elif return_type == "mad":
-            return (improved - improved.median()).abs().median()
+        return improved
     
-    pos_metric_var = partial(pos_metric, return_type="mad")
-    neg_metric_var = partial(neg_metric, return_type="mad")
+    
 
     
-    print("pos metric", pos_metric(logits=pos_clean_logit), "var", pos_metric_var(logits=pos_clean_logit))
-    print("neg metric", neg_metric(logits=neg_clean_logit), "var", neg_metric_var(logits=neg_clean_logit))
+    print("pos metric", pos_metric(logits=pos_clean_logit))
+    print("neg metric", neg_metric(logits=neg_clean_logit))
     
     
 
@@ -207,19 +191,7 @@ for batch in dataloader:
     )
     pos_result[0]["example_str_tokens"] = pos_batch["premise"][0]
     
-    shared_args = {
-        "model": model,
-        "input_ids": pos_input_ids,
-        "clean_cache": pos_clean_cache,
-        "metric": pos_metric_var,
-        "embs_corrupted": pos_embs_corrupted,
-        "interval": 1,
-        "target_ids": pos_target_ids,
-    }
-    pos_result_var.append(
-        construct_result_dict(shared_args, config.keys_to_compute),
-    )
-    pos_result_var[0]["example_str_tokens"] = pos_batch["premise"][0]
+
     
     shared_args = {
         "model": model,
@@ -236,20 +208,7 @@ for batch in dataloader:
     )
     neg_result[0]["example_str_tokens"] = neg_batch["premise"][0]
     
-    shared_args = {
-        "model": model,
-        "input_ids": neg_input_ids,
-        "clean_cache": neg_clean_cache,
-        "metric": neg_metric_var,
-        "embs_corrupted": neg_embs_corrupted,
-        "interval": 1,
-        "target_ids": neg_target_ids,
-    }
-    
-    neg_result_var.append(
-        construct_result_dict(shared_args, config.keys_to_compute)
-    )
-    neg_result_var[0]["example_str_tokens"] = neg_batch["premise"][0]
+
     
 
 
@@ -257,10 +216,6 @@ pos_result = list_of_dicts_to_dict_of_lists(pos_result)
 neg_result = list_of_dicts_to_dict_of_lists(neg_result)
 pos_result = dict_of_lists_to_dict_of_tensors(pos_result)
 neg_result = dict_of_lists_to_dict_of_tensors(neg_result)
-pos_result_var = list_of_dicts_to_dict_of_lists(pos_result_var)
-neg_result_var = list_of_dicts_to_dict_of_lists(neg_result_var)
-pos_result_var = dict_of_lists_to_dict_of_tensors(pos_result_var)
-neg_result_var = dict_of_lists_to_dict_of_tensors(neg_result_var)
 
 #create a list of ["example_str_token", "logit_lens"] if they are present in the keys_to_compute
 

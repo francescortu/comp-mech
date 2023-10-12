@@ -98,7 +98,8 @@ def generic_activation_patch_stacked(
         patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
         index_df *optional*: The dataframe of indices
     """
-
+    batch_size = corrupted_tokens.shape[0]
+    max_len = corrupted_tokens.shape[1]
     if index_df is None:
         assert index_axis_names is not None
 
@@ -130,11 +131,21 @@ def generic_activation_patch_stacked(
 
     # Create an empty tensor to show the patched metric for each patch
     if flattened_output:
-        patched_metric_output = torch.zeros(len(index_df), device=model.cfg.device)
+        patched_metric_output = {
+           "mean": torch.zeros(len(index_df), device=model.cfg.device),
+           "std": torch.zeros(len(index_df), device=model.cfg.device),
+           "t-value": torch.zeros(len(index_df), device=model.cfg.device),
+           "p-value": torch.zeros(len(index_df), device=model.cfg.device),
+           "patched_logits": torch.zeros(len(index_df), device=model.cfg.device),
+        }
     else:
-        patched_metric_output = torch.zeros(
-            index_axis_max_range, device=model.cfg.device
-        )
+        patched_metric_output = {
+            "mean": torch.zeros(index_axis_max_range, device=model.cfg.device),
+            "std": torch.zeros(index_axis_max_range, device=model.cfg.device),
+            "t-value": torch.zeros(index_axis_max_range, device=model.cfg.device),
+            "p-value": torch.zeros(index_axis_max_range, device=model.cfg.device),
+            "patched_logits": torch.zeros(index_axis_max_range + [batch_size, model.cfg.d_vocab], device=model.cfg.device)
+        }
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
     def patching_hook(corrupted_activation, hook, index, clean_activation):
@@ -194,7 +205,13 @@ def generic_activation_patch_stacked(
         if flattened_output:
             patched_metric_output[c] = patching_metric(patched_logits).item()
         else:
-            patched_metric_output[tuple(index)] = patching_metric(patched_logits).item()
+            output_metric = patching_metric(patched_logits)
+            patched_metric_output["mean"][tuple(index)] = output_metric["mean"].item()
+            patched_metric_output["std"][tuple(index)] = output_metric["std"].item()
+            patched_metric_output["t-value"][tuple(index)] = output_metric["t-value"].item()
+            patched_metric_output["p-value"][tuple(index)] = output_metric["p-value"].item()
+            patched_metric_output["patched_logits"][tuple(index)][:,:] = patched_logits[:,-1,:]
+
 
     if return_index_df:
         return patched_metric_output, index_df
