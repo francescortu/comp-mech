@@ -199,5 +199,17 @@ full_result = {
     "pos": pos_result,
     "neg": neg_result
 }
+for key in full_result.keys():
+    for subkey in full_result[key].keys():
+        if subkey not in ["clean_logit", "corrupted_logit", "example_str_tokens"]:
+            full_result[key][subkey] = {k: [d[k] for d in full_result[key][subkey]] for k in full_result[key][subkey][0].keys()}
+        for subsubkey in full_result[key][subkey].keys():
+            if subsubkey not in ["patched_logits"]:
+                full_result[key][subkey][subsubkey] = torch.stack(full_result[key][subkey][subsubkey])
+            if subsubkey == "patched_logits":
+                full_result[key][subkey][subsubkey] = torch.cat(full_result[key][subkey][subsubkey], dim=2)
+                full_result[key][subkey][subsubkey] = einops.rearrange(full_result[key][subkey][subsubkey], "c1 c2 b v -> b c1 c2 v")
+    full_result[key]["clean_logit"] = torch.cat(full_result[key]["clean_logit"], dim=0)
+    full_result[key]["corrupted_logit"] = torch.cat(full_result[key]["corrupted_logit"], dim=0)
 
 torch.save(full_result, "../results/locate_mechanism/{}_full_result.pt".format(config.name_save_file))
