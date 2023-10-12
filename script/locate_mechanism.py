@@ -1,26 +1,20 @@
 import sys
-sys.path.append('..')
-sys.path.append('../src')
-sys.path.append('../data')
-
 import torch
-from transformer_lens import HookedTransformer
 import json
-from src.model import WrapHookedTransformer
-from src.dataset import Dataset
-import transformer_lens.utils as utils
-from transformer_lens.utils import get_act_name
-from functools import partial
-from transformer_lens import patching
-import plotly.express as px
-import random
-from src.locate_mechanism import construct_result_dict, indirect_effect
-from src.utils import list_of_dicts_to_dict_of_lists
 from dataclasses import dataclass
-from scipy.stats import ttest_1samp
 import einops
 
+# Add paths
+for path in ['..', '../src', '../data']:
+    sys.path.append(path)
 
+from transformer_lens import HookedTransformer
+from src.model import WrapHookedTransformer
+from src.dataset import Dataset
+from src.locate_mechanism import construct_result_dict, indirect_effect
+from src.utils import list_of_dicts_to_dict_of_lists
+
+@dataclass
 class Config:
     num_samples: int = 15
     batch_size: int = 5
@@ -41,8 +35,10 @@ class Config:
         "mlp_out",
         "attn_out_by_pos"
     ]
-    
+
 config = Config()
+
+
 
 def dict_of_lists_to_dict_of_tensors(dict_of_lists):
     dict_of_tensors = {}
@@ -68,25 +64,18 @@ torch.set_grad_enabled(False)
 
 
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-model = WrapHookedTransformer.from_pretrained("gpt2", device=DEVICE)
-dataset = Dataset("../data/{}".format(config.name_dataset))
-dataset.filter(filter_key = "cp", filter_interval=(0.2,0.25))
-dataset.filter(filter_key = "mem", filter_interval=(0.2,0.25))
-dataset.random_sample(config.num_samples, config.max_len)
-dataset.compute_noise_level(model)
+def load_model_and_data():
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    model = WrapHookedTransformer.from_pretrained("gpt2", device=DEVICE)
+    dataset = Dataset(f"../data/{config.name_dataset}")
+    dataset.filter(filter_key="cp", filter_interval=(0.2, 0.25))
+    dataset.filter(filter_key="mem", filter_interval=(0.2, 0.25))
+    dataset.random_sample(config.num_samples, config.max_len)
+    dataset.compute_noise_level(model)
+    return model, dataset
 
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
 
-print("Method used to compute the metric: {}".format(config.keys_to_compute))
-
-pos_result = []
-pos_result_var = []
-neg_result = []
-neg_result_var = []
-pos_clean_caches = []
-neg_clean_caches = []
-for batch in dataloader:
+def process_batch(batch, model, dataset):
     pos_batch = batch["pos_dataset"]
     neg_batch = batch["neg_dataset"]
     pos_target_ids = {
@@ -119,8 +108,7 @@ for batch in dataloader:
     neg_corrupted_logit, neg_corrupted_cache = model.run_with_cache_from_embed(neg_embs_corrupted)
     neg_clean_logit, neg_clean_cache = model.run_with_cache(neg_batch["premise"])
     
-    pos_clean_caches.append(pos_clean_cache)
-    neg_clean_caches.append(neg_clean_cache)
+
     
     def check_reversed_probs( corrupted_logits, target_pos, orthogonal_pos):
         corrupted_logits = torch.softmax(corrupted_logits, dim=-1)
@@ -157,8 +145,6 @@ for batch in dataloader:
     print("neg metric", neg_metric(logits=neg_clean_logit))
     
     
-
-        
     shared_args = {
         "model": model,
         "input_ids": pos_input_ids,
@@ -168,10 +154,8 @@ for batch in dataloader:
         "interval": 1,
         "target_ids": pos_target_ids,
     }
-    pos_result.append(
-        construct_result_dict(shared_args, config.keys_to_compute),
-    )
-    pos_result[0]["example_str_tokens"] = model.to_str_tokens(pos_batch["premise"][0])
+    pos_result = construct_result_dict(shared_args, config.keys_to_compute)
+    pos_result["example_str_tokens"] = model.to_str_tokens(pos_batch["premise"][0])
     
     pos_clean_probs = torch.softmax(pos_clean_logit, dim=-1)[:,-1,:]
     pos_corrupted_logit = torch.softmax(pos_corrupted_logit, dim=-1)[:,-1,:]
@@ -180,12 +164,10 @@ for batch in dataloader:
     pos_orthogonal_probs_clean = pos_clean_probs.gather(-1, index=pos_target_ids["orthogonal"]).squeeze(-1)
     pos_orthogonal_probs_corrupted = pos_corrupted_logit.gather(-1, index=pos_target_ids["orthogonal"]).squeeze(-1)
     
-    pos_result[-1]["clean_logit_mem"] = pos_target_probs_clean.cpu()
-    pos_result[-1]["corrupted_logit_mem"] = pos_target_probs_corrupted.cpu()
-    pos_result[-1]["clean_logit_cp"] = pos_orthogonal_probs_clean.cpu()
-    pos_result[-1]["corrupted_logit_cp"] = pos_orthogonal_probs_corrupted.cpu()
-    
-    pos_result[-1]["premise"] = pos_batch["premise"]
+    pos_result["clean_logit_mem"] = pos_target_probs_clean.cpu()
+    pos_result["corrupted_logit_mem"] = pos_target_probs_corrupted.cpu()
+    pos_result["clean_logit_cp"] = pos_orthogonal_probs_clean.cpu()
+    pos_result["corrupted_logit_cp"] = pos_orthogonal_probs_corrupted.cpu()
 
 
     
@@ -199,10 +181,8 @@ for batch in dataloader:
         "target_ids": neg_target_ids,
     }
     
-    neg_result.append(
-        construct_result_dict(shared_args, config.keys_to_compute),
-    )
-    neg_result[0]["example_str_tokens"] = model.to_str_tokens(neg_batch["premise"][0])
+    neg_result = construct_result_dict(shared_args, config.keys_to_compute)
+    neg_result["example_str_tokens"] = model.to_str_tokens(neg_batch["premise"][0])
 
     neg_clean_probs = torch.softmax(neg_clean_logit, dim=-1)[:,-1,:]
     neg_corrputed_probs = torch.softmax(neg_corrupted_logit, dim=-1)[:,-1,:]
@@ -211,42 +191,51 @@ for batch in dataloader:
     neg_orthogonal_probs_clean = neg_clean_probs.gather(-1, index=neg_target_ids["orthogonal"]).squeeze(-1)
     neg_orthogonal_probs_corrupted = neg_corrputed_probs.gather(-1, index=neg_target_ids["orthogonal"]).squeeze(-1)
     
-    neg_result[-1]["clean_logit_mem"] = neg_target_probs_clean.cpu()
-    neg_result[-1]["corrupted_logit_mem"] = neg_target_probs_corrupted.cpu()
-    neg_result[-1]["clean_logit_cp"] = neg_orthogonal_probs_clean.cpu()
-    neg_result[-1]["corrupted_logit_cp"] = neg_orthogonal_probs_corrupted.cpu()
+    neg_result["clean_logit_mem"] = neg_target_probs_clean.cpu()
+    neg_result["corrupted_logit_mem"] = neg_target_probs_corrupted.cpu()
+    neg_result["clean_logit_cp"] = neg_orthogonal_probs_clean.cpu()
+    neg_result["corrupted_logit_cp"] = neg_orthogonal_probs_corrupted.cpu()
+
+    return pos_result, neg_result
+
+def main():
+    torch.set_grad_enabled(False)
+    model, dataset = load_model_and_data()
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
     
-    neg_result[-1]["premise"] = neg_batch["premise"]
-    
+    pos_results, neg_results = [], []
+    for batch in dataloader:
+        pos_result, neg_result = process_batch(batch, model, dataset)
+        pos_results.append(pos_result)
+        neg_results.append(neg_result)
 
-
-pos_result = list_of_dicts_to_dict_of_lists(pos_result)
-neg_result = list_of_dicts_to_dict_of_lists(neg_result)
-
-full_result = {
-    "pos": pos_result,
-    "neg": neg_result
-}
-for key in full_result.keys():
-    for subkey in full_result[key].keys():
-        if subkey not in ["clean_logit_mem", "corrupted_logit_mem", "clean_logit_cp", "corrupted_logit_cp", "example_str_tokens", "premise"]:
-            full_result[key][subkey] = {k: [d[k] for d in full_result[key][subkey]] for k in full_result[key][subkey][0].keys()}
-            for subsubkey in full_result[key][subkey].keys():
-                if subsubkey in ['patched_logits_mem', 'patched_logits_cp', 'full_delta']:
-                    # here we have list of tensor of shape (component, component, batch)
-                    full_result[key][subkey][subsubkey] = torch.cat(full_result[key][subkey][subsubkey], dim=-1)
-                    full_result[key][subkey][subsubkey] = einops.rearrange(full_result[key][subkey][subsubkey], 'c1 c2 b -> b c1 c2')
-                else:
-                    #here we have list of tensor of shape (component, component)
-                    full_result[key][subkey][subsubkey] = torch.stack(full_result[key][subkey][subsubkey])
-        if subkey == "premise":
-            #from list of list of string to list of string
-            full_result[key][subkey] = [item for sublist in full_result[key][subkey] for item in sublist]
+    full_result = {
+        "pos": list_of_dicts_to_dict_of_lists(pos_results),
+        "neg": list_of_dicts_to_dict_of_lists(neg_results)
+    }
+    for key in full_result.keys():
+        for subkey in full_result[key].keys():
+            if subkey not in ["clean_logit_mem", "corrupted_logit_mem", "clean_logit_cp", "corrupted_logit_cp", "example_str_tokens"]:
+                full_result[key][subkey] = {k: [d[k] for d in full_result[key][subkey]] for k in full_result[key][subkey][0].keys()}
+                for subsubkey in full_result[key][subkey].keys():
+                    if subsubkey in ['patched_logits_mem', 'patched_logits_cp', 'full_delta']:
+                        # here we have list of tensor of shape (component, component, batch)
+                        full_result[key][subkey][subsubkey] = torch.cat(full_result[key][subkey][subsubkey], dim=-1)
+                        full_result[key][subkey][subsubkey] = einops.rearrange(full_result[key][subkey][subsubkey], 'c1 c2 b -> b c1 c2')
+                    else:
+                        #here we have list of tensor of shape (component, component)
+                        full_result[key][subkey][subsubkey] = torch.stack(full_result[key][subkey][subsubkey])
             
-    full_result[key]["clean_logit_mem"] = torch.cat(full_result[key]["clean_logit_mem"], dim=0)
-    full_result[key]["corrupted_logit_mem"] = torch.cat(full_result[key]["corrupted_logit_mem"], dim=0)
-    full_result[key]["clean_logit_cp"] = torch.cat(full_result[key]["clean_logit_cp"], dim=0)
-    full_result[key]["corrupted_logit_cp"] = torch.cat(full_result[key]["corrupted_logit_cp"], dim=0)
-    
+        full_result[key]["clean_logit_mem"] = torch.cat(full_result[key]["clean_logit_mem"], dim=0)
+        full_result[key]["corrupted_logit_mem"] = torch.cat(full_result[key]["corrupted_logit_mem"], dim=0)
+        full_result[key]["clean_logit_cp"] = torch.cat(full_result[key]["clean_logit_cp"], dim=0)
+        full_result[key]["corrupted_logit_cp"] = torch.cat(full_result[key]["corrupted_logit_cp"], dim=0)
 
-torch.save(full_result, "../results/locate_mechanism/{}_full_result.pt".format(config.name_save_file))
+    
+    torch.save(full_result, f"../results/locate_mechanism/{config.name_save_file}_full_result.pt")
+
+if __name__ == "__main__":
+    main()
+
+
+
