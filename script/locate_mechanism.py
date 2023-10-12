@@ -14,7 +14,7 @@ from functools import partial
 from transformer_lens import patching
 import plotly.express as px
 import random
-from src.locate_mechanism import construct_result_dict
+from src.locate_mechanism import construct_result_dict, indirect_effect
 from src.utils import list_of_dicts_to_dict_of_lists
 from dataclasses import dataclass
 from scipy.stats import ttest_1samp
@@ -131,28 +131,7 @@ for batch in dataloader:
     
     
 
-
-    
-    
-    def indirect_effect(logits, corrupted_logits, first_ids_pos, return_type="mean"):
-        logits = torch.nn.functional.softmax(logits, dim=-1)
-        corrupted_logits = torch.nn.functional.softmax(corrupted_logits, dim=-1)
-        # Use torch.gather to get the desired values
-        logits_values = torch.gather(logits[:, -1, :], 1, first_ids_pos).squeeze()
-        corrupted_logits_values = torch.gather(corrupted_logits[:, -1, :], 1, first_ids_pos).squeeze()
-        
-        delta_value = logits_values - corrupted_logits_values
-        ttest = ttest_1samp(delta_value, 0)
-        return {
-            "mean": delta_value.mean(),
-            "std": delta_value.std(),
-            "t-value": torch.tensor(ttest[0]),
-            "p-value": torch.tensor(ttest[1])
-        }
-            
-
-
-    def pos_metric(logits, return_type="mean"):
+    def pos_metric(logits):
         improved = indirect_effect(
             logits=logits,
             corrupted_logits=pos_corrupted_logit,
@@ -161,7 +140,7 @@ for batch in dataloader:
         # improved = improved/POS_BASELINE
         return improved
         
-    def neg_metric(logits, return_type="mean"):
+    def neg_metric(logits):
         improved = indirect_effect(
             logits=logits,
             corrupted_logits=neg_corrupted_logit,

@@ -144,7 +144,8 @@ def generic_activation_patch_stacked(
             "std": torch.zeros(index_axis_max_range, device=model.cfg.device),
             "t-value": torch.zeros(index_axis_max_range, device=model.cfg.device),
             "p-value": torch.zeros(index_axis_max_range, device=model.cfg.device),
-            "patched_logits": torch.zeros(index_axis_max_range + [batch_size, model.cfg.d_vocab], device=model.cfg.device)
+            "patched_logits": torch.zeros(index_axis_max_range + [batch_size, model.cfg.d_vocab], device=model.cfg.device),
+            "full_delta": torch.zeros(index_axis_max_range + [batch_size], device=model.cfg.device),
         }
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
@@ -211,6 +212,7 @@ def generic_activation_patch_stacked(
             patched_metric_output["t-value"][tuple(index)] = output_metric["t-value"].item()
             patched_metric_output["p-value"][tuple(index)] = output_metric["p-value"].item()
             patched_metric_output["patched_logits"][tuple(index)][:,:] = patched_logits[:,-1,:]
+            patched_metric_output["full_delta"][tuple(index)][:] = output_metric["full_delta"]
 
 
     if return_index_df:
