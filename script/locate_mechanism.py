@@ -184,6 +184,8 @@ for batch in dataloader:
     pos_result[-1]["corrupted_logit_mem"] = pos_target_probs_corrupted.cpu()
     pos_result[-1]["clean_logit_cp"] = pos_orthogonal_probs_clean.cpu()
     pos_result[-1]["corrupted_logit_cp"] = pos_orthogonal_probs_corrupted.cpu()
+    
+    pos_result[-1]["premise"] = pos_batch["premise"]
 
 
     
@@ -214,7 +216,7 @@ for batch in dataloader:
     neg_result[-1]["clean_logit_cp"] = neg_orthogonal_probs_clean.cpu()
     neg_result[-1]["corrupted_logit_cp"] = neg_orthogonal_probs_corrupted.cpu()
     
-
+    neg_result[-1]["premise"] = neg_batch["premise"]
     
 
 
@@ -227,7 +229,7 @@ full_result = {
 }
 for key in full_result.keys():
     for subkey in full_result[key].keys():
-        if subkey not in ["clean_logit_mem", "corrupted_logit_mem", "clean_logit_cp", "corrupted_logit_cp", "example_str_tokens"]:
+        if subkey not in ["clean_logit_mem", "corrupted_logit_mem", "clean_logit_cp", "corrupted_logit_cp", "example_str_tokens", "premise"]:
             full_result[key][subkey] = {k: [d[k] for d in full_result[key][subkey]] for k in full_result[key][subkey][0].keys()}
             for subsubkey in full_result[key][subkey].keys():
                 if subsubkey in ['patched_logits_mem', 'patched_logits_cp', 'full_delta']:
@@ -237,10 +239,14 @@ for key in full_result.keys():
                 else:
                     #here we have list of tensor of shape (component, component)
                     full_result[key][subkey][subsubkey] = torch.stack(full_result[key][subkey][subsubkey])
+        if subkey == "premise":
+            #from list of list of string to list of string
+            full_result[key][subkey] = [item for sublist in full_result[key][subkey] for item in sublist]
             
     full_result[key]["clean_logit_mem"] = torch.cat(full_result[key]["clean_logit_mem"], dim=0)
     full_result[key]["corrupted_logit_mem"] = torch.cat(full_result[key]["corrupted_logit_mem"], dim=0)
     full_result[key]["clean_logit_cp"] = torch.cat(full_result[key]["clean_logit_cp"], dim=0)
     full_result[key]["corrupted_logit_cp"] = torch.cat(full_result[key]["corrupted_logit_cp"], dim=0)
+    
 
 torch.save(full_result, "../results/locate_mechanism/{}_full_result.pt".format(config.name_save_file))
