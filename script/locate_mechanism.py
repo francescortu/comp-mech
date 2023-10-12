@@ -37,7 +37,8 @@ class Config:
         "attn_head_out",
         # "attn_head_by_pos",
         # "per_block",
-        # "mlp_out"
+        "mlp_out",
+        "attn_out_by_pos"
     ]
     
 config = Config()
@@ -214,42 +215,10 @@ for batch in dataloader:
 
 pos_result = list_of_dicts_to_dict_of_lists(pos_result)
 neg_result = list_of_dicts_to_dict_of_lists(neg_result)
-pos_result = dict_of_lists_to_dict_of_tensors(pos_result)
-neg_result = dict_of_lists_to_dict_of_tensors(neg_result)
-
-#create a list of ["example_str_token", "logit_lens"] if they are present in the keys_to_compute
-
-print(pos_result)
-#print shape of the results
-print({key: value.shape for key, value in pos_result.items() if key not in  ["example_str_tokens"]})
-# compute the mean and std of the metrics
-result = {
-    "pos": {
-        key: value.clone().detach()
-        for key, value in pos_result.items() if key not in  ["example_str_tokens"]    
-    },
-    "neg": {
-        key: value.clone().detach()
-        for key, value in neg_result.items() if key not in  ["example_str_tokens"] 
-    }
-}
-result_var = {
-    "pos": {
-        key:  value.clone().detach()
-        for key, value in pos_result_var.items() if key not in  ["example_str_tokens"]    
-    },
-    "neg": {
-        key: value.clone().detach()
-        for key, value in neg_result_var.items() if key not in  ["example_str_tokens"] 
-    }
-}
-
-
-
 
 full_result = {
-    "var": result_var,
-    "mean": result,
-    "config": config.__dict__,
+    "pos": pos_result,
+    "neg": neg_result
 }
+
 torch.save(full_result, "../results/locate_mechanism/{}_full_result.pt".format(config.name_save_file))
