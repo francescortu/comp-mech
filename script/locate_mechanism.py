@@ -21,15 +21,15 @@ from scipy.stats import ttest_1samp
 
 
 class Config:
-    num_samples: int = 5
-    batch_size: int = 5
-    mem_win_noise_position = [1,2,3,8,9,10,11]
-    mem_win_noise_mlt = 20
+    num_samples: int = 10
+    batch_size: int = 2
+    mem_win_noise_position = [1,2,3,9,10,11]
+    mem_win_noise_mlt = 1.4
     cp_win_noise_position = [1,2,3,8,9,10,11]
-    cp_win_noise_mlt = 20
+    cp_win_noise_mlt = 0.8
     name_save_file = "gpt2"
     name_dataset = "dataset_gpt2.json"
-    max_len = 16
+    max_len = 15
     keys_to_compute = [
         # "logit_lens_mem",
         # "logit_lens_cp",
@@ -70,6 +70,8 @@ torch.set_grad_enabled(False)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 model = WrapHookedTransformer.from_pretrained("gpt2", device=DEVICE)
 dataset = Dataset("../data/{}".format(config.name_dataset))
+dataset.filter(filter_key = "cp", filter_interval=(0.2,0.25))
+dataset.filter(filter_key = "mem", filter_interval=(0.2,0.25))
 dataset.random_sample(config.num_samples, config.max_len)
 dataset.compute_noise_level(model)
 
@@ -169,8 +171,9 @@ for batch in dataloader:
     pos_result.append(
         construct_result_dict(shared_args, config.keys_to_compute),
     )
-    pos_result[0]["example_str_tokens"] = pos_batch["premise"][0]
-    
+    pos_result[0]["example_str_tokens"] = model.to_str_tokens(pos_batch["premise"][0])
+    pos_result[-1]["clean_logit"] = pos_clean_logit[:,-1,:].cpu()
+    pos_result[-1]["corrupted_logit"] = pos_corrupted_logit[:,-1,:].cpu()
 
     
     shared_args = {
@@ -186,8 +189,9 @@ for batch in dataloader:
     neg_result.append(
         construct_result_dict(shared_args, config.keys_to_compute),
     )
-    neg_result[0]["example_str_tokens"] = neg_batch["premise"][0]
-    
+    neg_result[0]["example_str_tokens"] = model.to_str_tokens(neg_batch["premise"][0])
+    neg_result[-1]["clean_logit"] = neg_clean_logit[:,-1,:].cpu()
+    neg_result[-1]["corrupted_logit"] = neg_corrupted_logit[:,-1,:].cpu()
 
     
 
