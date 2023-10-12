@@ -139,13 +139,15 @@ def generic_activation_patch_stacked(
            "patched_logits": torch.zeros(len(index_df), device=model.cfg.device),
         }
     else:
+        # DEVICE = model.cfg.device
+        DEVICE = "cpu"
         patched_metric_output = {
-            "mean": torch.zeros(index_axis_max_range, device=model.cfg.device),
-            "std": torch.zeros(index_axis_max_range, device=model.cfg.device),
-            "t-value": torch.zeros(index_axis_max_range, device=model.cfg.device),
-            "p-value": torch.zeros(index_axis_max_range, device=model.cfg.device),
-            "patched_logits": torch.zeros(index_axis_max_range + [batch_size, model.cfg.d_vocab], device=model.cfg.device),
-            "full_delta": torch.zeros(index_axis_max_range + [batch_size], device=model.cfg.device),
+            "mean": torch.zeros(index_axis_max_range, device=DEVICE),
+            "std": torch.zeros(index_axis_max_range, device=DEVICE),
+            "t-value": torch.zeros(index_axis_max_range, device=DEVICE),
+            "p-value": torch.zeros(index_axis_max_range, device=DEVICE),
+            "patched_logits": torch.zeros(index_axis_max_range + [batch_size, model.cfg.d_vocab], device=DEVICE),
+            "full_delta": torch.zeros(index_axis_max_range + [batch_size], device=DEVICE),
         }
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
@@ -207,12 +209,12 @@ def generic_activation_patch_stacked(
             patched_metric_output[c] = patching_metric(patched_logits).item()
         else:
             output_metric = patching_metric(patched_logits)
-            patched_metric_output["mean"][tuple(index)] = output_metric["mean"].item()
-            patched_metric_output["std"][tuple(index)] = output_metric["std"].item()
-            patched_metric_output["t-value"][tuple(index)] = output_metric["t-value"].item()
-            patched_metric_output["p-value"][tuple(index)] = output_metric["p-value"].item()
-            patched_metric_output["patched_logits"][tuple(index)][:,:] = patched_logits[:,-1,:]
-            patched_metric_output["full_delta"][tuple(index)][:] = output_metric["full_delta"]
+            patched_metric_output["mean"][tuple(index)] = output_metric["mean"].to(DEVICE).item()
+            patched_metric_output["std"][tuple(index)] = output_metric["std"].to(DEVICE).item()
+            patched_metric_output["t-value"][tuple(index)] = output_metric["t-value"].to(DEVICE).item()
+            patched_metric_output["p-value"][tuple(index)] = output_metric["p-value"].to(DEVICE).item()
+            patched_metric_output["patched_logits"][tuple(index)][:,:] = patched_logits[:,-1,:].to(DEVICE)
+            patched_metric_output["full_delta"][tuple(index)][:] = output_metric["full_delta"].to(DEVICE)
 
 
     if return_index_df:

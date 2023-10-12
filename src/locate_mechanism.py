@@ -22,12 +22,12 @@ def indirect_effect(logits, corrupted_logits, first_ids_pos):
     corrupted_logits_values = torch.gather(corrupted_logits[:, -1, :], 1, first_ids_pos).squeeze()
     
     delta_value = logits_values - corrupted_logits_values
-    ttest = ttest_1samp(delta_value, 0)
+    ttest = ttest_1samp(delta_value.cpu().detach().numpy(), 0)
     return {
         "mean": delta_value.mean(),
         "std": delta_value.std(),
-        "t-value": torch.tensor(ttest[0]),
-        "p-value": torch.tensor(ttest[1]),
+        "t-value": torch.tensor(ttest[0], device=delta_value.device),
+        "p-value": torch.tensor(ttest[1], device=delta_value.device),
         "full_delta": delta_value,
     }
 
