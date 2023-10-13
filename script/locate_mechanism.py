@@ -22,20 +22,20 @@ import einops
 
 
 class Config:
-    num_samples: int = 15
-    batch_size: int = 5
+    num_samples: int = 100
+    batch_size: int = 50
     mem_win_noise_position = [1,2,3,9,10,11]
     mem_win_noise_mlt = 1.4
     cp_win_noise_position = [1,2,3,8,9,10,11]
     cp_win_noise_mlt = 0.8
-    name_save_file = "gpt2"
+    name_save_file = "gpt2_interval_3"
     name_dataset = "dataset_gpt2.json"
     max_len = 15
     keys_to_compute = [
         # "logit_lens_mem",
         # "logit_lens_cp",
         # "resid_pos",
-        "attn_head_out",
+        # "attn_head_out",
         # "attn_head_by_pos",
         # "per_block",
         "mlp_out",
@@ -165,7 +165,7 @@ for batch in dataloader:
         "clean_cache": pos_clean_cache,
         "metric": pos_metric,
         "embs_corrupted": pos_embs_corrupted,
-        "interval": 1,
+        "interval": 3,
         "target_ids": pos_target_ids,
     }
     pos_result.append(
@@ -195,7 +195,7 @@ for batch in dataloader:
         "clean_cache": neg_clean_cache,
         "metric": neg_metric,
         "embs_corrupted": neg_embs_corrupted,
-        "interval": 1,
+        "interval": 3,
         "target_ids": neg_target_ids,
     }
     
