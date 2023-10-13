@@ -140,6 +140,7 @@ def generic_activation_patch_stacked(
     else:
         # DEVICE = model.cfg.device
         DEVICE = "cpu"
+        print(index_axis_max_range)
         patched_metric_output = {
             "mean": torch.zeros(index_axis_max_range, device=DEVICE),
             "std": torch.zeros(index_axis_max_range, device=DEVICE),
@@ -207,16 +208,21 @@ def generic_activation_patch_stacked(
 
             embeds_hook = partial(embed_hook, corrupted_embeddings=corrupted_embeddings)
             hooks.append(("hook_embed", embeds_hook))
-
         patched_logits = model.run_with_hooks(corrupted_tokens, fwd_hooks=hooks)
 
         # Calculate the patching metric and store
         if flattened_output:
             patched_metric_output[c] = patching_metric(patched_logits).item()
         else:
+  
+            # check if index[0] is int or tuple
+            if isinstance(index[0], Tuple):
+                index[0] = int(index[0][0])
+                
             
             # from two tensor of shape [batch_size]
             output_metric = patching_metric(patched_logits)
+ 
             patched_metric_output["mean"][tuple(index)] = (
                 output_metric["mean"].to(DEVICE).item()
             )
@@ -235,7 +241,7 @@ def generic_activation_patch_stacked(
             patched_metric_output["patched_logits_cp"][tuple(index)][:] = (
                 torch.softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["orthogonal"]).squeeze(-1).to(DEVICE)
             )
-            patched_metric_output["full_delta"][tuple(index)][:] = output_metric[
+            patched_metric_output["full_delta"][tuple(index)] = output_metric[
                 "full_delta"
             ].to(DEVICE)
 

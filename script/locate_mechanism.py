@@ -16,26 +16,26 @@ from src.utils import list_of_dicts_to_dict_of_lists
 
 @dataclass
 class Config:
-    num_samples: int = 15
+    num_samples: int = 10
     batch_size: int = 5
     mem_win_noise_position = [1,2,3,9,10,11]
     mem_win_noise_mlt = 1.4
     cp_win_noise_position = [1,2,3,8,9,10,11]
     cp_win_noise_mlt = 0.8
-    name_save_file = "gpt2"
+    name_save_file = "prova_gpt2"
     name_dataset = "dataset_gpt2.json"
     max_len = 15
     keys_to_compute = [
         # "logit_lens_mem",
         # "logit_lens_cp",
         # "resid_pos",
-        "attn_head_out",
+        # "attn_head_out",
         # "attn_head_by_pos",
         # "per_block",
         "mlp_out",
         "attn_out_by_pos"
     ]
-
+    interval:int = 1
 config = Config()
 
 
@@ -108,7 +108,8 @@ def process_batch(batch, model, dataset):
     neg_corrupted_logit, neg_corrupted_cache = model.run_with_cache_from_embed(neg_embs_corrupted)
     neg_clean_logit, neg_clean_cache = model.run_with_cache(neg_batch["premise"])
     
-
+    if torch.equal(pos_clean_logit, pos_corrupted_logit):
+        raise ValueError("Logits are the same, no corruption happened")
     
     def check_reversed_probs( corrupted_logits, target_pos, orthogonal_pos):
         corrupted_logits = torch.softmax(corrupted_logits, dim=-1)
@@ -151,7 +152,7 @@ def process_batch(batch, model, dataset):
         "clean_cache": pos_clean_cache,
         "metric": pos_metric,
         "embs_corrupted": pos_embs_corrupted,
-        "interval": 1,
+        "interval": config.interval,
         "target_ids": pos_target_ids,
     }
     pos_result = construct_result_dict(shared_args, config.keys_to_compute)
@@ -177,7 +178,7 @@ def process_batch(batch, model, dataset):
         "clean_cache": neg_clean_cache,
         "metric": neg_metric,
         "embs_corrupted": neg_embs_corrupted,
-        "interval": 1,
+        "interval": config.interval,
         "target_ids": neg_target_ids,
     }
     
