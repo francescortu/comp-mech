@@ -85,7 +85,7 @@ class Dataset(TorchDataset):
         noise_std = einops.repeat(noise_std, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
         # noise_mean = einops.repeat(noise_mean, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
         noise = torch.normal(mean=torch.zeros_like(input_embeddings), std=noise_std)
-        # noise = torch.normal(mean=torch.zeros_like(input_embeddings), std=0.001)
+        # noise = torch.normal(mean=torch.zeros_like(input_embeddings), std=noise_mlt)
         # Create a mask for positions specified in noise_index
         seq_len = input_embeddings.shape[1]
         noise_mask = torch.zeros(seq_len, device=input_embeddings.device)

@@ -35,11 +35,6 @@ def indirect_effect(logits, corrupted_logits, first_ids_pos):
     }
 
 
-
-
-
-
-
 def patch_attn_head_by_pos(
     model, input_ids, input_ids_corrupted, clean_cache, metric, corrupted_embeddings
 ):
@@ -61,12 +56,12 @@ def patch_attn_head_by_pos(
     return attn_head_out_act_patch_results
 
 
-
-
 def patch_attn_head_all_pos_every(
     model, input_ids_corrupted, input_ids, clean_cache, metric
 ):
-    print("WARNING: The function patch_attn_head_all_pos_every is not converted already to work with input embeddings")
+    print(
+        "WARNING: The function patch_attn_head_all_pos_every is not converted already to work with input embeddings"
+    )
     every_head_all_pos_act_patch_result = (
         patching.get_act_patch_attn_head_all_pos_every(
             model, input_ids_corrupted, clean_cache, metric
@@ -101,8 +96,9 @@ def wrapper_patch_attention_out_by_pos(shared_args):
         patching_metric=shared_args["metric"],
         corrupted_embeddings=shared_args["embs_corrupted"],
         patch_interval=shared_args["interval"],
-        target_ids = shared_args["target_ids"],
+        target_ids=shared_args["target_ids"],
     )
+
 
 def wrapper_logit_lens_mem(shared_args):
     return logit_lens(
@@ -130,9 +126,8 @@ def wrapper_patch_resid_pre(shared_args):
         patching_metric=shared_args["metric"],
         corrupted_embeddings=shared_args["embs_corrupted"],
         patch_interval=shared_args["interval"],
-        target_ids = shared_args["target_ids"],
+        target_ids=shared_args["target_ids"],
     )
-
 
 
 def wrapper_patch_attn_head_out_all_pos(shared_args):
@@ -143,9 +138,8 @@ def wrapper_patch_attn_head_out_all_pos(shared_args):
         patching_metric=shared_args["metric"],
         corrupted_embeddings=shared_args["embs_corrupted"],
         patch_interval=shared_args["interval"],
-        target_ids = shared_args["target_ids"],
+        target_ids=shared_args["target_ids"],
     )
-
 
 
 def wrapper_patch_attn_head_by_pos(shared_args):
@@ -167,7 +161,7 @@ def wrapper_patch_per_block_all_poss(shared_args):
         patching_metric=shared_args["metric"],
         corrupted_embeddings=shared_args["embs_corrupted"],
         patch_interval=shared_args["interval"],
-        target_ids = shared_args["target_ids"],
+        target_ids=shared_args["target_ids"],
     )
 
 
@@ -179,7 +173,7 @@ def wrap_patch_mlp_out(shared_args):
         patching_metric=shared_args["metric"],
         patch_interval=shared_args["interval"],
         corrupted_embeddings=shared_args["embs_corrupted"],
-        target_ids = shared_args["target_ids"],
+        target_ids=shared_args["target_ids"],
     )
 
 
