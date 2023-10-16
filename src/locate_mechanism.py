@@ -23,7 +23,6 @@ def indirect_effect(logits, corrupted_logits, first_ids_pos):
     corrupted_logits_values = torch.gather(
         corrupted_logits[:, -1, :], 1, first_ids_pos
     ).squeeze()
-
     delta_value = logits_values - corrupted_logits_values
     ttest = ttest_1samp(delta_value.cpu().detach().numpy(), 0)
     return {

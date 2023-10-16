@@ -6,7 +6,7 @@ from torch.utils.data import Dataset as TorchDataset
 import json
 import copy
 import einops
-
+torch.manual_seed(0)
 
 class Dataset(TorchDataset):
     def __init__(self, dataset_path):
@@ -19,6 +19,7 @@ class Dataset(TorchDataset):
         return {"pos_dataset": self.pos_dataset[idx], "neg_dataset": self.neg_dataset[idx]}
 
     def random_sample(self, n, choose_lenght=None):
+        random.seed(43)
         self.target_dataset_per_length, self.orthogonal_dataset_per_length = self.split_for_lenght()
         possible_lengths = []
         for length in self.target_dataset_per_length.keys():
@@ -62,6 +63,7 @@ class Dataset(TorchDataset):
         return target_prob.mean(), target_prob.var(), orthogonal_prob.mean(), orthogonal_prob.var()
 
     def compute_noise_level(self, model, num_sample=1000):
+        random.seed(43)
         #sample random examples
         target_dataset = random.sample(self.dataset["copying_win"], num_sample)
         orthogonal_dataset = random.sample(self.dataset["copying_win"], num_sample)
@@ -71,6 +73,7 @@ class Dataset(TorchDataset):
         tokens = model.to_tokens(text)
         input_embeddings = model.embed(tokens)
         self.noise_std = (input_embeddings.std(dim=-2)).squeeze(0)
+
         
     def add_noise(self, model, prompt, noise_index, target_win=None, noise_mlt=2):
         if not hasattr(self, "noise_std"):
@@ -80,8 +83,8 @@ class Dataset(TorchDataset):
 
         # noise = torch.normal(mean=0, std=0.04, size=input_embeddings.shape, device=input_embeddings.device)
         # Load noise standard deviation and create noise tensor
-       
         noise_std = self.noise_std * noise_mlt
+        torch.manual_seed(0)
         noise_std = einops.repeat(noise_std, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
         # noise_mean = einops.repeat(noise_mean, 'd -> b s d', b=input_embeddings.shape[0], s=input_embeddings.shape[1])
         noise = torch.normal(mean=torch.zeros_like(input_embeddings), std=noise_std)
@@ -109,6 +112,7 @@ class Dataset(TorchDataset):
 
         # Add the masked noise to the input embeddings
         corrupted_embeddings = input_embeddings + masked_noise
+        # print("CORRUPTED EMBEDDINGS", corrupted_embeddings)
         return corrupted_embeddings
     
     def print_statistics(self):

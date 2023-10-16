@@ -20,7 +20,7 @@ def compute_metric_difference(logit, corrupted_logit):
     - dict: Computed metrics.
     """
     delta = logit - corrupted_logit
-    ttest = stats.ttest_ind(delta.cpu().detach().numpy(), 0, axis=0)
+    ttest = stats.ttest_1samp(delta.cpu().detach().numpy(), 0)
     return {
         "mean": delta.mean(dim=0),
         "std": delta.std(dim=0),

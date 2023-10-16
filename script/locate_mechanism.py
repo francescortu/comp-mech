@@ -16,24 +16,24 @@ from src.utils import list_of_dicts_to_dict_of_lists
 
 @dataclass
 class Config:
-    num_samples: int = 10
-    batch_size: int = 5
+    num_samples: int = 4
+    batch_size: int = 2
     mem_win_noise_position = [1,2,3,9,10,11]
     mem_win_noise_mlt = 1.4
     cp_win_noise_position = [1,2,3,8,9,10,11]
-    cp_win_noise_mlt = 0.8
+    cp_win_noise_mlt = 1.4
     name_save_file = "prova_gpt2"
     name_dataset = "dataset_gpt2.json"
     max_len = 15
     keys_to_compute = [
-        # "logit_lens_mem",
-        # "logit_lens_cp",
+        "logit_lens_mem",
+        "logit_lens_cp",
         # "resid_pos",
         # "attn_head_out",
         # "attn_head_by_pos",
         # "per_block",
-        "mlp_out",
-        "attn_out_by_pos"
+        # "mlp_out",
+        # "attn_out_by_pos"
     ]
     interval:int = 1
 config = Config()
@@ -216,7 +216,7 @@ def main():
     }
     for key in full_result.keys():
         for subkey in full_result[key].keys():
-            if subkey not in ["clean_logit_mem", "corrupted_logit_mem", "clean_logit_cp", "corrupted_logit_cp", "example_str_tokens"]:
+            if subkey not in ["logit_lens_mem", "logit_lens_cp", "clean_logit_mem", "corrupted_logit_mem", "clean_logit_cp", "corrupted_logit_cp", "example_str_tokens"]:
                 full_result[key][subkey] = {k: [d[k] for d in full_result[key][subkey]] for k in full_result[key][subkey][0].keys()}
                 for subsubkey in full_result[key][subkey].keys():
                     if subsubkey in ['patched_logits_mem', 'patched_logits_cp', 'full_delta']:
@@ -231,7 +231,8 @@ def main():
         full_result[key]["corrupted_logit_mem"] = torch.cat(full_result[key]["corrupted_logit_mem"], dim=0)
         full_result[key]["clean_logit_cp"] = torch.cat(full_result[key]["clean_logit_cp"], dim=0)
         full_result[key]["corrupted_logit_cp"] = torch.cat(full_result[key]["corrupted_logit_cp"], dim=0)
-
+        full_result[key]["logit_lens_mem"] = torch.cat(full_result[key]["logit_lens_mem"], dim=0)
+        full_result[key]["logit_lens_cp"] = torch.cat(full_result[key]["logit_lens_cp"], dim=0)
     
     torch.save(full_result, f"../results/locate_mechanism/{config.name_save_file}_full_result.pt")
 

@@ -130,17 +130,10 @@ def generic_activation_patch_stacked(
 
     # Create an empty tensor to show the patched metric for each patch
     if flattened_output:
-        patched_metric_output = {
-            "mean": torch.zeros(len(index_df), device=model.cfg.device),
-            "std": torch.zeros(len(index_df), device=model.cfg.device),
-            "t-value": torch.zeros(len(index_df), device=model.cfg.device),
-            "p-value": torch.zeros(len(index_df), device=model.cfg.device),
-            "patched_logits": torch.zeros(len(index_df), device=model.cfg.device),
-        }
+        raise NotImplementedError("Flattened output not implemented yet")   
     else:
         # DEVICE = model.cfg.device
         DEVICE = "cpu"
-        print(index_axis_max_range)
         patched_metric_output = {
             "mean": torch.zeros(index_axis_max_range, device=DEVICE),
             "std": torch.zeros(index_axis_max_range, device=DEVICE),
@@ -222,7 +215,6 @@ def generic_activation_patch_stacked(
             
             # from two tensor of shape [batch_size]
             output_metric = patching_metric(patched_logits)
- 
             patched_metric_output["mean"][tuple(index)] = (
                 output_metric["mean"].to(DEVICE).item()
             )
