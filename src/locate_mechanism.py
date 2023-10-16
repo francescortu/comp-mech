@@ -25,16 +25,16 @@ def kl_divergence(logit, logit_clean):
         )
     return result
 
-def indirect_effect(logits, corrupted_logits, first_ids_pos, clean_logits):
+def direct_effect(logits, clean_logits, first_ids_pos):
     logits = torch.nn.functional.softmax(logits, dim=-1)
-    corrupted_logits = torch.nn.functional.softmax(corrupted_logits, dim=-1)
-    kl_div = kl_divergence(logits, clean_logits)
+    clean_logits = torch.nn.functional.softmax(clean_logits, dim=-1)
+    kl_div = kl_divergence(clean_logits, logits)
     # Use torch.gather to get the desired values
     logits_values = torch.gather(logits[:, -1, :], 1, first_ids_pos).squeeze()
-    corrupted_logits_values = torch.gather(
-        corrupted_logits[:, -1, :], 1, first_ids_pos
+    clean_logits_values = torch.gather(
+        clean_logits[:, -1, :], 1, first_ids_pos
     ).squeeze()
-    delta_value = logits_values - corrupted_logits_values
+    delta_value =  clean_logits_values - logits_values
     ttest = ttest_1samp(delta_value.cpu().detach().numpy(), 0)
     return {
         "mean": delta_value.mean(),
@@ -104,10 +104,8 @@ def logit_lens(cache, model, input_ids, target_ids):
 def wrapper_patch_attention_out_by_pos(shared_args):
     return get_act_patch_attn_out(
         model=shared_args["model"],
-        corrupted_tokens=shared_args["input_ids"],
-        clean_cache=shared_args["clean_cache"],
+        input_tokens=shared_args["input_ids"],
         patching_metric=shared_args["metric"],
-        corrupted_embeddings=shared_args["embs_corrupted"],
         patch_interval=shared_args["interval"],
         target_ids=shared_args["target_ids"],
     )
@@ -134,10 +132,8 @@ def wrapper_logit_lens_cp(shared_args):
 def wrapper_patch_resid_pre(shared_args):
     return get_act_patch_resid_pre(
         model=shared_args["model"],
-        corrupted_tokens=shared_args["input_ids"],
-        clean_cache=shared_args["clean_cache"],
+        input_tokens=shared_args["input_ids"],
         patching_metric=shared_args["metric"],
-        corrupted_embeddings=shared_args["embs_corrupted"],
         patch_interval=shared_args["interval"],
         target_ids=shared_args["target_ids"],
     )
@@ -146,10 +142,8 @@ def wrapper_patch_resid_pre(shared_args):
 def wrapper_patch_attn_head_out_all_pos(shared_args):
     return get_act_patch_attn_head_out_all_pos(
         model=shared_args["model"],
-        corrupted_tokens=shared_args["input_ids"],
-        clean_cache=shared_args["clean_cache"],
+        input_tokens=shared_args["input_ids"],
         patching_metric=shared_args["metric"],
-        corrupted_embeddings=shared_args["embs_corrupted"],
         patch_interval=shared_args["interval"],
         target_ids=shared_args["target_ids"],
     )
@@ -160,19 +154,15 @@ def wrapper_patch_attn_head_by_pos(shared_args):
         shared_args["model"],
         shared_args["input_ids"],
         shared_args["input_ids"],
-        shared_args["clean_cache"],
         shared_args["metric"],
-        shared_args["embs_corrupted"],
     )
 
 
 def wrapper_patch_per_block_all_poss(shared_args):
     return get_act_patch_block_every(
         model=shared_args["model"],
-        corrupted_tokens=shared_args["input_ids"],
-        clean_cache=shared_args["clean_cache"],
+        input_tokens=shared_args["input_ids"],
         patching_metric=shared_args["metric"],
-        corrupted_embeddings=shared_args["embs_corrupted"],
         patch_interval=shared_args["interval"],
         target_ids=shared_args["target_ids"],
     )
@@ -181,11 +171,9 @@ def wrapper_patch_per_block_all_poss(shared_args):
 def wrap_patch_mlp_out(shared_args):
     return get_act_patch_mlp_out(
         model=shared_args["model"],
-        corrupted_tokens=shared_args["input_ids"],
-        clean_cache=shared_args["clean_cache"],
+        input_tokens=shared_args["input_ids"],
         patching_metric=shared_args["metric"],
         patch_interval=shared_args["interval"],
-        corrupted_embeddings=shared_args["embs_corrupted"],
         target_ids=shared_args["target_ids"],
     )
 

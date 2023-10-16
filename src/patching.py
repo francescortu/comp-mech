@@ -151,8 +151,8 @@ def generic_activation_patch_stacked(
         }
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
-    def patching_hook(corrupted_activation, hook, index, clean_activation):
-        return patch_setter(corrupted_activation, index, clean_activation)
+    def patching_hook(corrupted_activation, hook, index):
+        return patch_setter(corrupted_activation, index)
 
     # Iterate over every list of indices, and make the appropriate patch!
     for c, index_row in enumerate(tqdm((list(index_df.iterrows())))):

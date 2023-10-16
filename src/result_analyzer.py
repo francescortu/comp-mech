@@ -8,18 +8,18 @@ def _get_indices(flat_indices, size):
     return list(zip(rows.tolist(), cols.tolist()))
 
 
-def compute_metric_difference(logit, corrupted_logit):
+def compute_metric_difference(logit, clean_logit):
     """
     Compute the metric difference between logits.
 
     Args:
     - logit (torch.Tensor): Original logit values.
-    - corrupted_logit (torch.Tensor): Corrupted logit values.
+    - clean_logit (torch.Tensor): Corrupted logit values.
 
     Returns:
     - dict: Computed metrics.
     """
-    delta = logit - corrupted_logit
+    delta = logit - clean_logit
     ttest = stats.ttest_1samp(delta.cpu().detach().numpy(), 0)
     return {
         "mean": delta.mean(dim=0),
@@ -56,14 +56,14 @@ class ResultAnalyzer:
         - pd.DataFrame: DataFrame containing computed metrics.
         """
         logit_key = "mem" if data_key == "mem" else "cp"
-        corrupted_logit = self.data[data_key][f"corrupted_logit_{logit_key}"]
+        clean_logit = self.data[data_key][f"clean_logit_{logit_key}"]
         
         rows = []
         for layer in range(self.data[data_key][sub_key]["mean"].shape[1]):
             for idx in range(self.data[data_key][sub_key]["mean"].shape[2]):
                 result = compute_metric_difference(
                     self.data[data_key][sub_key][f"patched_logits_{logit_key}"][:, layer, idx],
-                    corrupted_logit
+                    clean_logit
                 )
                 rows.append(
                     {
@@ -105,7 +105,7 @@ class ResultAnalyzer:
         for prompt_idx, prompt in enumerate(self.data[data_key]["premise"]):
 
             # Get the top 3 attention heads
-            result_attention_head = self.data[data_key]["attn_head_out"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"corrupted_logit_{logit_key}"][prompt_idx]
+            result_attention_head = self.data[data_key]["attn_head_out"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"clean_logit_{logit_key}"][prompt_idx]
             
             # Get the top 3 component indices (layer, head) and their corresponding values for result_attention_head
             values, flat_indices = result_attention_head.view(-1).topk(3)
@@ -113,7 +113,7 @@ class ResultAnalyzer:
             result_attention_head_top3_val = values.tolist()
 
             # Get the top 3 components mlp output
-            result_component_mlp = self.data[data_key]["mlp_out"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"corrupted_logit_{logit_key}"][prompt_idx]
+            result_component_mlp = self.data[data_key]["mlp_out"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"clean_logit_{logit_key}"][prompt_idx]
 
             # Get the top 3 component indices (layer, pos) and their corresponding values for result_component_mlp
             values_mlp, flat_indices_mlp = result_component_mlp.view(-1).topk(3)
@@ -121,7 +121,7 @@ class ResultAnalyzer:
             result_component_mlp_top3_val = values_mlp.tolist()
 
             # Get the top 3 components attention output
-            result_component_attn = self.data[data_key]["attn_out_by_pos"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"corrupted_logit_{logit_key}"][prompt_idx]
+            result_component_attn = self.data[data_key]["attn_out_by_pos"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"clean_logit_{logit_key}"][prompt_idx]
 
             # Get the top 3 component indices (layer, pos) and their corresponding values for result_component_attn
             values_attn, flat_indices_attn = result_component_attn.view(-1).topk(3)

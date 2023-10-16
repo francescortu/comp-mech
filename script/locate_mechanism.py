@@ -11,14 +11,14 @@ for path in ['..', '../src', '../data']:
 from transformer_lens import HookedTransformer
 from src.model import WrapHookedTransformer
 from src.dataset import Dataset
-from src.locate_mechanism import construct_result_dict, indirect_effect
+from src.locate_mechanism import construct_result_dict, direct_effect
 from src.utils import list_of_dicts_to_dict_of_lists
 import argparse 
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_samples", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=25)
+    parser.add_argument("--num_samples", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=2)
     parser.add_argument("--model", type=str, default="gpt2")
     parser.add_argument("--interval", type=int, default=1)
     return parser.parse_args()
@@ -30,10 +30,6 @@ class Config:
     model_name:str
     name_dataset:str
     name_save_file:str
-    mem_win_noise_position = [1,2,3,9,10,11]
-    mem_win_noise_mlt = 1.4
-    cp_win_noise_position = [1,2,3,8,9,10,11]
-    cp_win_noise_mlt = 1.4
     max_len = 15
     keys_to_compute = [
         "logit_lens_mem",
@@ -54,7 +50,7 @@ class Config:
             batch_size=args.batch_size,
             interval=args.interval,
             model_name=args.model,
-            name_save_file=f"1000{args.model}_full_result" if args.interval == 1 else f"{args.model}_full_result_{args.interval}",
+            name_save_file=f"ablation_{args.model}_full_result" if args.interval == 1 else f"{args.model}_full_result_{args.interval}",
             name_dataset = f"dataset_{args.model}.json",
         )
 
@@ -108,45 +104,18 @@ def process_batch(batch, model, dataset, config):
     }
     mem_input_ids = model.to_tokens(mem_batch["premise"], prepend_bos=True)
     cp_input_ids = model.to_tokens(cp_batch["premise"], prepend_bos=True)
-    mem_embs_corrupted = dataset.add_noise(
-        model,
-        mem_batch["premise"],
-        noise_index = torch.tensor(config.mem_win_noise_position),
-        target_win=8,
-        noise_mlt=config.mem_win_noise_mlt
-    )
-    cp_embs_corrupted = dataset.add_noise(
-        model,
-        cp_batch["premise"],
-        noise_index = torch.tensor(config.cp_win_noise_position),
-        target_win=8,
-        noise_mlt=config.cp_win_noise_mlt
-    )
-
-    mem_corrupted_logit, mem_corrupted_cache = model.run_with_cache_from_embed(mem_embs_corrupted)
+   
+   
     mem_clean_logit, mem_clean_cache = model.run_with_cache(mem_batch["premise"])
-    cp_corrupted_logit, cp_corrupted_cache = model.run_with_cache_from_embed(cp_embs_corrupted)
+ 
     cp_clean_logit, cp_clean_cache = model.run_with_cache(cp_batch["premise"])
     
-    if torch.equal(mem_clean_logit, mem_corrupted_logit):
-        raise ValueError("Logits are the same, no corruption happened")
-    
-    def check_reversed_probs( corrupted_logits, target_pos, orthogonal_pos):
-        corrupted_logits = torch.softmax(corrupted_logits, dim=-1)
-        print("corrupted_logits", corrupted_logits[:,-1,:].shape, target_pos.shape)
-        target_probs = corrupted_logits[:,-1,:].gather(-1, index=target_pos).squeeze(-1)
-        orthogonal_probs = corrupted_logits[:,-1,:].gather(-1, index=orthogonal_pos).squeeze(-1)
-        return (target_probs - orthogonal_probs).mean()
-
-    print("Traget - Orthogonal", check_reversed_probs( mem_corrupted_logit,  mem_target_ids["mem_token"], mem_target_ids["cp_token"],))
-    print("Target - orthogonal", check_reversed_probs( cp_corrupted_logit, cp_target_ids["mem_token"], cp_target_ids["cp_token"]))
     
     
 
     def mem_metric(logits):
-        improved = indirect_effect(
+        improved = direct_effect(
             logits=logits,
-            corrupted_logits=mem_corrupted_logit,
             first_ids_pos=mem_target_ids["mem_token"],
             clean_logits=mem_clean_logit,
         )
@@ -154,9 +123,8 @@ def process_batch(batch, model, dataset, config):
         return improved
         
     def cp_metric(logits):
-        improved = indirect_effect(
+        improved = direct_effect(
             logits=logits,
-            corrupted_logits=cp_corrupted_logit,
             first_ids_pos=cp_target_ids["cp_token"],
             clean_logits=cp_clean_logit,
         )
@@ -174,7 +142,6 @@ def process_batch(batch, model, dataset, config):
         "input_ids": mem_input_ids,
         "clean_cache": mem_clean_cache,
         "metric": mem_metric,
-        "embs_corrupted": mem_embs_corrupted,
         "interval": config.interval,
         "target_ids": mem_target_ids,
     }
@@ -182,19 +149,15 @@ def process_batch(batch, model, dataset, config):
     mem_result["example_str_tokens"] = model.to_str_tokens(mem_batch["premise"][0])
     
     mem_clean_probs = torch.softmax(mem_clean_logit, dim=-1)[:,-1,:]
-    mem_corrupted_logit = torch.softmax(mem_corrupted_logit, dim=-1)[:,-1,:]
+
     
     
     mem_clean_probs_mem_token = mem_clean_probs.gather(-1, index=mem_target_ids["mem_token"]).squeeze(-1)
-    mem_corrupted_probs_mem_token = mem_corrupted_logit.gather(-1, index=mem_target_ids["mem_token"]).squeeze(-1)
     
     mem_clean_probs_orthogonal_token = mem_clean_probs.gather(-1, index=mem_target_ids["cp_token"]).squeeze(-1)
-    mem_corrupted_probs_orthogonal_token = mem_corrupted_logit.gather(-1, index=mem_target_ids["cp_token"]).squeeze(-1)
     
     mem_result["clean_logit_mem"] = mem_clean_probs_mem_token.cpu()
-    mem_result["corrupted_logit_mem"] = mem_corrupted_probs_mem_token.cpu()
     mem_result["clean_logit_cp"] = mem_clean_probs_orthogonal_token.cpu()
-    mem_result["corrupted_logit_cp"] = mem_corrupted_probs_orthogonal_token.cpu()
     mem_result["premise"] = mem_batch["premise"]
 
     
@@ -203,7 +166,6 @@ def process_batch(batch, model, dataset, config):
         "input_ids": cp_input_ids,
         "clean_cache": cp_clean_cache,
         "metric": cp_metric,
-        "embs_corrupted": cp_embs_corrupted,
         "interval": config.interval,
         "target_ids": cp_target_ids,
     }
@@ -212,17 +174,12 @@ def process_batch(batch, model, dataset, config):
     cp_result["example_str_tokens"] = model.to_str_tokens(cp_batch["premise"][0])
 
     cp_clean_probs = torch.softmax(cp_clean_logit, dim=-1)[:,-1,:]
-    cp_corrputed_probs = torch.softmax(cp_corrupted_logit, dim=-1)[:,-1,:]
     
     cp_clean_probs_mem_token = cp_clean_probs.gather(-1, index=cp_target_ids["mem_token"]).squeeze(-1)
-    cp_corrupted_probs_mem_token = cp_corrputed_probs.gather(-1, index=cp_target_ids["mem_token"]).squeeze(-1)
     cp_clean_probs_orthogonal_token = cp_clean_probs.gather(-1, index=cp_target_ids["cp_token"]).squeeze(-1)
-    cp_corrupted_probs_orthogonal_token = cp_corrputed_probs.gather(-1, index=cp_target_ids["cp_token"]).squeeze(-1)
     
     cp_result["clean_logit_mem"] = cp_clean_probs_mem_token.cpu()
-    cp_result["corrupted_logit_mem"] = cp_corrupted_probs_mem_token.cpu()
     cp_result["clean_logit_cp"] = cp_clean_probs_orthogonal_token.cpu()
-    cp_result["corrupted_logit_cp"] = cp_corrupted_probs_orthogonal_token.cpu()
     cp_result["premise"] = cp_batch["premise"]
 
     return mem_result, cp_result
@@ -258,7 +215,7 @@ def main():
                     else:
                         #here we have list of tensor of shape (component, component)
                         full_result[key][subkey][subsubkey] = torch.stack(full_result[key][subkey][subsubkey])
-            if subkey in ["clean_logit_mem", "corrupted_logit_mem", "clean_logit_cp", "corrupted_logit_cp", "logit_lens_mem", "logit_lens_cp"]:
+            if subkey in ["clean_logit_mem","clean_logit_cp", "logit_lens_mem", "logit_lens_cp"]:
                 full_result[key][subkey] = torch.cat(full_result[key][subkey], dim=0)
        
     
