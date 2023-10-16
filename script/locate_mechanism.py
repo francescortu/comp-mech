@@ -13,17 +13,27 @@ from src.model import WrapHookedTransformer
 from src.dataset import Dataset
 from src.locate_mechanism import construct_result_dict, indirect_effect
 from src.utils import list_of_dicts_to_dict_of_lists
+import argparse 
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--num_samples", type=int, default=100)
+    parser.add_argument("--batch_size", type=int, default=25)
+    parser.add_argument("--model", type=str, default="gpt2")
+    parser.add_argument("--interval", type=int, default=1)
+    return parser.parse_args()
 
 @dataclass
 class Config:
-    num_samples: int = 4
-    batch_size: int = 2
+    num_samples: int
+    batch_size: int
+    model_name:str
+    name_dataset:str
+    name_save_file:str
     mem_win_noise_position = [1,2,3,9,10,11]
     mem_win_noise_mlt = 1.4
     cp_win_noise_position = [1,2,3,8,9,10,11]
     cp_win_noise_mlt = 1.4
-    name_save_file = "prova_gpt2"
-    name_dataset = "dataset_gpt2-xl.json"
     max_len = 15
     keys_to_compute = [
         "logit_lens_mem",
@@ -35,9 +45,18 @@ class Config:
         "mlp_out",
         "attn_out_by_pos"
     ]
-    interval:int = 1
-    model_name = "gpt2-xl"
-config = Config()
+    filter_interval = (0,1)
+    interval:int = 10
+    @classmethod
+    def from_args(cls, args):
+        return cls(
+            num_samples=args.num_samples,
+            batch_size=args.batch_size,
+            interval=args.interval,
+            model_name=args.model,
+            name_save_file=f"1000{args.model}_full_result" if args.interval == 1 else f"{args.model}_full_result_{args.interval}",
+            name_dataset = f"dataset_{args.model}.json",
+        )
 
 
 
@@ -65,18 +84,18 @@ torch.set_grad_enabled(False)
 
 
 
-def load_model_and_data():
+def load_model_and_data(config):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     model = WrapHookedTransformer.from_pretrained(config.model_name, device=DEVICE)
     dataset = Dataset(f"../data/{config.name_dataset}")
-    dataset.filter(filter_key="cp", filter_interval=(0.2, 0.25))
-    dataset.filter(filter_key="mem", filter_interval=(0.2, 0.25))
+    dataset.filter(filter_key="cp", filter_interval=config.filter_interval)
+    dataset.filter(filter_key="mem", filter_interval=config.filter_interval)
     dataset.random_sample(config.num_samples, config.max_len)
     dataset.compute_noise_level(model)
     return model, dataset
 
 
-def process_batch(batch, model, dataset):
+def process_batch(batch, model, dataset, config):
     mem_batch = batch["mem_dataset"]
     cp_batch = batch["cp_dataset"]
     mem_target_ids = {
@@ -176,7 +195,7 @@ def process_batch(batch, model, dataset):
     mem_result["corrupted_logit_mem"] = mem_corrupted_probs_mem_token.cpu()
     mem_result["clean_logit_cp"] = mem_clean_probs_orthogonal_token.cpu()
     mem_result["corrupted_logit_cp"] = mem_corrupted_probs_orthogonal_token.cpu()
-
+    mem_result["premise"] = mem_batch["premise"]
 
     
     shared_args = {
@@ -204,17 +223,22 @@ def process_batch(batch, model, dataset):
     cp_result["corrupted_logit_mem"] = cp_corrupted_probs_mem_token.cpu()
     cp_result["clean_logit_cp"] = cp_clean_probs_orthogonal_token.cpu()
     cp_result["corrupted_logit_cp"] = cp_corrupted_probs_orthogonal_token.cpu()
+    cp_result["premise"] = cp_batch["premise"]
 
     return mem_result, cp_result
 
 def main():
+    args = get_args()
+    config = Config.from_args(args)
+
+    print("Starting with config", config)
     torch.set_grad_enabled(False)
-    model, dataset = load_model_and_data()
+    model, dataset = load_model_and_data(config)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
     
     mem_results, cp_results = [], []
     for batch in dataloader:
-        mem_result, cp_result = process_batch(batch, model, dataset)
+        mem_result, cp_result = process_batch(batch, model, dataset, config)
         mem_results.append(mem_result)
         cp_results.append(cp_result)
 
@@ -238,7 +262,7 @@ def main():
                 full_result[key][subkey] = torch.cat(full_result[key][subkey], dim=0)
        
     
-    torch.save(full_result, f"../results/locate_mechanism/{config.name_save_file}_full_result.pt")
+    torch.save(full_result, f"../results/locate_mechanism/{config.name_save_file}.pt")
 
 if __name__ == "__main__":
     main()
