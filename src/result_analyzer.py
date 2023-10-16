@@ -19,7 +19,7 @@ def compute_metric_difference(logit, clean_logit):
     Returns:
     - dict: Computed metrics.
     """
-    delta = logit - clean_logit
+    delta = clean_logit - logit
     ttest = stats.ttest_1samp(delta.cpu().detach().numpy(), 0)
     return {
         "mean": delta.mean(dim=0),
@@ -39,7 +39,7 @@ class ResultAnalyzer:
         """
         self.result_file_name = result_file_name.split(".pt")[0]
         self.data = torch.load(
-            f"../results/locate_mechanism/{result_file_name}",
+            f"../results/locate_mechanism/ablation/{result_file_name}",
             map_location=torch.device("cpu")
         )
 
@@ -78,7 +78,7 @@ class ResultAnalyzer:
                 )
 
         # Save the data
-        pd.DataFrame(rows).to_csv(f"../results/locate_mechanism/{self.result_file_name}_{save_name}.csv")
+        pd.DataFrame(rows).to_csv(f"../results/locate_mechanism/ablation/{self.result_file_name}_{save_name}.csv")
         
         return pd.DataFrame(rows)
 
@@ -105,7 +105,7 @@ class ResultAnalyzer:
         for prompt_idx, prompt in enumerate(self.data[data_key]["premise"]):
 
             # Get the top 3 attention heads
-            result_attention_head = self.data[data_key]["attn_head_out"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"clean_logit_{logit_key}"][prompt_idx]
+            result_attention_head = self.data[data_key][f"clean_logit_{logit_key}"][prompt_idx] - self.data[data_key]["attn_head_out"][f"patched_logits_{logit_key}"][prompt_idx] 
             
             # Get the top 3 component indices (layer, head) and their corresponding values for result_attention_head
             values, flat_indices = result_attention_head.view(-1).topk(3)
@@ -113,7 +113,7 @@ class ResultAnalyzer:
             result_attention_head_top3_val = values.tolist()
 
             # Get the top 3 components mlp output
-            result_component_mlp = self.data[data_key]["mlp_out"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"clean_logit_{logit_key}"][prompt_idx]
+            result_component_mlp =  self.data[data_key][f"clean_logit_{logit_key}"][prompt_idx] - self.data[data_key]["mlp_out"][f"patched_logits_{logit_key}"][prompt_idx] 
 
             # Get the top 3 component indices (layer, pos) and their corresponding values for result_component_mlp
             values_mlp, flat_indices_mlp = result_component_mlp.view(-1).topk(3)
@@ -121,7 +121,7 @@ class ResultAnalyzer:
             result_component_mlp_top3_val = values_mlp.tolist()
 
             # Get the top 3 components attention output
-            result_component_attn = self.data[data_key]["attn_out_by_pos"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"clean_logit_{logit_key}"][prompt_idx]
+            result_component_attn =  self.data[data_key][f"clean_logit_{logit_key}"][prompt_idx] - self.data[data_key]["attn_out_by_pos"][f"patched_logits_{logit_key}"][prompt_idx] 
 
             # Get the top 3 component indices (layer, pos) and their corresponding values for result_component_attn
             values_attn, flat_indices_attn = result_component_attn.view(-1).topk(3)
@@ -154,7 +154,7 @@ class ResultAnalyzer:
             )
 
         df = pd.DataFrame(rows)
-        df.to_csv(f"../results/locate_mechanism/{self.result_file_name}_{logit_key}_top_component_per_prompt.csv")
+        df.to_csv(f"../results/locate_mechanism/ablation/{self.result_file_name}_{logit_key}_top_component_per_prompt.csv")
         return df
         
     def process_pos_top_component_per_prompt(self):
