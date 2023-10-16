@@ -37,7 +37,7 @@ class ResultAnalyzer:
         Args:
         - result_file_name (str): Name of the result file.
         """
-        self.result_file_name = result_file_name
+        self.result_file_name = result_file_name.split(".pt")[0]
         self.data = torch.load(
             f"../results/locate_mechanism/{result_file_name}",
             map_location=torch.device("cpu")
@@ -55,7 +55,7 @@ class ResultAnalyzer:
         Returns:
         - pd.DataFrame: DataFrame containing computed metrics.
         """
-        logit_key = "mem" if data_key == "pos" else "cp"
+        logit_key = "mem" if data_key == "mem" else "cp"
         corrupted_logit = self.data[data_key][f"corrupted_logit_{logit_key}"]
         
         rows = []
@@ -71,7 +71,9 @@ class ResultAnalyzer:
                         "mean": result["mean"].item(),
                         "std": result["std"].item(),
                         "t-test": result["t-test"],
-                        "p-value": result["p-value"]
+                        "p-value": result["p-value"],
+                        "kl-mean": self.data[data_key][sub_key]["kl-mean"][0,layer,idx].item(),
+                        "kl-std": self.data[data_key][sub_key]["kl-std"][0,layer,idx].item()
                     }
                 )
 
@@ -82,22 +84,22 @@ class ResultAnalyzer:
 
     def process_pos_attn_head_out(self, save_name = "mem_attn_head_out"):
         """Process positive attention head output data."""
-        return self._process_data("pos", "attn_head_out", "L{layer}H{idx}", save_name)
+        return self._process_data("mem", "attn_head_out", "L{layer}H{idx}", save_name)
 
     def process_neg_attn_head_out(self, save_name = "cp_attn_head_out"):
         """Process negative attention head output data."""
-        return self._process_data("neg", "attn_head_out", "L{layer}H{idx}", save_name)
+        return self._process_data("cp", "attn_head_out", "L{layer}H{idx}", save_name)
 
-    def process_pos_component_out_by_pos(self, key, save_name = "mem_component_out_by_pos"):
+    def process_pos_component_out_by_pos(self, key, save_name = "mem"):
         """Process positive component output data by position."""
-        return self._process_data("pos", key, "L{layer}P{idx}", f"{key}_{save_name}")
+        return self._process_data("mem", key, "L{layer}P{idx}", f"{save_name}_{key}")
 
-    def process_neg_component_out_by_pos(self, key, save_name = "cp_component_out_by_pos"):
+    def process_neg_component_out_by_pos(self, key, save_name = "cp"):
         """Process negative component output data by position."""
-        return self._process_data("neg", key, "L{layer}P{idx}", f"{key}_{save_name}")
+        return self._process_data("cp", key, "L{layer}P{idx}", f"{save_name}_{key}")
 
     def _process_top_component_per_prompt(self, data_key):
-        logit_key = "mem" if data_key == "pos" else "cp"
+        logit_key = "mem" if data_key == "mem" else "cp"
         rows = []
 
         for prompt_idx, prompt in enumerate(self.data[data_key]["premise"]):
@@ -156,6 +158,6 @@ class ResultAnalyzer:
         return df
         
     def process_pos_top_component_per_prompt(self):
-        return self._process_top_component_per_prompt("pos")
+        return self._process_top_component_per_prompt("mem")
     def process_neg_top_component_per_prompt(self):
-        return self._process_top_component_per_prompt("neg")
+        return self._process_top_component_per_prompt("cp")
