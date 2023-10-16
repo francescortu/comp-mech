@@ -219,7 +219,7 @@ def main():
                 full_result[key][subkey] = torch.cat(full_result[key][subkey], dim=0)
        
     
-    torch.save(full_result, f"../results/locate_mechanism/{config.name_save_file}.pt")
+    torch.save(full_result, f"../results/locate_mechanism/ablation/{config.name_save_file}.pt")
 
 if __name__ == "__main__":
     main()
