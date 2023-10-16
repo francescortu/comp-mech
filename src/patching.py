@@ -55,8 +55,7 @@ from typing import Sequence
 
 def generic_activation_patch_stacked(
     model: HookedTransformer,
-    corrupted_tokens: Int[torch.Tensor, "batch pos"],
-    clean_cache: ActivationCache,
+    input_tokens: Int[torch.Tensor, "batch pos"],
     patching_metric: Callable[
         [Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]
     ],
@@ -64,7 +63,6 @@ def generic_activation_patch_stacked(
         [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
     ],
     activation_name: str,
-    corrupted_embeddings: Float[torch.Tensor, "batch pos d_model"] = None,
     index_axis_names: Optional[Sequence[AxisNames]] = None,
     index_df: Optional[pd.DataFrame] = None,
     return_index_df: bool = False,
@@ -97,15 +95,15 @@ def generic_activation_patch_stacked(
         patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
         index_df *optional*: The dataframe of indices
     """
-    batch_size = corrupted_tokens.shape[0]
-    max_len = corrupted_tokens.shape[1]
+    batch_size = input_tokens.shape[0]
+    max_len = input_tokens.shape[1]
     if index_df is None:
         assert index_axis_names is not None
 
         # Get the max range for all possible axes
         max_axis_range = {
             "layer": model.cfg.n_layers,
-            "pos": corrupted_tokens.shape[-1],
+            "pos": input_tokens.shape[-1],
             "head_index": model.cfg.n_heads,
         }
         max_axis_range["src_pos"] = max_axis_range["pos"]
@@ -174,7 +172,6 @@ def generic_activation_patch_stacked(
                 current_hook = partial(
                     patching_hook,
                     index=index,
-                    clean_activation=clean_cache[current_activation_name],
                 )
                 # print(current_activation_name)
                 hooks.append((current_activation_name, current_hook))
@@ -190,20 +187,12 @@ def generic_activation_patch_stacked(
             current_hook = partial(
                 patching_hook,
                 index=index,
-                clean_activation=clean_cache[current_activation_name],
             )
             hooks = [(current_activation_name, current_hook)]
 
         # Run the model with the patching hook and get the logits!
-        if corrupted_embeddings is not None:
-
-            def embed_hook(cache, hook, corrupted_embeddings):
-                cache[:, :, :] = corrupted_embeddings
-                return cache
-
-            embeds_hook = partial(embed_hook, corrupted_embeddings=corrupted_embeddings)
-            hooks.append(("hook_embed", embeds_hook))
-        patched_logits = model.run_with_hooks(corrupted_tokens, fwd_hooks=hooks)
+        
+        patched_logits = model.run_with_hooks(input_tokens, fwd_hooks=hooks)
 
         # Calculate the patching metric and store
         if flattened_output:
@@ -251,37 +240,86 @@ def generic_activation_patch_stacked(
         return patched_metric_output
 
 
+def layer_pos_abl_setter(corrupted_activation, index):
+    """
+    Applies the activation patch where index = [layer, pos]
+
+    Implicitly assumes that the activation axis order is [batch, pos, ...], which is true of everything that is not an attention pattern shaped tensor.
+    """
+    assert len(index) == 2
+    layer, pos = index
+    corrupted_activation[:, pos, ...] = torch.zeros(
+        corrupted_activation[:, pos, ...].shape
+    )
+    return corrupted_activation
+
+
+def layer_pos_head_vector_abl_setter(
+    corrupted_activation,
+    index,
+):
+    """
+    Applies the activation patch where index = [layer, pos, head_index]
+
+    Implicitly assumes that the activation axis order is [batch, pos, head_index, ...], which is true of all attention head vector activations (q, k, v, z, result) but *not* of attention patterns.
+    """
+    assert len(index) == 3
+    layer, pos, head_index = index
+    corrupted_activation[:, pos, head_index] = torch.zeros(
+        corrupted_activation[:, pos, head_index].shape
+    )
+    return corrupted_activation
+
+
+def layer_head_vector_abl_setter(
+    corrupted_activation,
+    index,
+):
+    """
+    Applies the activation patch where index = [layer,  head_index]
+
+    Implicitly assumes that the activation axis order is [batch, pos, head_index, ...], which is true of all attention head vector activations (q, k, v, z, result) but *not* of attention patterns.
+    """
+    assert len(index) == 2
+    layer, head_index = index
+    corrupted_activation[:, :, head_index] = torch.zeros(
+        corrupted_activation[:, :, head_index].shape
+    )
+
+    return corrupted_activation
+
+
 get_act_patch_mlp_out = partial(
     generic_activation_patch_stacked,
-    patch_setter=tlens_patch.layer_pos_patch_setter,
+    patch_setter=layer_pos_abl_setter,
     activation_name="mlp_out",
     index_axis_names=("layer", "pos"),
 )
 
 get_act_patch_attn_out = partial(
     generic_activation_patch_stacked,
-    patch_setter=tlens_patch.layer_pos_patch_setter,
+    patch_setter=layer_pos_abl_setter,
     activation_name="attn_out",
     index_axis_names=("layer", "pos"),
 )
 
 get_act_patch_resid_pre = partial(
     generic_activation_patch_stacked,
-    patch_setter=tlens_patch.layer_pos_patch_setter,
+    patch_setter=layer_pos_abl_setter,
     activation_name="resid_pre",
     index_axis_names=("layer", "pos"),
 )
 
 get_act_patch_attn_head_out_all_pos = partial(
     generic_activation_patch_stacked,
-    patch_setter=tlens_patch.layer_head_vector_patch_setter,
+    patch_setter=layer_head_vector_abl_setter,
     activation_name="z",
     index_axis_names=("layer", "head"),
 )
 
 get_act_patch_attn_head_out_by_pos = partial(
     generic_activation_patch_stacked,
-    patch_setter=tlens_patch.layer_pos_head_vector_patch_setter,
+    patch_setter=layer_pos_head_vector_abl_setter,
     activation_name="z",
     index_axis_names=("layer", "pos", "head"),
 )
