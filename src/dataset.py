@@ -16,7 +16,7 @@ class Dataset(TorchDataset):
     def __len__(self):
         return len(self.pos_dataset)
     def __getitem__(self, idx):
-        return {"pos_dataset": self.pos_dataset[idx], "neg_dataset": self.neg_dataset[idx]}
+        return {"mem_dataset": self.pos_dataset[idx], "cp_dataset": self.neg_dataset[idx]}
 
     def random_sample(self, n, choose_lenght=None):
         random.seed(43)

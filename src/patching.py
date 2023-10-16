@@ -148,6 +148,8 @@ def generic_activation_patch_stacked(
             "full_delta": torch.zeros(
                 index_axis_max_range + [batch_size], device=DEVICE
             ),
+            "kl-mean": torch.zeros(index_axis_max_range, device=DEVICE),
+            "kl-std": torch.zeros(index_axis_max_range, device=DEVICE),
         }
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
@@ -228,14 +230,20 @@ def generic_activation_patch_stacked(
                 output_metric["p-value"].to(DEVICE).item()
             )
             patched_metric_output["patched_logits_mem"][tuple(index)][:] = (
-                torch.softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["target"]).squeeze(-1).to(DEVICE)
+                torch.softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["mem_token"]).squeeze(-1).to(DEVICE)
             )
             patched_metric_output["patched_logits_cp"][tuple(index)][:] = (
-                torch.softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["orthogonal"]).squeeze(-1).to(DEVICE)
+                torch.softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["cp_token"]).squeeze(-1).to(DEVICE)
             )
             patched_metric_output["full_delta"][tuple(index)] = output_metric[
                 "full_delta"
             ].to(DEVICE)
+            patched_metric_output["kl-mean"][tuple(index)] = (
+                output_metric["kl-mean"].to(DEVICE).item()
+            )
+            patched_metric_output["kl-std"][tuple(index)] = (
+                output_metric["kl-std"].to(DEVICE).item()
+            )
 
     if return_index_df:
         return patched_metric_output, index_df
@@ -299,6 +307,7 @@ def get_act_patch_block_every(
     Returns:
         patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [3, n_layers, pos]
     """
+    raise NotImplementedError("get_act_patch_block_every not implemented yet")
     act_patch_results = []
     act_patch_results.append(
         get_act_patch_resid_pre(

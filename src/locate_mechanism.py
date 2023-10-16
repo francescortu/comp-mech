@@ -14,10 +14,21 @@ import einops
 from src.patching import get_act_patch_mlp_out
 from scipy.stats import ttest_1samp
 
+def kl_divergence(logit, logit_clean):
+    logprobs = torch.nn.functional.log_softmax(logit, dim=-1)
+    logprob_clean = torch.nn.functional.log_softmax(logit_clean, dim=-1)
+    batch_size = logprobs.shape[0]
+    result = torch.zeros(batch_size, device=logprobs.device)
+    for i in range(batch_size):
+        result[i] = torch.nn.functional.kl_div(
+            logprobs[i, -1, :], logprob_clean[i, -1, :], reduction="sum", log_target=True
+        )
+    return result
 
-def indirect_effect(logits, corrupted_logits, first_ids_pos):
+def indirect_effect(logits, corrupted_logits, first_ids_pos, clean_logits):
     logits = torch.nn.functional.softmax(logits, dim=-1)
     corrupted_logits = torch.nn.functional.softmax(corrupted_logits, dim=-1)
+    kl_div = kl_divergence(logits, corrupted_logits)
     # Use torch.gather to get the desired values
     logits_values = torch.gather(logits[:, -1, :], 1, first_ids_pos).squeeze()
     corrupted_logits_values = torch.gather(
@@ -31,28 +42,31 @@ def indirect_effect(logits, corrupted_logits, first_ids_pos):
         "t-value": torch.tensor(ttest[0], device=delta_value.device),
         "p-value": torch.tensor(ttest[1], device=delta_value.device),
         "full_delta": delta_value,
+        "kl-mean": kl_div.mean(),
+        "kl-std": kl_div.std(),
     }
 
 
 def patch_attn_head_by_pos(
     model, input_ids, input_ids_corrupted, clean_cache, metric, corrupted_embeddings
 ):
-    ALL_HEAD_LABELS = [
-        f"L{i}H{j}" for i in range(model.cfg.n_layers) for j in range(model.cfg.n_heads)
-    ]
-    import einops
+    # ALL_HEAD_LABELS = [
+    #     f"L{i}H{j}" for i in range(model.cfg.n_layers) for j in range(model.cfg.n_heads)
+    # ]
+    # import einops
 
-    attn_head_out_act_patch_results = get_act_patch_attn_head_out_by_pos(
-        model=model,
-        corrupted_tokens=input_ids_corrupted,
-        clean_cache=clean_cache,
-        patching_metric=metric,
-        corrupted_embeddings=corrupted_embeddings,
-    )
-    attn_head_out_act_patch_results = einops.rearrange(
-        attn_head_out_act_patch_results, "layer pos head -> (layer head) pos"
-    )
-    return attn_head_out_act_patch_results
+    # attn_head_out_act_patch_results = get_act_patch_attn_head_out_by_pos(
+    #     model=model,
+    #     corrupted_tokens=input_ids_corrupted,
+    #     clean_cache=clean_cache,
+    #     patching_metric=metric,
+    #     corrupted_embeddings=corrupted_embeddings,
+    # )
+    # attn_head_out_act_patch_results = einops.rearrange(
+    #     attn_head_out_act_patch_results, "layer pos head -> (layer head) pos"
+    # )
+    # return attn_head_out_act_patch_results
+    raise NotImplementedError("This function is not converted to work with input embeddings")
 
 
 def patch_attn_head_all_pos_every(
@@ -104,7 +118,7 @@ def wrapper_logit_lens_mem(shared_args):
         shared_args["clean_cache"],
         shared_args["model"],
         shared_args["input_ids"],
-        shared_args["target_ids"]["target"],
+        shared_args["target_ids"]["mem_token"],
     )
 
 
@@ -113,7 +127,7 @@ def wrapper_logit_lens_cp(shared_args):
         shared_args["clean_cache"],
         shared_args["model"],
         shared_args["input_ids"],
-        shared_args["target_ids"]["orthogonal"],
+        shared_args["target_ids"]["cp_token"],
     )
 
 
