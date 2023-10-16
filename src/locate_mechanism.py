@@ -28,7 +28,7 @@ def kl_divergence(logit, logit_clean):
 def indirect_effect(logits, corrupted_logits, first_ids_pos, clean_logits):
     logits = torch.nn.functional.softmax(logits, dim=-1)
     corrupted_logits = torch.nn.functional.softmax(corrupted_logits, dim=-1)
-    kl_div = kl_divergence(logits, corrupted_logits)
+    kl_div = kl_divergence(logits, clean_logits)
     # Use torch.gather to get the desired values
     logits_values = torch.gather(logits[:, -1, :], 1, first_ids_pos).squeeze()
     corrupted_logits_values = torch.gather(
