@@ -70,6 +70,7 @@ def generic_activation_patch_stacked(
     return_index_df: bool = False,
     patch_interval: Optional[int] = 1,
     target_ids=None,
+    ablation = False
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, pd.DataFrame]]:
     """
     A generic function to do activation patching, will be specialised to specific use cases.
@@ -176,6 +177,13 @@ def generic_activation_patch_stacked(
                     index=index,
                     clean_activation=clean_cache[current_activation_name],
                 )
+                if ablation:
+                    current_hook = partial(
+                        patching_hook,
+                        index=index,
+                        clean_activation=torch.zeros_like(clean_cache[current_activation_name]),
+                    )
+                    corrupted_embeddings = None
                 # print(current_activation_name)
                 hooks.append((current_activation_name, current_hook))
             # Run the model with the patching hook and get the logits!
@@ -192,6 +200,12 @@ def generic_activation_patch_stacked(
                 index=index,
                 clean_activation=clean_cache[current_activation_name],
             )
+            if ablation == True:
+                current_hook = partial(
+                    patching_hook,
+                    index=index,
+                    clean_activation=torch.zeros_like(clean_cache[current_activation_name]),)
+                corrupted_embeddings = None
             hooks = [(current_activation_name, current_hook)]
 
         # Run the model with the patching hook and get the logits!
@@ -216,7 +230,7 @@ def generic_activation_patch_stacked(
                 
             
             # from two tensor of shape [batch_size]
-            output_metric = patching_metric(patched_logits)
+            output_metric = patching_metric(patched_logits, ablation=ablation)
             patched_metric_output["mean"][tuple(index)] = (
                 output_metric["mean"].to(DEVICE).item()
             )

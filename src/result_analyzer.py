@@ -1,6 +1,7 @@
 import torch
 import pandas as pd
 from scipy import stats
+import json
 
 def _get_indices(flat_indices, size):
     rows = flat_indices // size
@@ -161,3 +162,45 @@ class ResultAnalyzer:
         return self._process_top_component_per_prompt("mem")
     def process_neg_top_component_per_prompt(self):
         return self._process_top_component_per_prompt("cp")
+    
+    def _compute_correlation(self, model, subkey, data_key = "mem"):
+        #load the dataset 
+        dataset = json.load(open(f"../data/dataset_{model.cfg.model_name}.json"))
+        if data_key == "mem":
+            dataset = dataset["memorizing_win"]
+        else:
+            dataset = dataset["copying_win"]
+        
+        df = pd.DataFrame()
+
+        
+        target = []
+        for prompt in self.data[data_key]["premise"]:
+            for dataset_el in dataset:
+                if prompt == dataset_el["premise"]:
+                    target.append(model.to_tokens(dataset_el["target"], prepend_bos=False).squeeze(-1))
+                    break
+                
+        assert len(target) == len(self.data[data_key]["premise"])
+        rows = []
+        for layer in range(self.data[data_key][subkey]["mean"].shape[1]):
+            for idx in range(self.data[data_key][subkey]["mean"].shape[2]):
+                column_name = f"L{layer}H/P{idx}"
+                
+                
+                delta_value = []
+                for prompt_idx, prompt in enumerate(self.data[data_key]["premise"]):
+                    delta_value.append(self.data[data_key][subkey]["full_delta"][prompt_idx, layer, idx].item())
+                df[column_name] = delta_value
+        
+        probs_target = []
+        for prompt_idx, prompt in enumerate(self.data[data_key]["premise"]):
+            probs = torch.softmax(model(prompt), dim=-1)[:,-1,:]
+            probs_target.append(probs[:, target[prompt_idx]].item())
+        
+        df["target_probs"] = probs_target
+                    
+        df.to_csv(f"../results/locate_mechanism/{self.result_file_name}_{data_key}_{subkey}_correlation.csv")
+        
+    def compute_correlation_pos(self, model, subkey):
+        return self._compute_correlation(model, subkey, data_key = "mem")

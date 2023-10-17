@@ -15,12 +15,24 @@ from src.locate_mechanism import construct_result_dict, indirect_effect
 from src.utils import list_of_dicts_to_dict_of_lists
 import argparse 
 
+
+def get_name_file(args):
+    base_name = f"{args.model}_full_result"
+    if args.ablation:
+        base_name = base_name + "_ablation"
+    if args.interval != 1:
+        base_name = base_name + f"_{args.interval}"
+    return base_name
+    
+
+
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_samples", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=25)
+    parser.add_argument("--num_samples", type=int, default=10)
+    parser.add_argument("--batch_size", type=int, default=10)
     parser.add_argument("--model", type=str, default="gpt2")
     parser.add_argument("--interval", type=int, default=1)
+    parser.add_argument("--ablation", action="store_true", default=False)
     return parser.parse_args()
 
 @dataclass
@@ -30,6 +42,7 @@ class Config:
     model_name:str
     name_dataset:str
     name_save_file:str
+    ablation:bool 
     mem_win_noise_position = [1,2,3,9,10,11]
     mem_win_noise_mlt = 1.4
     cp_win_noise_position = [1,2,3,8,9,10,11]
@@ -54,8 +67,9 @@ class Config:
             batch_size=args.batch_size,
             interval=args.interval,
             model_name=args.model,
-            name_save_file=f"{args.model}_full_result" if args.interval == 1 else f"{args.model}_full_result_{args.interval}",
+            name_save_file=get_name_file(args),
             name_dataset = f"dataset_{args.model}.json",
+            ablation=args.ablation
         )
 
 
@@ -144,22 +158,24 @@ def process_batch(batch, model, dataset, config):
     
     
 
-    def mem_metric(logits):
+    def mem_metric(logits, **kwargs):
         improved = indirect_effect(
             logits=logits,
             corrupted_logits=mem_corrupted_logit,
             first_ids_pos=mem_target_ids["mem_token"],
             clean_logits=mem_clean_logit,
+            **kwargs
         )
         # improved = improved/POS_BASELINE
         return improved
         
-    def cp_metric(logits):
+    def cp_metric(logits, **kwargs):
         improved = indirect_effect(
             logits=logits,
             corrupted_logits=cp_corrupted_logit,
             first_ids_pos=cp_target_ids["cp_token"],
             clean_logits=cp_clean_logit,
+            **kwargs
         )
         return improved
     
@@ -178,6 +194,7 @@ def process_batch(batch, model, dataset, config):
         "embs_corrupted": mem_embs_corrupted,
         "interval": config.interval,
         "target_ids": mem_target_ids,
+        "ablation": config.ablation,
     }
     mem_result = construct_result_dict(shared_args, config.keys_to_compute)
     mem_result["example_str_tokens"] = model.to_str_tokens(mem_batch["premise"][0])
@@ -207,6 +224,7 @@ def process_batch(batch, model, dataset, config):
         "embs_corrupted": cp_embs_corrupted,
         "interval": config.interval,
         "target_ids": cp_target_ids,
+        "ablation": config.ablation,
     }
     
     cp_result = construct_result_dict(shared_args, config.keys_to_compute)
