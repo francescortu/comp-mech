@@ -14,7 +14,7 @@ from functools import partial
 from transformer_lens import patching
 
 LOAD = False
-MODEL_NAME = "gpt2"
+MODEL_NAME = "opt-125m"
 SAVE_PATH = "dataset_{}.json".format(MODEL_NAME)
 
 
