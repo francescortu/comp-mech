@@ -45,7 +45,7 @@ class Config:
         "mlp_out",
         "attn_out_by_pos"
     ]
-    filter_interval = (0,1)
+    filter_interval = (0.2,0.25)
     interval:int = 10
     @classmethod
     def from_args(cls, args):
@@ -54,7 +54,7 @@ class Config:
             batch_size=args.batch_size,
             interval=args.interval,
             model_name=args.model,
-            name_save_file=f"1000{args.model}_full_result" if args.interval == 1 else f"{args.model}_full_result_{args.interval}",
+            name_save_file=f"{args.model}_full_result" if args.interval == 1 else f"{args.model}_full_result_{args.interval}",
             name_dataset = f"dataset_{args.model}.json",
         )
 
@@ -88,8 +88,9 @@ def load_model_and_data(config):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     model = WrapHookedTransformer.from_pretrained(config.model_name, device=DEVICE)
     dataset = Dataset(f"../data/{config.name_dataset}")
-    dataset.filter(filter_key="cp", filter_interval=config.filter_interval)
-    dataset.filter(filter_key="mem", filter_interval=config.filter_interval)
+    dataset.print_statistics()
+    # dataset.filter(filter_key="cp", filter_interval=config.filter_interval)
+    # dataset.filter(filter_key="mem", filter_interval=config.filter_interval)
     dataset.random_sample(config.num_samples, config.max_len)
     dataset.compute_noise_level(model)
     return model, dataset

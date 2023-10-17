@@ -95,10 +95,13 @@ def logit_lens(cache, model, input_ids, target_ids):
         model.W_U,
         "n_comp batch d_model, d_model vocab -> n_comp batch vocab",
     )
-    batch_index = torch.arange(input_ids.shape[0])
-    target_lens = unembed_accumulated_residual[:, batch_index, target_ids].mean(-1)
 
-    return target_lens
+    dim1, dim2, _= unembed_accumulated_residual.shape
+    target_ids_index = target_ids.unsqueeze(0).expand(dim1, dim2, -1)
+    target_lens = torch.gather(unembed_accumulated_residual, 2, target_ids_index)
+ 
+
+    return target_lens.squeeze(-1)
 
 
 def wrapper_patch_attention_out_by_pos(shared_args):
