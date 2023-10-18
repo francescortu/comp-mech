@@ -33,7 +33,7 @@ config = Config()
 
 
 MODEL_NAME = "gpt2small"
-MAX_LEN = 16
+MAX_LEN = 15
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 model = WrapHookedTransformer.from_pretrained("gpt2", device=DEVICE)
 dataset = Dataset(f"../data/dataset_gpt2_filtered.json")

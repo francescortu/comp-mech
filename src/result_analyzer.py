@@ -20,13 +20,19 @@ def compute_metric_difference(logit, corrupted_logit):
     Returns:
     - dict: Computed metrics.
     """
-    delta = logit - corrupted_logit
+    delta = corrupted_logit - logit
+
+    #count the number of positive and negative values
+    positive = (delta > 0).sum().item()
+    negative = (delta < 0).sum().item()
     ttest = stats.ttest_1samp(delta.cpu().detach().numpy(), 0)
     return {
         "mean": delta.mean(dim=0),
         "std": delta.std(dim=0),
         "t-test": ttest[0],
-        "p-value": ttest[1]
+        "p-value": ttest[1],
+        "positive": positive,
+        "negative": negative
     }
 
 
@@ -58,6 +64,7 @@ class ResultAnalyzer:
         """
         logit_key = "mem" if data_key == "mem" else "cp"
         corrupted_logit = self.data[data_key][f"corrupted_logit_{logit_key}"]
+        clean_logit = self.data[data_key][f"clean_logit_{logit_key}"]
         
         rows = []
         for layer in range(self.data[data_key][sub_key]["mean"].shape[1]):
@@ -72,7 +79,10 @@ class ResultAnalyzer:
                         "mean": result["mean"].item(),
                         "std": result["std"].item(),
                         "t-test": result["t-test"],
-                        "p-value": result["p-value"],
+                        "positive": result["positive"],
+                        "negative": result["negative"],
+                        # "p-value": result["p-value"],
+                        "p-value": self.data[data_key][sub_key]["p-value"][0,layer,idx].item(),
                         "kl-mean": self.data[data_key][sub_key]["kl-mean"][0,layer,idx].item(),
                         "kl-std": self.data[data_key][sub_key]["kl-std"][0,layer,idx].item()
                     }
@@ -106,7 +116,7 @@ class ResultAnalyzer:
         for prompt_idx, prompt in enumerate(self.data[data_key]["premise"]):
 
             # Get the top 3 attention heads
-            result_attention_head = self.data[data_key]["attn_head_out"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"corrupted_logit_{logit_key}"][prompt_idx]
+            result_attention_head = self.data[data_key][f"corrupted_logit_{logit_key}"][prompt_idx] - self.data[data_key]["attn_head_out"][f"patched_logits_{logit_key}"][prompt_idx] 
             
             # Get the top 3 component indices (layer, head) and their corresponding values for result_attention_head
             values, flat_indices = result_attention_head.view(-1).topk(3)
@@ -114,7 +124,7 @@ class ResultAnalyzer:
             result_attention_head_top3_val = values.tolist()
 
             # Get the top 3 components mlp output
-            result_component_mlp = self.data[data_key]["mlp_out"][f"patched_logits_{logit_key}"][prompt_idx] - self.data[data_key][f"corrupted_logit_{logit_key}"][prompt_idx]
+            result_component_mlp = self.data[data_key][f"corrupted_logit_{logit_key}"][prompt_idx] -  self.data[data_key]["mlp_out"][f"patched_logits_{logit_key}"][prompt_idx] 
 
             # Get the top 3 component indices (layer, pos) and their corresponding values for result_component_mlp
             values_mlp, flat_indices_mlp = result_component_mlp.view(-1).topk(3)
