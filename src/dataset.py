@@ -14,11 +14,18 @@ class Dataset(TorchDataset):
         
 
     def __len__(self):
-        return len(self.pos_dataset)
+        if self.dataset_key == "mem_dataset":
+            return len(self.mem_dataset)
+        if self.dataset_key == "cp_dataset":
+            return len(self.cp_dataset)
     def __getitem__(self, idx):
-        return {"mem_dataset": self.pos_dataset[idx], "cp_dataset": self.neg_dataset[idx]}
+        assert self.dataset_key is not None, "dataset_key not set"
+        if self.dataset_key == "mem_dataset":
+            return self.mem_dataset[idx]
+        if self.dataset_key == "cp_dataset":
+            return self.cp_dataset[idx]
 
-    def random_sample(self, n, choose_lenght=None):
+    def random_sample(self, n=None, choose_lenght=None):
         random.seed(43)
         self.target_dataset_per_length, self.orthogonal_dataset_per_length = self.split_for_lenght()
         possible_lengths = []
@@ -36,6 +43,28 @@ class Dataset(TorchDataset):
         #random sample
         self.pos_dataset = random.sample(self.target_dataset_per_length[length], n)
         self.neg_dataset = random.sample(self.orthogonal_dataset_per_length[length], n)
+        
+    def select_lenght(self, n:int, lenght):
+        random.seed(43)
+        self.mem_dataset_per_length, self.cp_dataset_per_length = self.split_for_lenght()
+        if n > len(self.mem_dataset_per_length[lenght]):
+            self.mem_dataset = random.sample(self.mem_dataset_per_length[lenght], len(self.mem_dataset_per_length[lenght]))
+        else:
+            self.mem_dataset = random.sample(self.mem_dataset_per_length[lenght], n)
+        if n > len(self.cp_dataset_per_length[lenght]):
+            self.cp_dataset = random.sample(self.cp_dataset_per_length[lenght], len(self.cp_dataset_per_length[lenght]))
+        else:
+            self.cp_dataset = random.sample(self.cp_dataset_per_length[lenght], n)
+        print(f"mem_dataset lenght: {len(self.mem_dataset)}")
+        print(f"cp_dataset lenght: {len(self.cp_dataset)}")
+        
+    def select_dataset(self, dataset:str):
+        assert dataset in ["mem", "cp"], "dataset must be mem or cp"
+        if dataset == "mem":
+            self.dataset_key = "mem_dataset"
+        else:
+            self.dataset_key = "cp_dataset"
+        
         
     def split_for_lenght(self):
         target_dataset_per_length = {}
