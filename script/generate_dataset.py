@@ -13,9 +13,9 @@ from transformer_lens.utils import get_act_name
 from functools import partial
 from transformer_lens import patching
 
-LOAD = False
-MODEL_NAME = "opt-125m"
-SAVE_PATH = "dataset_{}.json".format(MODEL_NAME)
+LOAD = True
+MODEL_NAME = "gpt2"
+SAVE_PATH = "dataset_{}_f.json".format(MODEL_NAME)
 
 
 
@@ -84,7 +84,7 @@ other_win = {}
 target_win_over_orthogonal = {}
 target_win_dataset = []
 orthogonal_win_dataset = []
-
+count=0
 for length in sorted(dataset_per_length.keys()):
     target_probs_mean[length] = []
     orthogonal_probs_mean[length] = []
@@ -107,8 +107,17 @@ for length in sorted(dataset_per_length.keys()):
         orthogonal_probs = probs[batch_index, -1, orthogonal_tokens]
         
         predictions = probs[:, -1, :].max(dim=-1)[0]
+        clean_predictions = probs[:, -1, :].max(dim=-1)[1]
+
+        raw_probs = torch.softmax(model(batch["prompt"]), dim=-1)
+    
 
         for i in range(len(batch["premise"])):
+            string_row_pred = model.to_string(raw_probs[i, -1, :].argmax(dim=-1))
+            if string_row_pred != batch["target"][i]:
+                # count+=1
+                continue
+            count+=1
             if target_probs[i] == predictions[i]:
                 target_win[length] += 1
                 append_to_dataset(target_win_dataset, batch, i, target_probs, orthogonal_probs)
@@ -120,7 +129,8 @@ for length in sorted(dataset_per_length.keys()):
 
         target_probs_mean[length].append(target_probs.mean().item())
         orthogonal_probs_mean[length].append(orthogonal_probs.mean().item())
-
+        print(count)
+    
     target_probs_mean[length] = sum(target_probs_mean[length]) / len(target_probs_mean[length])
     orthogonal_probs_mean[length] = sum(orthogonal_probs_mean[length]) / len(orthogonal_probs_mean[length])
 

@@ -30,13 +30,13 @@ def indirect_effect(logits, corrupted_logits, first_ids_pos, clean_logits, ablat
         print("WARNING: You are using the ablation mode.")
         probs = torch.nn.functional.softmax(logits, dim=-1)
         clean_probs = torch.nn.functional.softmax(clean_logits, dim=-1)
-        kl_div = kl_divergence(logits, clean_logits)
+        kl_div = kl_divergence(clean_logits, logits)
         # Use torch.gather to get the desired values
         logits_values = torch.gather(probs[:, -1, :], 1, first_ids_pos).squeeze()
         clean_logits_values = torch.gather(
             clean_probs[:, -1, :], 1, first_ids_pos
         ).squeeze()
-        delta_value = logits_values - clean_logits_values
+        delta_value = clean_logits_values - logits_values
         ttest = ttest_1samp(delta_value.cpu().detach().numpy(), 0)
         return {
             "mean": delta_value.mean(),
