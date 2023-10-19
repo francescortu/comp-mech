@@ -2,12 +2,6 @@ import torch
 from transformer_lens import HookedTransformer
 
 # from src.model import WrapHookedTransformer
-from src.patching import (
-    get_act_patch_block_every,
-    get_act_patch_resid_pre,
-    get_act_patch_attn_head_out_all_pos,
-    get_act_patch_attn_head_out_by_pos
-)
 import transformer_lens.patching as patching
 
 from typing import List

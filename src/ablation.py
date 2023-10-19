@@ -364,7 +364,7 @@ class Ablator():
         
         for key in full_result.keys():
             for subkey in full_result[key].keys():
-                if subkey in ["attn_head_out", "attn_head_by_pos",  "mlp_out"]:
+                if subkey in ["attn_head_out", "attn_out_by_pos",  "mlp_out"]:
                     full_result[key][subkey] = {k: [d[k] for d in full_result[key][subkey]] for k in full_result[key][subkey][0].keys()}
                     for subsubkey in full_result[key][subkey].keys():
                         if subsubkey in ['ablated_probs_mem', 'ablated_probs_cp', 'mem_delta', 'cp_delta']:
