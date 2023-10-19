@@ -22,7 +22,7 @@ def get_name_file(args):
         base_name = base_name + "_ablation"
     if args.interval != 1:
         base_name = base_name + f"_{args.interval}"
-    return base_name
+    return base_name + f"_len{args.max_len}"
     
 
 
@@ -33,6 +33,7 @@ def get_args():
     parser.add_argument("--model", type=str, default="gpt2")
     parser.add_argument("--interval", type=int, default=1)
     parser.add_argument("--ablation", action="store_true", default=False)
+    parser.add_argument("--max-len", type=int, default=13)
     return parser.parse_args()
 
 @dataclass
@@ -47,7 +48,6 @@ class Config:
     mem_win_noise_mlt = 1.4
     cp_win_noise_position = [1,2,3,8,9,10,11]
     cp_win_noise_mlt = 1.4
-    max_len = 15
     keys_to_compute = [
         "logit_lens_mem",
         "logit_lens_cp",
@@ -68,8 +68,9 @@ class Config:
             interval=args.interval,
             model_name=args.model,
             name_save_file=get_name_file(args),
-            name_dataset = f"dataset_{args.model}.json",
-            ablation=args.ablation
+            name_dataset = f"dataset_{args.model}_f.json",
+            ablation=args.ablation,
+            max_len=args.max_len
         )
 
 
