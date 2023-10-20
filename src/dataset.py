@@ -45,7 +45,7 @@ class Dataset(TorchDataset):
         self.neg_dataset = random.sample(self.orthogonal_dataset_per_length[length], n)
         
     def select_lenght(self, n:int, lenght):
-        random.seed(43)
+        random.seed(1002)
         self.mem_dataset_per_length, self.cp_dataset_per_length = self.split_for_lenght()
         if n > len(self.mem_dataset_per_length[lenght]):
             self.mem_dataset = random.sample(self.mem_dataset_per_length[lenght], len(self.mem_dataset_per_length[lenght]))

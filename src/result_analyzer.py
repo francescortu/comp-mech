@@ -15,6 +15,7 @@ def compute_mean(delta):
     std = delta.std()
     positive = (delta > 0).sum().item()
     negative = (delta < 0).sum().item()
+    zero = (delta == 0).sum().item()
     _, p_value = stats.ttest_1samp(delta, 0)
     return {
         "mean": mean,
@@ -22,6 +23,7 @@ def compute_mean(delta):
         "positive": positive,
         "negative": negative,
         "p-value": p_value,
+        "zero": zero,
     }
 
 

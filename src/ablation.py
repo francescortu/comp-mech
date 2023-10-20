@@ -93,6 +93,7 @@ def generic_activation_ablation_stacked(
         ),
         "kl-mean": torch.zeros(index_axis_max_range, device=DEVICE),
         "kl-std": torch.zeros(index_axis_max_range, device=DEVICE),
+        "loss": torch.zeros(index_axis_max_range, device=DEVICE),
     }
     
     def ablating_hook(activation, hook, index):
@@ -137,6 +138,7 @@ def generic_activation_ablation_stacked(
         # Run the model with the patching hook and get the logits!
         
         patched_logits = model.run_with_hooks(input_tokens, fwd_hooks=hooks)
+        loss = model.run_with_hooks(input_tokens, fwd_hooks=hooks, return_type="loss")
 
         # Calculate the patching metric and store
 
@@ -165,6 +167,7 @@ def generic_activation_ablation_stacked(
         patched_metric_output["kl-std"][tuple(index)] = (
             output_metric["kl-std"].to(DEVICE).item()
         )
+        patched_metric_output["loss"][tuple(index)] = loss.to(DEVICE).item()
 
     if return_index_df:
         return patched_metric_output, index_df

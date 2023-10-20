@@ -14,7 +14,7 @@ class WrapHookedTransformer(HookedTransformer):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
+        self.device = self.cfg.device
     def predict(self, prompt: str, k: int = 1, return_type: str = "logits"):
         logits = self(prompt)
         return get_predictions(self, logits, k, return_type)
