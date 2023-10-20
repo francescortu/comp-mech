@@ -150,10 +150,10 @@ def generic_activation_ablation_stacked(
         # from two tensor of shape [batch_size]
         output_metric = patching_metric(patched_logits, target_ids)
         patched_metric_output["ablated_probs_mem"][tuple(index)][:] = (
-            torch.softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["mem_token"]).squeeze(-1).to(DEVICE)
+            torch.log_softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["mem_token"]).squeeze(-1).to(DEVICE)
         )
         patched_metric_output["ablated_probs_cp"][tuple(index)][:] = (
-            torch.softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["cp_token"]).squeeze(-1).to(DEVICE)
+            torch.log_softmax(patched_logits, dim=-1)[:, -1, :].gather(-1, index=target_ids["cp_token"]).squeeze(-1).to(DEVICE)
         )
         patched_metric_output["mem_delta"][tuple(index)] = output_metric[
             "mem_delta"
@@ -266,8 +266,8 @@ def kl_divergence(logit, logit_clean):
     return result
 
 def ablation_metric(logits: torch.Tensor,target_ids:dict, clean_logits:torch.Tensor):
-    probs = torch.softmax(logits, dim=-1)
-    clean_probs = torch.softmax(clean_logits, dim=-1)
+    probs = torch.log_softmax(logits, dim=-1)
+    clean_probs = torch.log_softmax(clean_logits, dim=-1)
     
     mem_prob = torch.gather(probs[:, -1, :], 1, target_ids["mem_token"]).squeeze()
     cp_probs = torch.gather(probs[:, -1, :], 1, target_ids["cp_token"]).squeeze()
@@ -308,7 +308,7 @@ class Ablator():
         input_ids = self.model.to_tokens(batch["premise"])
 
         clean_logit = self.model(input_ids)
-        clean_probs = torch.softmax(clean_logit, dim=-1)[:,-1,:]
+        clean_probs = torch.log_softmax(clean_logit, dim=-1)[:,-1,:]
         clean_probs_mem_token = clean_probs.gather(-1, index=target_ids["mem_token"]).squeeze(-1)
         clean_probs_orthogonal_token = clean_probs.gather(-1, index=target_ids["cp_token"]).squeeze(-1)
         
