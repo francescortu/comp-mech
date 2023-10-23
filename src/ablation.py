@@ -53,6 +53,7 @@ def generic_activation_ablation_stacked(
     return_index_df: bool = False,
     patch_interval: Optional[int] = 1,
     target_ids=None,
+    fwd_hooks=None,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, pd.DataFrame]]:
     batch_size = input_tokens.shape[0]
     max_len = input_tokens.shape[1]
@@ -136,7 +137,7 @@ def generic_activation_ablation_stacked(
             hooks = [(current_activation_name, current_hook)]
 
         # Run the model with the patching hook and get the logits!
-        
+        hooks.extend(fwd_hooks)
         patched_logits = model.run_with_hooks(input_tokens, fwd_hooks=hooks)
         loss = model.run_with_hooks(input_tokens, fwd_hooks=hooks, return_type="loss")
 
@@ -291,6 +292,7 @@ class Ablator():
     def __init__(self, config):
         self.config = config
         self.model, self.dataset = self.load_model_and_data()
+
     
     def load_model_and_data(self) -> Tuple[WrapHookedTransformer, Dataset]:
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -301,6 +303,11 @@ class Ablator():
         return model, dataset
     
     def process_batch(self, batch):
+        def attn_out_hook(activation, hook,):
+            activation[:,-1,:] = 0
+            return activation
+        
+        
         target_ids = {
             "mem_token": self.model.to_tokens(batch["target"], prepend_bos=False),
             "cp_token": self.model.to_tokens(batch["orthogonal_token"], prepend_bos=False),
@@ -320,19 +327,22 @@ class Ablator():
                 patching_metric=metric,
                 patch_interval=self.config.patch_interval,
                 target_ids=target_ids,
+                fwd_hooks=[(utils.get_act_name("attn_out", 0), attn_out_hook)]
                 ),
             "mlp_out":get_act_ablation_mlp_out(
                 model=self.model,
                 input_tokens=input_ids,
                 patching_metric=metric,
                 patch_interval=self.config.patch_interval,
-                target_ids=target_ids,),
+                target_ids=target_ids,
+                fwd_hooks=[(utils.get_act_name("attn_out", 0), attn_out_hook)]),
             "attn_out_by_pos":get_act_ablation_attn_out(
                                 model=self.model,
                 input_tokens=input_ids,
                 patching_metric=metric,
                 patch_interval=self.config.patch_interval,
                 target_ids=target_ids,
+                fwd_hooks=[(utils.get_act_name("attn_out", 0), attn_out_hook)]
                 ),
             "premise": batch["premise"],
             "clean_probs_mem": clean_probs_mem_token,

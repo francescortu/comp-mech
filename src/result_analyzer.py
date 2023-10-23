@@ -85,6 +85,9 @@ class ResultAnalyzer:
                         "kl-std": self.data[data_key][sub_key]["kl-std"][
                             0, layer, idx
                         ].item(),
+                        "loss": self.data[data_key][sub_key]["loss"][
+                            0, layer, idx
+                        ].item(),
                     }
                 )
 
@@ -116,8 +119,7 @@ class ResultAnalyzer:
                     prompt_idx
                 ]
             )
-
-            # Get the top 3 component indices (layer, head) and their corresponding values for result_attention_head
+          # Get the top 3 component indices (layer, head) and their corresponding values for result_attention_head
             values, flat_indices = result_attention_head.view(-1).topk(3)
             result_attention_head_top3_idx = _get_indices(
                 flat_indices, result_attention_head.size(1)
@@ -131,7 +133,6 @@ class ResultAnalyzer:
                     prompt_idx
                 ]
             )
-
             # Get the top 3 component indices (layer, pos) and their corresponding values for result_component_mlp
             values_mlp, flat_indices_mlp = result_component_mlp.view(-1).topk(3)
             result_component_mlp_top3_idx = _get_indices(
@@ -146,13 +147,14 @@ class ResultAnalyzer:
                     prompt_idx
                 ]
             )
-
             # Get the top 3 component indices (layer, pos) and their corresponding values for result_component_attn
             values_attn, flat_indices_attn = result_component_attn.view(-1).topk(3)
             result_component_attn_top3_idx = _get_indices(
                 flat_indices_attn, result_component_attn.size(1)
             )
             result_component_attn_top3_val = values_attn.tolist()
+
+
 
             rows.append(
                 {
@@ -191,6 +193,45 @@ class ResultAnalyzer:
     def process_neg_top_component_per_prompt(self):
         return self._process_top_component_per_prompt("cp")
 
+    # def _compute_matrix(self, data_key, sub_key, id_format, save_name):
+    #     """
+    #     Helper method to process data and compute metrics.
+
+    #     Args:
+    #     - data_key (str): Key to access primary data (e.g., "pos" or "neg").
+    #     - sub_key (str): Key to access secondary data (e.g., "attn_head_out").
+    #     - id_format (str): Format string for the ID (e.g., "L{layer}H{head}" or "L{layer}P{position}").
+
+    #     Returns:
+    #     - pd.DataFrame: DataFrame containing computed metrics.
+    #     """
+
+    #     # clean_logit = self.data[data_key][f"clean_logit_{logit_key}"]
+    #     n_samples = self.data[data_key][sub_key][f"{data_key}_delta"].shape[0]
+    #     n_layers = self.data[data_key][sub_key][f"{data_key}_delta"].shape[1]
+    #     n_components = self.data[data_key][sub_key][f"{data_key}_delta"].shape[2]
+    #     matrix = torch.zeros(n_samples, n_layers, n_components)
+    #     for sample_idx in range(n_samples):
+    #         for layer in range(n_layers):
+    #             for idx in range(n_components):
+    #             matrix
+
+    #     # Save the data
+    #     pd.DataFrame(rows).to_csv(f"../results/locate_mechanism/{save_name}.csv")
+
+    #     return pd.DataFrame(rows)
+
+    # def compute_matrix(
+    #     self, data_key: str, sub_key: str, id_format: str = None, save_name: str = None
+    # ):
+    #     if save_name is None:
+    #         save_name = f"{self.result_file_name}_{data_key}_{sub_key}"
+    #     if sub_key in ["attn_head_out"]:
+    #         id_format = "L{layer}H{idx}"
+    #     elif sub_key in ["mlp_out", "attn_out_by_pos"]:
+    #         id_format = "L{layer}P{idx}"
+    #     return self._compute_matrix(data_key, sub_key, id_format, save_name)
+    
     def _compute_correlation(self, model, subkey, data_key="mem"):
         # load the dataset
         dataset = json.load(open(f"../data/dataset_{model.cfg.model_name}.json"))
