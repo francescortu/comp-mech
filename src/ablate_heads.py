@@ -269,7 +269,7 @@ class OVCircuit:
     
     def ov_single_len_all_heads_score(self, resid_layer_input, resid_pos:str, length, target="copy", disable_tqdm=False, plot=False):
         assert target in ["copy", "mem"], "target should be one of copy or mem"
-        assert resid_pos in ["1_1_subject", "1_2_subject", "1_3_subject", "definition", "2_1_subject", "2_2_subject", "2_3_subject"], "resid_pos should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"
+        assert resid_pos in ["o_pre","last_pre", "1_1_subject", "1_2_subject", "1_3_subject", "definition", "2_1_subject", "2_2_subject", "2_3_subject"], "resid_pos should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"
         self.dataset.set_len(length, self.model)
         self.dataset.slice_to_fit_batch(self.batch_size)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -292,6 +292,10 @@ class OVCircuit:
             position = self.dataset.obj_pos[0] + 3
         elif resid_pos == "2_3_subject":
             position = self.dataset.obj_pos[0] + 4
+        elif resid_pos == "last_pre":
+            position = length - 2
+        elif resid_pos == "o_pre":
+            position = self.dataset.obj_pos[0] - 1
         else:
             raise ValueError("resid_pos not recognized: should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject")
         topk = 10
@@ -429,6 +433,7 @@ class OVCircuit:
                 xlabel="position",
                 ylabel="layer",
                 x_ticks=["--", "1_1", "1_2", "1_3", "--", "o_pre", "o", "o_next", "2_1", "2_2", "2_3", "--", "l_pre", "last"],
+                title="Percentage increase or decrease of logit_target respect to the avg per layer"
             )
             
         
