@@ -46,17 +46,22 @@ class MyDataset(Dataset):
         # stack the tensors
         self.target = torch.stack([tensor_1, tensor_2], dim=1).squeeze()
         
-    def filter_from_idx(self, index, exclude=False):
+    def filter_from_idx(self, index, exclude=False, save_filtered=False):
         if exclude:
             self.target = [self.target[i] for i in range(len(self.target)) if i not in index]
             self.clean_prompts = [self.clean_prompts[i] for i in range(len(self.clean_prompts)) if i not in index]
             self.corrupted_prompts = [self.corrupted_prompts[i] for i in range(len(self.corrupted_prompts)) if i not in index]
             self.obj_pos = [self.obj_pos[i] for i in range(len(self.obj_pos)) if i not in index]
+            self.data = [self.data[i] for i in range(len(self.data)) if i not in index]
         else:
             self.target = [self.target[i] for i in index]
             self.clean_prompts = [self.clean_prompts[i] for i in index]
             self.corrupted_prompts = [self.corrupted_prompts[i] for i in index]
             self.obj_pos = [self.obj_pos[i] for i in index]
+            self.data = [self.data[i] for i in index]
+            
+        if save_filtered:
+            self.save_filtered()
     
     def slice(self, end, start=0):
         self.data   = self.data[start:end]
@@ -71,6 +76,10 @@ class MyDataset(Dataset):
     def slice_to_fit_batch(self, batch_size):
         maxdatadize = (len(self.data)//batch_size)*batch_size
         self.slice(maxdatadize)
+        
+    def save_filtered(self):
+        self.data_per_len[self.length] = self.data
+       
 
     
 class DatasetGenerator():

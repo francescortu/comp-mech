@@ -16,8 +16,7 @@ def to_logit_token(logit, target):
         logit_mem[i] = logit[i, target[i,0]]
         logit_cp[i] = logit[i, target[i,1]]
     return logit_mem, logit_cp
-    
-    
+
 
 class Ablate():
     def __init__(self, dataset:MyDataset, model:WrapHookedTransformer,  batch_size, filter_outliers=False):
@@ -44,13 +43,15 @@ class Ablate():
         target = torch.cat(target, dim=0)
         return clean_logit, corrupted_logit, target
     
-    def create_dataloader(self, filter_outliers=False):
+    def create_dataloader(self, filter_outliers=False, **kwargs):
         if filter_outliers:
-            self.filter_outliers()
+            print(self._filter_outliers)
+            self._filter_outliers(**kwargs)
         else:
             self.slice_to_fit_batch()
     
-    def filter_outliers(self):
+    def _filter_outliers(self, save_filtered=False):
+        print("save filtered:", save_filtered)
         print("Number of examples before outliers:", len(self.dataset))
         clean_logit, corrupted_logit, target = self.compute_logit()
         clean_logit_mem, clean_logit_cp = to_logit_token(clean_logit, target)
@@ -62,11 +63,12 @@ class Ablate():
         
         maxdatasize = ((len(self.dataset) - len(outliers_indexes))//self.batch_size)*self.batch_size
         
-        self.dataset.filter_from_idx(outliers_indexes, exclude=True)
+        self.dataset.filter_from_idx(outliers_indexes, exclude=True, save_filtered=save_filtered)
         self.dataset.slice(maxdatasize)
         self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         self.num_batches = len(self.dataloader)
         print("Number of examples after outliers:", len(self.dataloader)*self.batch_size)
+
         
     def slice_to_fit_batch(self):
         self.dataset.slice_to_fit_batch(self.batch_size)
@@ -163,20 +165,20 @@ class AblateMultiLen():
         self.batch_size = batch_size
         self.ablate = Ablate(dataset, model, batch_size)
         
-    def ablate_single_len(self, length, filter_outliers=False):
+    def ablate_single_len(self, length, filter_outliers=False, **kwargs):
         self.dataset.set_len(length, self.model)
         self.ablate.set_len(length)
-        self.ablate.create_dataloader(filter_outliers=filter_outliers)
+        self.ablate.create_dataloader(filter_outliers=filter_outliers, **kwargs)
         return self.ablate.ablate_heads()
     
-    def ablate_multi_len(self, filter_outliers=False):
+    def ablate_multi_len(self, filter_outliers=False, **kwargs):
         lenghts = self.dataset.get_lengths()
         
         result_cp_per_len = {}
         result_mem_per_len = {}
         for l in lenghts:
             print("Ablating examples of length", l, "...")
-            result_cp_per_len[l], result_mem_per_len[l] = self.ablate_single_len(l, filter_outliers=filter_outliers)
+            result_mem_per_len[l], result_cp_per_len[l] = self.ablate_single_len(l, filter_outliers=filter_outliers, **kwargs)
         
         # concatenate the results
         result_cp = torch.cat(list(result_cp_per_len.values()), dim=-1)
@@ -266,6 +268,8 @@ class OVCircuit:
         return copy_score
     
     def ov_single_len_all_heads_score(self, resid_layer_input, resid_pos:str, length, target="copy", disable_tqdm=False, plot=False):
+        assert target in ["copy", "mem"], "target should be one of copy or mem"
+        assert resid_pos in ["1_1_subject", "1_2_subject", "1_3_subject", "definition", "2_1_subject", "2_2_subject", "2_3_subject"], "resid_pos should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"
         self.dataset.set_len(length, self.model)
         self.dataset.slice_to_fit_batch(self.batch_size)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -319,17 +323,17 @@ class OVCircuit:
         return count_target       
     
     def plot_heatmap(self, copy_score, xlabel="head", ylabel="layer", x_ticks=None, y_ticks=None):
-            import seaborn as sns
-            import matplotlib.pyplot as plt
-            sns.set()
-            sns.set_style("whitegrid", {"axes.grid": False})
-            fig, ax = plt.subplots(figsize=(15, 10))
-            ax.set_title(f"Copy score for all heads")
-            sns.heatmap(copy_score, annot=True, ax=ax, cmap="YlGnBu", fmt=".1f")
-            if x_ticks:
-                ax.set_xticklabels(x_ticks)
-            ax.set_xlabel(xlabel)
-            ax.set_ylabel(ylabel)
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        sns.set()
+        sns.set_style("whitegrid", {"axes.grid": False})
+        fig, ax = plt.subplots(figsize=(13, 8))
+        ax.set_title(f"Copy score for all heads")
+        sns.heatmap(copy_score, annot=True, ax=ax, cmap="YlGnBu", fmt=".1f")
+        if x_ticks:
+            ax.set_xticklabels(x_ticks)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
             
     def compute_copy_score_all_heads(self, resid_layer_input, resid_pos, target="copy", plot=False):
         lenghts = self.dataset.get_lengths()
@@ -346,7 +350,8 @@ class OVCircuit:
             return copy_score
     
 
-    def residual_stram_track_target(self,  resid_pos:str, length, target="copy", disable_tqdm=False, plot=False):
+    def residual_stram_track_target(self,   length, target="copy", disable_tqdm=False, plot=False):
+        assert target in ["copy", "mem"], "target should be one of copy or mem"
         self.dataset.set_len(length, self.model)
         self.dataset.slice_to_fit_batch(self.batch_size)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -373,16 +378,14 @@ class OVCircuit:
         # for each layer, compute the percentage increase or decrease of logit_target
         for layer in range(self.model.cfg.n_layers):
             logit_target[layer] = -100 * (logit_target[layer] - avg_mean[layer]) / avg_mean[layer]
-        print("logit_target.shape", logit_target.shape)
-        print("logit_target", logit_target)
         # aggregate for positions
         object_positions = self.dataset.obj_pos[0]
         subject_1_1 = 5
         subject_1_2 = 6
-        subject_1_3 = 7
+        subject_1_3 = 7 if length > 17 else 6
         subject_2_1 = object_positions + 2
         subject_2_2 = object_positions + 3
-        subject_2_3 = object_positions + 4
+        subject_2_3 = object_positions + 4 if length > 17 else object_positions + 3
         last_position = length - 1
         object_positions_pre = object_positions - 1
         object_positions_next = object_positions + 1
@@ -403,11 +406,30 @@ class OVCircuit:
         result_aggregate[:,12] = logit_target[:,last_position-1]
         result_aggregate[:,13] = logit_target[:,last_position]
         
-        self.plot_heatmap(
-            result_aggregate,
-            xlabel="position",
-            ylabel="layer",
-            x_ticks=["--", "1_1", "1_2", "1_3", "--", "o_pre", "o", "o_next", "2_1", "2_2", "2_3", "--", "l_pre", "last"],
-        )
+        if plot:
+            self.plot_heatmap(
+                result_aggregate,
+                xlabel="position",
+                ylabel="layer",
+                x_ticks=["--", "1_1", "1_2", "1_3", "--", "o_pre", "o", "o_next", "2_1", "2_2", "2_3", "--", "l_pre", "last"],
+            )
         
         return result_aggregate    
+    
+    def residual_stram_track_target_all_len(self, target="copy", disable_tqdm=False, plot=False):
+        lenghts = self.dataset.get_lengths()
+        result = {}
+        for l in lenghts:
+            result[l] = self.residual_stram_track_target( length=l, target=target, disable_tqdm=disable_tqdm, plot=False)
+        
+        result_score = torch.stack(list(result.values()), dim=0).mean(dim=0)
+        if plot:
+            self.plot_heatmap(
+                result_score,
+                xlabel="position",
+                ylabel="layer",
+                x_ticks=["--", "1_1", "1_2", "1_3", "--", "o_pre", "o", "o_next", "2_1", "2_2", "2_3", "--", "l_pre", "last"],
+            )
+            
+        
+        return result
