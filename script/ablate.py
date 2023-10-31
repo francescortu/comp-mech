@@ -22,10 +22,10 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="gpt2")
     parser.add_argument("--name_dataset", type=str, default="dataset_gpt2_f.json")
-    parser.add_argument("--n", type=int, default=2)
+    parser.add_argument("--n", type=int, default=50)
     parser.add_argument("--length", type=int, default=16)
     parser.add_argument("--interval", type=int, default=1)
-    parser.add_argument("--batch_size", type=int, default=10)
+    parser.add_argument("--batch_size", type=int, default=50)
     return parser.parse_args()
 
 
