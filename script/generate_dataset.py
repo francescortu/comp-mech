@@ -1,7 +1,8 @@
-
 import sys
-import os
-sys.path.append(os.path.expanduser("~/Competition_of_Mechanisms"))
+sys.path.append('..')
+sys.path.append('../src')
+sys.path.append('../data')
+
 import torch
 from transformer_lens import HookedTransformer
 import json

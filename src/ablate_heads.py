@@ -8,8 +8,13 @@ from copy import deepcopy
 
 
 
-def to_logit_token(logit, target):
-    logit = torch.log_softmax(logit, dim=-1)
+def to_logit_token(logit, target, normalize="logsoftmax"):
+    if normalize == "logsoftmax":
+        logit = torch.log_softmax(logit, dim=-1)
+    elif normalize == "softmax":
+        logit = torch.softmax(logit, dim=-1)
+    elif normalize == "none":
+        pass
     logit_mem = torch.zeros(target.shape[0])
     logit_cp = torch.zeros(target.shape[0])
     for i in range(target.shape[0]):
@@ -18,38 +23,23 @@ def to_logit_token(logit, target):
     return logit_mem, logit_cp
 
 
-class Ablate():
+
+class BaseExperiment():
     def __init__(self, dataset:MyDataset, model:WrapHookedTransformer,  batch_size, filter_outliers=False):
         self.dataset = dataset
         self.model = model
         self.model.eval()
         self.batch_size = batch_size
         self.filter_outliers = filter_outliers
-
+        
     def set_len(self, length):
         self.dataset.set_len(length, self.model)
-        self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
-    
-    def compute_logit(self):
-        clean_logit = []
-        corrupted_logit = []
-        target = []
-        for batch in tqdm(self.dataloader):
-            clean_logit.append(self.model(batch["clean_prompts"])[:,-1,:].cpu())
-            corrupted_logit.append(self.model(batch["corrupted_prompts"])[:,-1,:].cpu())
-            target.append(batch["target"].cpu())
-        clean_logit = torch.cat(clean_logit, dim=0)
-        corrupted_logit = torch.cat(corrupted_logit, dim=0)
-        target = torch.cat(target, dim=0)
-        return clean_logit, corrupted_logit, target
-    
-    def create_dataloader(self, filter_outliers=False, **kwargs):
-        if filter_outliers:
-            print(self._filter_outliers)
-            self._filter_outliers(**kwargs)
+        if self.filter_outliers:
+            self._filter_outliers()
         else:
-            self.slice_to_fit_batch()
-    
+            self.dataset.slice_to_fit_batch(self.batch_size)
+        
+        
     def _filter_outliers(self, save_filtered=False):
         print("save filtered:", save_filtered)
         print("Number of examples before outliers:", len(self.dataset))
@@ -68,7 +58,52 @@ class Ablate():
         self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         self.num_batches = len(self.dataloader)
         print("Number of examples after outliers:", len(self.dataloader)*self.batch_size)
+        
+    def compute_logit(self):
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        clean_logit = []
+        corrupted_logit = []
+        target = []
+        for batch in tqdm(dataloader):
+            clean_logit.append(self.model(batch["clean_prompts"])[:,-1,:].cpu())
+            corrupted_logit.append(self.model(batch["corrupted_prompts"])[:,-1,:].cpu())
+            target.append(batch["target"].cpu())
+        clean_logit = torch.cat(clean_logit, dim=0)
+        corrupted_logit = torch.cat(corrupted_logit, dim=0)
+        target = torch.cat(target, dim=0)
+        return clean_logit, corrupted_logit, target
+    
+    def get_batch(self, len):
+        self.set_len(len)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        return next(iter(self.dataloader))
 
+    def get_position(self, resid_pos:str):
+        positions = {
+            "1_1_subject": 5,
+            "1_2_subject": 6,
+            "1_3_subject": 7,
+            "definition": self.dataset.obj_pos[0],
+            "2_1_subject": self.dataset.obj_pos[0] + 2,
+            "2_2_subject": self.dataset.obj_pos[0] + 3,
+            "2_3_subject": self.dataset.obj_pos[0] + 4,
+            "last_pre": -2,
+            "last": -1,
+        }
+        return positions.get(resid_pos, ValueError("resid_pos not recognized: should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"))
+
+class Ablate(BaseExperiment):
+    def __init__(self, dataset:MyDataset, model:WrapHookedTransformer,  batch_size, filter_outliers=False):
+        super().__init__(dataset, model, batch_size, filter_outliers)
+        self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        self.num_batches = len(self.dataloader)
+    
+    def create_dataloader(self, filter_outliers=False, **kwargs):
+        if filter_outliers:
+            print(self._filter_outliers)
+            self._filter_outliers(**kwargs)
+        else:
+            self.slice_to_fit_batch()
         
     def slice_to_fit_batch(self):
         self.dataset.slice_to_fit_batch(self.batch_size)
@@ -187,37 +222,17 @@ class AblateMultiLen():
         
         return result_mem, result_cp
     
+class OVCircuit(BaseExperiment):
+    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size, filter_outliers=False):
+        super().__init__(dataset, model, batch_size, filter_outliers)
+
     
 
-class OVCircuit:
-    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size):
-        self.model = model
-        self.dataset = dataset
-        self.batch_size = batch_size
-        
     def ov_single_len(self, resid_layer_input, resid_pos:str, layer, head, length, disable_tqdm=False):
-        self.dataset.set_len(length, self.model)
-        self.dataset.slice_to_fit_batch(self.batch_size)
+        self.set_len(length)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
-        
-        if resid_pos == "1_1_subject":
-            position = 5
-        elif resid_pos == "1_1_subject":
-            position = 6
-        elif resid_pos == "1_1_subject":
-            position = 7
-        elif resid_pos == "definition":
-            position = self.dataset.obj_pos[0]
-        elif resid_pos == "2_1_subject":
-            position = self.dataset.obj_pos[0] + 2
-        elif resid_pos == "2_2_subject":
-            position = self.dataset.obj_pos[0] + 3
-        elif resid_pos == "2_3_subject":
-            position = self.dataset.obj_pos[0] + 4
-        else:
-            raise ValueError("resid_pos not recognized: should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject")
-        
+        position = self.get_position(resid_pos)
         logit_ov = torch.zeros((num_batches, self.batch_size, self.model.cfg.d_vocab))
         for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"OV circuit at ({layer},{head})", disable=disable_tqdm):
             _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
@@ -225,79 +240,37 @@ class OVCircuit:
             W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
             logit_output = einops.einsum(self.model.W_U, (residual_stream[:,position,:] @ W_OV), "d d_v, b d -> b d_v")
             logit_ov[idx] = self.model.ln_final(logit_output)
-        
         logit_ov = einops.rearrange(logit_ov, "b s d -> (b s) d")
         return logit_ov
-    
+
     def ov_single_copy_score(self, resid_layer_input, resid_pos:str, layer, head, length, target="copy", disable_tqdm=False):
-        if target == "copy":
-            target_idx = 1
-        elif target == "mem":
-            target_idx = 0
+        target_idx = 1 if target == "copy" else 0
         logit_ov = self.ov_single_len(resid_layer_input, resid_pos, layer, head, length, disable_tqdm=disable_tqdm)
         num_examples = logit_ov.shape[0]
-        # get the top 10 tokens for each example
         topk = 10
         topk_tokens = torch.topk(logit_ov, k=topk, dim=-1).indices
         target_list = [self.model.to_string(self.dataset.target[i,target_idx]) for i in range(num_examples)]
-    
-        count = 0
-        for i in range(num_examples):
-            if target_list[i] in [self.model.to_string(topk_tokens[i,j]) for j in range(topk)]:
-                count += 1
-        
-        percentage = 100* count/num_examples
-        return percentage
-    
+        count = sum([1 for i in range(num_examples) if target_list[i] in [self.model.to_string(topk_tokens[i,j]) for j in range(topk)]])
+        return 100* count/num_examples
+
     def ov_multi_len(self, resid_layer_input, resid_pos:str, layer, head, disable_tqdm=False):
         lenghts = self.dataset.get_lengths()
-        logit = {}
-        for l in lenghts:
-            logit[l] = self.ov_single_len(resid_layer_input, resid_pos, layer, head, l, disable_tqdm=disable_tqdm)
-        logit = torch.cat(list(logit.values()), dim=0)
-        return logit
-    
+        logit = {l: self.ov_single_len(resid_layer_input, resid_pos, layer, head, l, disable_tqdm=disable_tqdm) for l in lenghts}
+        return torch.cat(list(logit.values()), dim=0)
+
     def ov_multi_copy_score(self, resid_layer_input, resid_pos, layer, head, target="copy", disable_tqdm=False):
         lenghts = self.dataset.get_lengths()
-        copy_score = {}
-        for l in lenghts:
-            copy_score[l] = self.ov_single_copy_score(resid_layer_input, resid_pos, layer, head, l, target=target, disable_tqdm=disable_tqdm)
-        
-        # mean of the copy score
-        copy_score = torch.tensor(list(copy_score.values())).mean().item()
-        return copy_score
-    
+        copy_score = {l: self.ov_single_copy_score(resid_layer_input, resid_pos, layer, head, l, target=target, disable_tqdm=disable_tqdm) for l in lenghts}
+        return torch.tensor(list(copy_score.values())).mean().item()
+
     def ov_single_len_all_heads_score(self, resid_layer_input, resid_pos:str, length, target="copy", disable_tqdm=False, plot=False, logit_score=False, resid_read="resid_post"):
         assert target in ["copy", "mem"], "target should be one of copy or mem"
         assert resid_pos in ["o_pre","last_pre", "1_1_subject", "1_2_subject", "1_3_subject", "definition", "2_1_subject", "2_2_subject", "2_3_subject"], "resid_pos should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"
-        self.dataset.set_len(length, self.model)
-        self.dataset.slice_to_fit_batch(self.batch_size)
+        self.set_len(length)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
-        if target == "copy":
-            target_idx = 1
-        elif target == "mem":
-            target_idx = 0
-        if resid_pos == "1_1_subject":
-            position = 5
-        elif resid_pos == "1_1_subject":
-            position = 6
-        elif resid_pos == "1_1_subject":
-            position = 7
-        elif resid_pos == "definition":
-            position = self.dataset.obj_pos[0]
-        elif resid_pos == "2_1_subject":
-            position = self.dataset.obj_pos[0] + 2
-        elif resid_pos == "2_2_subject":
-            position = self.dataset.obj_pos[0] + 3
-        elif resid_pos == "2_3_subject":
-            position = self.dataset.obj_pos[0] + 4
-        elif resid_pos == "last_pre":
-            position = length - 2
-        elif resid_pos == "o_pre":
-            position = self.dataset.obj_pos[0] - 1
-        else:
-            raise ValueError("resid_pos not recognized: should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject")
+        target_idx = 1 if target == "copy" else 0
+        position = self.get_position(resid_pos)
         if logit_score == False:
             topk = 10
             count_target = torch.zeros(( self.model.cfg.n_layers, self.model.cfg.n_heads,  num_batches))
@@ -311,17 +284,10 @@ class OVCircuit:
                         logit_output = self.model.ln_final(logit_output)
                         topk_tokens = torch.topk(logit_output, k=topk, dim=-1).indices
                         target_list = [self.model.to_string(batch["target"][i,target_idx]) for i in range(self.batch_size)]
-                        
-                        count = 0
-                        for i in range(self.batch_size):
-                            if target_list[i] in [self.model.to_string(topk_tokens[i,j]) for j in range(topk)]:
-                                count += 1
+                        count = sum([1 for i in range(self.batch_size) if target_list[i] in [self.model.to_string(topk_tokens[i,j]) for j in range(topk)]])
                         count_target[layer, head, idx] = count
-                        
-
             total_num_examples = self.batch_size * num_batches
             count_target = einops.reduce(count_target, "l h b -> l h", reduction="sum")
-            # percentage
             count_target = 100 * count_target / total_num_examples
             if plot:
                 self.plot_heatmap(count_target)
@@ -343,21 +309,16 @@ class OVCircuit:
                         elif target == "mem":
                             logit_target[layer, head, idx] = mem_logit.cpu()
             logit_target = einops.rearrange(logit_target, "l h b s -> l h (b s)")
-            # compute avg logit_target for each layer accross al the position and examples
             avg_mean = logit_target.mean(dim=-1).mean(dim=-1)
-            #mean over all examples
             logit_target_std = logit_target.std(dim=-1)
             logit_target = logit_target.mean(dim=-1)
-            # for each layer, compute the percentage increase or decrease of logit_target
             for layer in range(self.model.cfg.n_layers):
                 logit_target[layer] = -100 * (logit_target[layer] - avg_mean[layer]) / avg_mean[layer]
-
             if plot:
                 self.plot_heatmap(logit_target)
                 self.plot_heatmap(logit_target_std)
             return logit_target
                         
-    
     def plot_heatmap(self, copy_score, xlabel="head", ylabel="layer", x_ticks=None, y_ticks=None, title="none"):
         import seaborn as sns
         import matplotlib.pyplot as plt
@@ -374,19 +335,12 @@ class OVCircuit:
             
     def compute_copy_score_all_heads(self, resid_layer_input, resid_pos, target="copy", plot=False, logit_score=False, **kwargs):
         lenghts = self.dataset.get_lengths()
-        copy_score = {} # key: length, value: copy score (layer, head)
-        for l in lenghts:
-            copy_score[l] = self.ov_single_len_all_heads_score(resid_layer_input, resid_pos, l, target=target, plot=False, disable_tqdm=False, logit_score=logit_score, **kwargs)
-        
-        # copy_score is a dict of tensors of shape (n_layers, n_heads). Convert to a tensor of shape (n_layers, n_heads) with the mean of the copy score
+        copy_score = {l: self.ov_single_len_all_heads_score(resid_layer_input, resid_pos, l, target=target, plot=False, disable_tqdm=False, logit_score=logit_score, **kwargs) for l in lenghts}
         copy_score = torch.stack(list(copy_score.values()), dim=0).mean(dim=0)
-        
         if plot:
-            # put to zero the negative values
             copy_score[copy_score < 0] = 0
             self.plot_heatmap(copy_score)
-        else:
-            return copy_score
+        return copy_score
     
     def aggregate_result(self, object_positions, logit_target, length):
         subject_1_1 = 5
@@ -418,8 +372,7 @@ class OVCircuit:
 
     def residual_stram_track_target(self,   length, target="copy", disable_tqdm=False, plot=False):
         assert target in ["copy", "mem"], "target should be one of copy or mem"
-        self.dataset.set_len(length, self.model)
-        self.dataset.slice_to_fit_batch(self.batch_size)
+        self.set_len(length)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
     
@@ -478,36 +431,205 @@ class OVCircuit:
         return result
     
     
-class Investigate_single_head():
-    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size):
-        self.model = model
-        self.dataset = dataset
-        self.batch_size = batch_size
+class Investigate_single_head(BaseExperiment):
+    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size, filter_outliers=False):
+        super().__init__(dataset, model, batch_size, filter_outliers)
         
     def get_logit_target_single_head_single_len(self, layer, head, length):
-        self.dataset.set_len(length, self.model)
-        self.dataset.slice_to_fit_batch(self.batch_size)
+        self.set_len(length)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
         
         logit_mem = torch.zeros((num_batches, self.batch_size))
         logit_cp = torch.zeros((num_batches, self.batch_size))
+        logit_mem_subj = torch.zeros((num_batches, self.batch_size))
+        logit_cp_subj = torch.zeros((num_batches, self.batch_size))
         for idx, batch in enumerate(dataloader):
-            logit, cache = self.model.run_with_cache(batch["corrupted_prompts"])[:,-1,:]
-            mem, cp = to_logit_token(logit, batch["target"])
-            logit_mem[idx] = mem.cpu()
-            logit_cp[idx] = cp.cpu()
+            logit, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            residual_stream = cache["resid_pre", layer]
+            W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
+            logit_obj = einops.einsum(self.model.W_U, (residual_stream[:,-2,:] @ W_OV), "d d_v, b d -> b d_v")[:,:]
+            logit_subj = einops.einsum(self.model.W_U, (residual_stream[:,5,:] @ W_OV), "d d_v, b d -> b d_v")[:,:]
+            
+
+            logit_obj = self.model.ln_final(logit_obj)
+            logit_subj = self.model.ln_final(logit_subj)
+            logit_mem[idx], logit_cp[idx] = to_logit_token(logit_obj, batch["target"])
+            logit_mem_subj[idx], logit_cp_subj[idx] = to_logit_token(logit_subj, batch["target"])
         logit_mem = einops.rearrange(logit_mem, "b s -> (b s)")
         logit_cp = einops.rearrange(logit_cp, "b s -> (b s)")
-        return logit_mem, logit_cp
+        logit_mem_subj = einops.rearrange(logit_mem_subj, "b s -> (b s)")
+        logit_cp_subj = einops.rearrange(logit_cp_subj, "b s -> (b s)")
+        
+        # # percentage increase or decrease of logit_mem
+        # logit_mem = 100 * (logit_mem - logit_mem_resid) / logit_mem_resid
+        # # percentage increase or decrease of logit_cp
+        # logit_cp = 100 * (logit_cp - logit_mem_subj) / logit_mem_subj
+        
+        return logit_mem, logit_cp, logit_mem_subj, logit_cp_subj
     
     def get_logit_target_single_head(self, layer, head):
         lenghts = self.dataset.get_lengths()
         logit_mem = {}
         logit_cp = {}
+        logit_mem_resid = {}
+        logit_cp_resid = {}
         for l in lenghts:
-            logit_mem[l], logit_cp[l] = self.get_logit_target_single_head_single_len(layer, head, l)
+            logit_mem[l], logit_cp[l], logit_mem_resid[l], logit_cp_resid[l] = self.get_logit_target_single_head_single_len(layer, head, l)
         
         logit_mem = torch.cat(list(logit_mem.values()), dim=0)
         logit_cp = torch.cat(list(logit_cp.values()), dim=0)
+        logit_mem_resid = torch.cat(list(logit_mem_resid.values()), dim=0)
+        logit_cp_resid = torch.cat(list(logit_cp_resid.values()), dim=0)
+        return logit_mem, logit_cp, logit_mem_resid, logit_cp_resid
+    
+    
+    def get_attn_score_per_len(self, lenght):
+        self.set_len(lenght)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        num_batches = len(dataloader)
+        object_position = self.dataset.obj_pos[0]
+        attn_score_obj = torch.zeros((self.model.cfg.n_layers, self.model.cfg.n_heads, num_batches, self.batch_size))
+        attn_score_subj = torch.zeros((self.model.cfg.n_layers, self.model.cfg.n_heads, num_batches, self.batch_size))
+        
+        for idx, batch in tqdm(enumerate(dataloader),total=num_batches, desc="Attention score"):
+            _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            for layer in range(self.model.cfg.n_layers):
+                for head in range(self.model.cfg.n_heads):
+                    attn_score_obj[layer, head, idx] = cache["pattern", layer][:,head, -1, object_position]
+                    attn_score_subj[layer, head, idx] = cache["pattern", layer][:,head,-1,5] + cache["pattern", layer][:,head,-1,object_position+2]
+                    
+        attn_score_obj = einops.rearrange(attn_score_obj, "l h b s -> l h (b s)")
+        attn_score_subj = einops.rearrange(attn_score_subj, "l h b s -> l h (b s)")
+        return attn_score_obj, attn_score_subj
+    
+    
+
+class LogitLens(BaseExperiment):
+    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size, filter_outliers=False):
+        super().__init__(dataset, model, batch_size, filter_outliers)
+        
+    def logit_lens_single_len(self, l, plot=False):
+        self.set_len(l)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        num_batches = len(dataloader)
+        
+        logit_mem = torch.zeros((self.model.cfg.n_layers, num_batches, self.batch_size))
+        logit_cp = torch.zeros((self.model.cfg.n_layers,num_batches, self.batch_size))
+        
+        for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"Logit lens at all layers", disable=False):
+            logit, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            for layer in range(self.model.cfg.n_layers):
+                residual_at_layer = cache["resid_pre", layer]
+                logit_at_layer = einops.einsum(self.model.W_U, residual_at_layer[:,-1,:], "d d_v, b d -> b d_v")
+                logit_at_layer = self.model.ln_final(logit_at_layer)
+                mem_logit, cp_logit = to_logit_token(logit_at_layer, batch["target"], normalize="logsoftmax")
+                logit_mem[layer, idx] = mem_logit.cpu()
+                logit_cp[layer, idx] = cp_logit.cpu()
+        
+        logit_mem = einops.rearrange(logit_mem, "l b s -> l (b s)")
+        logit_cp = einops.rearrange(logit_cp, "l b s -> l (b s)")
+        # count the examples where the logit_mem is greater than the logit_cp for layer greater the 6 and print the percentage
+        print("logit_mem > logit_cp", (logit_mem[2] > logit_cp[2]).sum().item() / logit_mem[2].numel())
+        
+        if plot:
+            mem_mean_per_layer = logit_mem.mean(dim=-1) # (l,1)
+            cp_mean_per_layer = logit_cp.mean(dim=-1)
+            mem_std_per_layer = logit_mem.std(dim=-1)
+            cp_std_per_layer = logit_cp.std(dim=-1)
+            
+            # plot
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(13,8))
+            plt.title("Logit lens")
+            plt.plot(mem_mean_per_layer.detach().cpu().numpy(), label="mem")
+            plt.fill_between(range(self.model.cfg.n_layers), mem_mean_per_layer.detach().cpu().numpy() - mem_std_per_layer.detach().cpu().numpy(), mem_mean_per_layer.detach().cpu().numpy() + mem_std_per_layer.detach().cpu().numpy(), alpha=0.2)
+            plt.plot(cp_mean_per_layer.detach().cpu().numpy(), label="cp")
+            plt.fill_between(range(self.model.cfg.n_layers), cp_mean_per_layer.detach().cpu().numpy() - cp_std_per_layer.detach().cpu().numpy(), cp_mean_per_layer.detach().cpu().numpy() + cp_std_per_layer.detach().cpu().numpy(), alpha=0.2)
+            plt.legend()
+            plt.show()
         return logit_mem, logit_cp
+    
+    def logit_lens_multi_len(self, plot=False):
+        lenghts = self.dataset.get_lengths()
+        logit_mem = {}
+        logit_cp = {}
+        for l in lenghts:
+            logit_mem[l], logit_cp[l] = self.logit_lens_single_len(l, plot=False)
+        
+        logit_mem = torch.cat(list(logit_mem.values()), dim=-1)
+        logit_cp = torch.cat(list(logit_cp.values()), dim=-1)
+        if plot:
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(13,8))
+            mem_mean_per_layer = logit_mem.mean(dim=-1)
+            cp_mean_per_layer = logit_cp.mean(dim=-1)
+            mem_std_per_layer = logit_mem.std(dim=-1)
+            cp_std_per_layer = logit_cp.std(dim=-1)
+            plt.plot(mem_mean_per_layer.detach().cpu().numpy(), label="mem")
+            plt.fill_between(range(self.model.cfg.n_layers), mem_mean_per_layer.detach().cpu().numpy() - mem_std_per_layer.detach().cpu().numpy(), mem_mean_per_layer.detach().cpu().numpy() + mem_std_per_layer.detach().cpu().numpy(), alpha=0.2)
+            plt.plot(cp_mean_per_layer.detach().cpu().numpy(), label="cp")
+            plt.fill_between(range(self.model.cfg.n_layers), cp_mean_per_layer.detach().cpu().numpy() - cp_std_per_layer.detach().cpu().numpy(), cp_mean_per_layer.detach().cpu().numpy() + cp_std_per_layer.detach().cpu().numpy(), alpha=0.2)
+            plt.legend()
+            plt.show()
+        return logit_mem, logit_cp
+                
+                
+class ResidCorrelation(BaseExperiment):
+    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size, filter_outliers=False):
+        super().__init__(dataset, model, batch_size, filter_outliers)
+        
+    def get_logit_single_len(self, length, layer = 0, component="resid_post", position="o_pre"):
+        self.set_len(length)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        num_batches = len(dataloader)
+        
+        position = self.get_position(position)
+        # position = -1
+        
+        final_logit = torch.zeros((num_batches, self.batch_size, 2))
+        position_logit = torch.zeros((num_batches, self.batch_size, 2))
+        
+        for idx, batch in tqdm(enumerate(dataloader), total=num_batches):
+            logit, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            final_logit[idx, :, 0] , final_logit[idx, :, 1] = to_logit_token(logit[:,-1,:], batch["target"])
+            
+            residual_stream = cache[component, layer]
+            residual_logit = einops.einsum(self.model.W_U, residual_stream[:,position,:], "d d_v, b d -> b d_v")
+            residual_logit = self.model.ln_final(residual_logit)
+            
+            position_logit[idx, :, 0], position_logit[idx, :, 1] = to_logit_token(residual_logit, batch["target"])
+
+        final_logit = einops.rearrange(final_logit, "b s d -> (b s) d")
+        position_logit = einops.rearrange(position_logit, "b s d -> (b s) d")
+        return final_logit, position_logit
+            
+    def get_correlation_all_len(self, position, **kwargs):
+        lenghts = self.dataset.get_lengths()
+        final_logit = {}
+        position_logit = {}
+        for l in lenghts:
+            final_logit[l], position_logit[l] = self.get_logit_single_len(l, position=position, **kwargs)
+        
+        final_logit = torch.cat(list(final_logit.values()), dim=0)
+        position_logit = torch.cat(list(position_logit.values()), dim=0)
+        return final_logit, position_logit
+            
+    def project_ratio_heads_single_len(self, length):
+        self.set_len(length)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        num_batches = len(dataloader)
+        
+        project_ratio_mem = torch.zeros((self.model.cfg.n_layers, self.model.cfg.n_heads, num_batches, self.batch_size))
+        project_ratio_cp = torch.zeros((self.model.cfg.n_layers, self.model.cfg.n_heads, num_batches, self.batch_size))
+        
+        for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc="Project ratio"):
+            logit, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            for layer in range(self.model.cfg.n_layers):
+                for head in range(self.model.cfg.n_heads):
+                    residual_stream = cache["resid_post", layer]
+                    W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
+                    output_direction = (residual_stream[:,-1,:] @ W_OV)
+                    
+                    project_ratio= torch.einsum("b d, b d -> b", output_direction, residual_stream[:,-1,:])
+                    

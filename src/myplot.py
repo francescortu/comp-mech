@@ -1,8 +1,9 @@
 # plot the result as a heatmap
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
 
-def plot_heatmaps(result, result_std, title, interval, save=False):
+def plot_heatmaps(result, result_std, title, interval, save=False, center=0.0):
     sns.set()
     sns.set_style("whitegrid", {"axes.grid": False})
     # add also the std heatmap
@@ -16,7 +17,7 @@ def plot_heatmaps(result, result_std, title, interval, save=False):
         fmt=".2f",
         cbar=False,
         ax=ax[0],
-        center=1.0,
+        center=center,
         vmax=interval,
         vmin=-interval,
         cmap="RdBu_r",
@@ -39,6 +40,8 @@ def plot_heatmaps(result, result_std, title, interval, save=False):
     
 def barplot_head(examples_cp, examples_mem):
     import seaborn as sns
+    import numpy as np
+    import pandas as pd
 
     n_layers = 12
     n_heads = 12

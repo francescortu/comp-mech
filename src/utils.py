@@ -22,6 +22,8 @@ class C:
 def get_predictions(model, logits, k, return_type):
     if return_type == "probabilities":
         logits = torch.softmax(logits, dim=-1)
+    if return_type == "logprob":
+        logits = torch.log_softmax(logits, dim=-1)
 
     prediction_tkn_ids = logits[0, -1, :].topk(k).indices.cpu().detach().numpy()
     prediction_tkns = [model.to_string(tkn_id) for tkn_id in prediction_tkn_ids]
