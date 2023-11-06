@@ -9,6 +9,7 @@ from tqdm import tqdm
 import json
 import torch
 from torch.utils.data import Dataset
+import einops
 
 class MyDataset(Dataset):
     def __init__(self, path, tokenizer, slice=None):
@@ -94,40 +95,51 @@ class EvaluateMechanism:
         target_true = 0
         target_false = 0
         other = 0
-
+        index = torch.zeros(num_samples)
         for i in range(num_samples):
             if torch.argmax(probs[i]) == target[i, 0]:
                 target_true += 1
+                index[i] = 1
             elif torch.argmax(probs[i]) == target[i, 1]:
                 target_false += 1
+                index[i] = 2
             else:
                 other += 1
-        return target_true, target_false, other
+                index[i] = 3
+        return target_true, target_false, other, index
     
     def evaluate(self, length):
         self.dataset.set_len(length)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=40, shuffle=True)
         target_true, target_false, other = 0, 0, 0
-        for batch in tqdm(dataloader):
+        n_batch = len(dataloader)
+        batch_size = dataloader.batch_size
+        index_length= torch.zeros(n_batch, batch_size)
+        for idx, batch in tqdm(enumerate(dataloader)):
             logits = self.model(batch["input_ids"])["logits"]
             count = self.check_prediction(logits, batch["target"])
             target_true += count[0]
             target_false += count[1]
             other += count[2]
-        return target_true, target_false, other
+            index_length[idx] = count[3]
+        index_length = einops.rearrange(index_length, "batch_size n_batch -> (batch_size n_batch)")
+        return target_true, target_false, other, index_length
     
     def evaluate_all(self):
         target_true, target_false, other = 0, 0, 0
+        index = []
         for length in self.lenghts:
             result = self.evaluate(length)
             target_true += result[0]
             target_false += result[1]
             other += result[2]
+            index.append(result[3])
         print(f"Total: Target True: {target_true}, Target False: {target_false}, Other: {other}")
-        
+        index = torch.cat(index, dim=1)
             
         #save results
         with open(f"../results/{self.model_name}_evaluate_mechanism.json", "w") as file:
-            json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.dataset.full_data)}, file)
+            json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.full_data)}, file)
+        torch.save(index, f"../results/{self.model_name}_evaluate_mechanism.pt")
         
         return target_true, target_false, other
