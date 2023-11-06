@@ -61,7 +61,7 @@ class MyDataset(Dataset):
     def get_lengths(self):
         # return all the possible lengths in the dataset
         for d in tqdm(self.full_data, desc="Tokenizing prompts"):
-            tokenized_prompt = self.tokenizer([d["prompt"], d["true"], d["false"]], return_length=True)
+            tokenized_prompt = self.tokenizer([d["prompt"], d["target_true"], d["target_new"]], return_length=True)
             d["length"] = tokenized_prompt["length"][0]
             # find the position of d["false"] in the tokenized prompt
             d["position"] = tokenized_prompt["input_ids"][0].index(tokenized_prompt["input_ids"][2][0])
@@ -105,7 +105,7 @@ class EvaluateMechanism:
             else:
                 other += 1
                 index[i] = 3
-        return target_true, target_false, other, index
+        return target_true, target_false, other #, index
     
     def evaluate(self, length):
         self.dataset.set_len(length)
@@ -120,7 +120,7 @@ class EvaluateMechanism:
             target_true += count[0]
             target_false += count[1]
             other += count[2]
-            index_length[idx] = count[3]
+            # index_length[idx] = count[3]
         index_length = einops.rearrange(index_length, "batch_size n_batch -> (batch_size n_batch)")
         return target_true, target_false, other, index_length
     
@@ -132,13 +132,13 @@ class EvaluateMechanism:
             target_true += result[0]
             target_false += result[1]
             other += result[2]
-            index.append(result[3])
+            # index.append(result[3])
         print(f"Total: Target True: {target_true}, Target False: {target_false}, Other: {other}")
-        index = torch.cat(index, dim=1)
+        # index = torch.cat(index, dim=1)
             
         #save results
         with open(f"../results/{self.model_name}_evaluate_mechanism.json", "w") as file:
             json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.full_data)}, file)
-        torch.save(index, f"../results/{self.model_name}_evaluate_mechanism.pt")
+        # torch.save(index, f"../results/{self.model_name}_evaluate_mechanism.pt")
         
         return target_true, target_false, other

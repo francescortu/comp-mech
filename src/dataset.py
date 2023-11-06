@@ -11,34 +11,49 @@ class MyDataset(Dataset):
             self.data = self.data[:slice]
         print("Dataset loaded from", path)
         print("Number of samples:", len(self.data))
+        self.model = model
         self.pad_token = model.tokenizer.pad_token
-        self.data_per_len = self.split_per_len(self.data)
+        self.data_per_len = self.split_per_len()
         
     def __len__(self):
         return len(self.data) 
     def __getitem__(self, idx):
         return {
-            "clean_prompts": self.clean_prompts[idx],
+            # "clean_prompts": self.clean_prompts[idx],
             "corrupted_prompts": self.corrupted_prompts[idx],
             "target": self.target[idx],
             "obj_pos": self.obj_pos[idx],
         }
         
-    def split_per_len(self, data):
+    def split_per_len(self):
+        for d in self.data:
+            string_tokens = self.model.to_str_tokens(d["prompt"])
+            d["length"] = len(string_tokens)
+            for i, token in enumerate(string_tokens):
+                # print(token, d["target_true"])
+                if token == d["target_new"]:
+                    d["obj_pos"] = i
+                    break
         data_per_len = {}
-        for sample in data:
+        for sample in self.data:
             length = sample["length"]
             if length not in data_per_len:
                 data_per_len[length] = []
             data_per_len[length].append(sample)
+            
+        # remove the lengths that have less than 100 samples
+        for length in list(data_per_len.keys()):
+            if len(data_per_len[length]) < 100:
+                del data_per_len[length]
         return data_per_len
     
     def set_len(self, length, model):
         self.length = length
         self.data = self.data_per_len[length]
-        self.clean_prompts = [d["template"].format(self.pad_token) for d in self.data]
-        self.corrupted_prompts = [d["template"].format(d["target_new"]) for d in self.data]
-        self.obj_pos = [d["obj_pos"] for d in self.data]
+        # self.clean_prompts = [d["template"].format(self.pad_token) for d in self.data]
+        # self.corrupted_prompts = [d["template"].format(d["target_new"]) for d in self.data]
+        self.corrupted_prompts = [d["prompt"] for d in self.data]
+        self.obj_pos = [d["obj_pos"]+1 for d in self.data]
         target1 = [model.to_tokens(d["target_true"], prepend_bos=False) for d in self.data]
         target2 = [model.to_tokens(d["target_new"], prepend_bos=False) for d in self.data]
         tensor_1 = torch.stack(target1, dim=0)
@@ -66,7 +81,6 @@ class MyDataset(Dataset):
     def slice(self, end, start=0):
         self.data   = self.data[start:end]
         self.target = self.target[start:end]
-        self.clean_prompts = self.clean_prompts[start:end]
         self.corrupted_prompts = self.corrupted_prompts[start:end]
         self.obj_pos = self.obj_pos[start:end]
         
