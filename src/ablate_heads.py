@@ -65,10 +65,10 @@ class BaseExperiment():
         corrupted_logit = []
         target = []
         for batch in tqdm(dataloader):
-            clean_logit.append(self.model(batch["clean_prompts"])[:,-1,:].cpu())
+            # clean_logit.append(self.model(batch["clean_prompts"])[:,-1,:].cpu())
             corrupted_logit.append(self.model(batch["corrupted_prompts"])[:,-1,:].cpu())
             target.append(batch["target"].cpu())
-        clean_logit = torch.cat(clean_logit, dim=0)
+        # clean_logit = torch.cat(clean_logit, dim=0)
         corrupted_logit = torch.cat(corrupted_logit, dim=0)
         target = torch.cat(target, dim=0)
         return clean_logit, corrupted_logit, target
@@ -95,8 +95,7 @@ class BaseExperiment():
 class Ablate(BaseExperiment):
     def __init__(self, dataset:MyDataset, model:WrapHookedTransformer,  batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
-        self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
-        self.num_batches = len(self.dataloader)
+
     
     def create_dataloader(self, filter_outliers=False, **kwargs):
         if filter_outliers:
@@ -113,16 +112,17 @@ class Ablate(BaseExperiment):
         
     def get_normalize_metric(self):
         clean_logit, corrupted_logit, target = self.compute_logit()
-        clean_logit_mem, clean_logit_cp = to_logit_token(clean_logit, target)
+        # clean_logit_mem, clean_logit_cp = to_logit_token(clean_logit, target)
         corrupted_logit_mem, corrupted_logit_cp = to_logit_token(corrupted_logit, target)
         
         def normalize_logit_token(logit_mem, logit_cp,  baseline="corrupted",):
             # logit_mem, logit_cp = to_logit_token(logit, target)
             # percentage increase or decrease of logit_mem
             if baseline == "clean":
-                logit_mem = 100 * (logit_mem - clean_logit_mem) / clean_logit_mem
-                # percentage increase or decrease of logit_cp
-                logit_cp = 100 * (logit_cp - clean_logit_cp) / clean_logit_cp
+                pass
+                # logit_mem = 100 * (logit_mem - clean_logit_mem) / clean_logit_mem
+                # # percentage increase or decrease of logit_cp
+                # logit_cp = 100 * (logit_cp - clean_logit_cp) / clean_logit_cp
                 return -logit_mem, -logit_cp
             elif baseline == "corrupted":
                 logit_mem = 100 * (logit_mem - corrupted_logit_mem) / corrupted_logit_mem
@@ -134,6 +134,8 @@ class Ablate(BaseExperiment):
     
     def ablate_heads(self):
         normalize_logit_token = self.get_normalize_metric()
+        self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        self.num_batches = len(self.dataloader)
         def heads_hook(activation, hook, head,  pos1=None, pos2=None):
             activation[:, head, -1, :] = 0
             return activation
@@ -195,20 +197,18 @@ class Ablate(BaseExperiment):
     
 class AblateMultiLen():
     def __init__(self, dataset:MyDataset, model:WrapHookedTransformer,  batch_size):
-        self.dataset = dataset
         self.model = model
         self.batch_size = batch_size
         self.ablate = Ablate(dataset, model, batch_size)
         
     def ablate_single_len(self, length, filter_outliers=False, **kwargs):
-        self.dataset.set_len(length, self.model)
         self.ablate.set_len(length)
-        self.ablate.create_dataloader(filter_outliers=filter_outliers, **kwargs)
+        # self.ablate.create_dataloader(filter_outliers=filter_outliers, **kwargs)
         return self.ablate.ablate_heads()
     
     def ablate_multi_len(self, filter_outliers=False, **kwargs):
-        lenghts = self.dataset.get_lengths()
-        
+        lenghts = self.ablate.dataset.get_lengths()
+        # lenghts = [11]
         result_cp_per_len = {}
         result_mem_per_len = {}
         for l in lenghts:
