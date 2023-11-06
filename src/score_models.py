@@ -83,6 +83,7 @@ class EvaluateMechanism:
     def __init__(self, model_name:str, dataset:MyDataset):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.model_name = model_name
         self.dataset = dataset
         self.lenghts = self.dataset.lenghts
         
@@ -127,6 +128,6 @@ class EvaluateMechanism:
             
         #save results
         with open(f"../results/{self.model_name}_evaluate_mechanism.json", "w") as file:
-            json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.full_data)}, file)
+            json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.dataset.full_data)}, file)
         
         return target_true, target_false, other
