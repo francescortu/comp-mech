@@ -40,6 +40,7 @@ class MyDataset(Dataset):
     
     def set_len(self, length):
         self.data = [d for d in self.full_data if d["length"] == length]
+        self.original_index = [i for i, d in enumerate(self.full_data) if d["length"] == length]
         self.prompts = [d["prompt"] for d in self.data]
         self.obj_pos = [d["position"] for d in self.data]
         self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]
@@ -61,7 +62,7 @@ class MyDataset(Dataset):
     def get_lengths(self):
         # return all the possible lengths in the dataset
         for d in tqdm(self.full_data, desc="Tokenizing prompts"):
-            tokenized_prompt = self.tokenizer([d["prompt"], d["target_true"], d["target_new"]], return_length=True)
+            tokenized_prompt = self.tokenizer([d["prompt"], d["true"], d["false"]], return_length=True)
             d["length"] = tokenized_prompt["length"][0]
             # find the position of d["false"] in the tokenized prompt
             d["position"] = tokenized_prompt["input_ids"][0].index(tokenized_prompt["input_ids"][2][0])
@@ -95,18 +96,20 @@ class EvaluateMechanism:
         target_true = 0
         target_false = 0
         other = 0
-        index = torch.zeros(num_samples)
+        target_true_indices = []
+        target_false_indices = []
+        other_indices = []
         for i in range(num_samples):
             if torch.argmax(probs[i]) == target[i, 0]:
                 target_true += 1
-                index[i] = 1
+                target_true_indices.append(i)
             elif torch.argmax(probs[i]) == target[i, 1]:
                 target_false += 1
-                index[i] = 2
+                target_false_indices.append(i)
             else:
                 other += 1
-                index[i] = 3
-        return target_true, target_false, other #, index
+                other_indices.append(i)
+        return  target_true_indices, target_false_indices, other_indices
     
     def evaluate(self, length):
         self.dataset.set_len(length)
@@ -114,32 +117,47 @@ class EvaluateMechanism:
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)
         batch_size = dataloader.batch_size
-        index_length= torch.zeros(n_batch, batch_size)
+        all_true_indices = []
+        all_false_indices = []
+        all_other_indices = []
         for idx, batch in tqdm(enumerate(dataloader)):
             logits = self.model(batch["input_ids"])["logits"]
             count = self.check_prediction(logits, batch["target"])
-            target_true += count[0]
-            target_false += count[1]
-            other += count[2]
-            # index_length[idx] = count[3]
-        index_length = einops.rearrange(index_length, "batch_size n_batch -> (batch_size n_batch)")
-        return target_true, target_false, other, index_length
+            target_true += len(count[0])
+            target_false += len(count[1])
+            other += len(count[2])
+
+            all_true_indices.extend([self.dataset.original_index[i] for i in count[0]])
+            all_false_indices.extend([self.dataset.original_index[i] for i in count[1]])
+            all_other_indices.extend([self.dataset.original_index[i] for i in count[2]])
+
+        return target_true, target_false, other, all_true_indices, all_false_indices, all_other_indices
     
     def evaluate_all(self):
         target_true, target_false, other = 0, 0, 0
-        index = []
+        all_true_indices = []
+        all_false_indices = []
+        all_other_indices = []
         for length in self.lenghts:
             result = self.evaluate(length)
             target_true += result[0]
             target_false += result[1]
             other += result[2]
-            # index.append(result[3])
+            
+            all_true_indices.extend(result[3])
+            all_false_indices.extend(result[4])
+            all_other_indices.extend(result[5])
+            
         print(f"Total: Target True: {target_true}, Target False: {target_false}, Other: {other}")
         # index = torch.cat(index, dim=1)
             
         #save results
         with open(f"../results/{self.model_name}_evaluate_mechanism.json", "w") as file:
-            json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.full_data)}, file)
+            json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.dataset.full_data)}, file)
         # torch.save(index, f"../results/{self.model_name}_evaluate_mechanism.pt")
+        
+        # save indices
+        with open(f"../results/{self.model_name}_evaluate_mechanism_indices.json", "w") as file:
+            json.dump({"target_true": all_true_indices, "target_false": all_false_indices, "other": all_other_indices}, file)
         
         return target_true, target_false, other
