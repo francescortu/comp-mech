@@ -65,10 +65,18 @@ class MyDataset(Dataset):
             tokenized_prompt = self.tokenizer([d["prompt"], d["true"], d["false"]], return_length=True)
             d["length"] = tokenized_prompt["length"][0]
             # find the position of d["false"] in the tokenized prompt
-            d["position"] = tokenized_prompt["input_ids"][0].index(tokenized_prompt["input_ids"][2][0])
-            d["token_true"] = tokenized_prompt["input_ids"][1][0]
-            d["token_false"] = tokenized_prompt["input_ids"][2][0]
-            d["input_ids"] = tokenized_prompt["input_ids"][0]
+
+            assert len(tokenized_prompt["input_ids"][2]) < 3, "False token is too long"
+            
+            if len(tokenized_prompt["input_ids"][2]) == 2:
+                token_position = 1
+            if len(tokenized_prompt["input_ids"][2]) == 1:
+                token_position = 0
+                
+            d["position"] = tokenized_prompt["input_ids"][0].index(tokenized_prompt["input_ids"][2][token_position])
+            d["token_true"] = tokenized_prompt["input_ids"][1][token_position]
+            d["token_false"] = tokenized_prompt["input_ids"][2][token_position]
+            d["input_ids"] = tokenized_prompt["input_ids"][token_position]
         return list(set([d["length"] for d in self.full_data]))
     
     def slice_to_fit_batch(self, batch_size):
