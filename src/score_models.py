@@ -82,12 +82,15 @@ class MyDataset(Dataset):
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 class EvaluateMechanism:
-    def __init__(self, model_name:str, dataset:MyDataset):
+    def __init__(self, model_name:str, dataset:MyDataset, device="cpu"):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.model = self.model.to(device)
         self.model_name = model_name
         self.dataset = dataset
         self.lenghts = self.dataset.lenghts
+        self.device = device
+        print("Model device", self.model.device)
         
     def check_prediction(self, logit, target):
         probs = torch.softmax(logit, dim=-1)[:,-1,:]
@@ -113,15 +116,16 @@ class EvaluateMechanism:
     
     def evaluate(self, length):
         self.dataset.set_len(length)
-        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=40, shuffle=True)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=100, shuffle=True)
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)
-        batch_size = dataloader.batch_size
         all_true_indices = []
         all_false_indices = []
         all_other_indices = []
-        for idx, batch in tqdm(enumerate(dataloader)):
-            logits = self.model(batch["input_ids"])["logits"]
+        
+        for idx, batch in tqdm(enumerate(dataloader), total=n_batch):
+            input_ids = batch["input_ids"].to(self.device)
+            logits = self.model(input_ids)["logits"]
             count = self.check_prediction(logits, batch["target"])
             target_true += len(count[0])
             target_false += len(count[1])
@@ -150,14 +154,17 @@ class EvaluateMechanism:
             
         print(f"Total: Target True: {target_true}, Target False: {target_false}, Other: {other}")
         # index = torch.cat(index, dim=1)
-            
+        
+        if len(self.model_name.split("/")) > 1:
+            save_name = self.model_name.split("/")[1]
+        
         #save results
-        with open(f"../results/{self.model_name}_evaluate_mechanism.json", "w") as file:
+        with open(f"../results/{save_name}_evaluate_mechanism.json", "w") as file:
             json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.dataset.full_data)}, file)
         # torch.save(index, f"../results/{self.model_name}_evaluate_mechanism.pt")
         
         # save indices
-        with open(f"../results/{self.model_name}_evaluate_mechanism_indices.json", "w") as file:
+        with open(f"../results/{save_name}_evaluate_mechanism_indices.json", "w") as file:
             json.dump({"target_true": all_true_indices, "target_false": all_false_indices, "other": all_other_indices}, file)
         
         return target_true, target_false, other
