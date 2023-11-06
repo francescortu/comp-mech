@@ -118,6 +118,7 @@ class EvaluateMechanism:
         for idx, batch in tqdm(enumerate(dataloader)):
             logits = self.model(batch["input_ids"])["logits"]
             count = self.check_prediction(logits, batch["target"])
+            print("shape", logits.shape)
             target_true += count[0]
             target_false += count[1]
             other += count[2]

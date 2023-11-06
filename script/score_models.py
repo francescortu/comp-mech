@@ -19,7 +19,7 @@ for model_name in models_name:
         model_name,
     )
 
-    dataset = MyDataset("../data/full_data.json", tokenizer=tokenizer)
+    dataset = MyDataset("../data/full_data.json", tokenizer=tokenizer, slice=1000)
 
     evaluator = EvaluateMechanism(
         model_name, dataset)

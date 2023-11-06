@@ -5,7 +5,7 @@ import torch
 from tqdm import tqdm
 from functools import partial
 from copy import deepcopy
-
+torch.set_grad_enabled(False)
 
 
 def to_logit_token(logit, target, normalize="logsoftmax"):
