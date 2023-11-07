@@ -51,6 +51,39 @@ class MyDataset(Dataset):
         # target1, target2 = [torch.zeros(10)], [torch.zeros(10)]
         self.target = torch.stack([target1, target2], dim=1)
 
+        assert self.check_duplicate() == True, "Duplicate prompts"
+        assert self.check_index_mapping() == True, "Index mapping is wrong"
+        assert len(self.data) == len(set(d['prompt'] for d in self.data)), "There are duplicate prompts after filtering."
+        
+        # check if the index mapping is unique
+        assert len(self.original_index) == len(set(self.original_index)), "Original indices are not unique."
+        assert all(self.full_data[idx]["prompt"] == self.data[i]["prompt"] for i, idx in enumerate(self.original_index)), "Index mapping mismatch."
+
+        
+    def check_index_mapping(self):
+        # check if the index mapping is correct
+        for i, d in enumerate(self.data):
+            if d["prompt"] != self.full_data[self.original_index[i]]["prompt"]:
+                return False
+        return True
+    
+    def check_duplicate(self):
+        # check if full_data has duplicate prompts
+        #find duplicate in two lists
+        seen = set()
+        for i,d in enumerate(self.full_data):
+            if d["prompt"] in seen:
+                #check the other fields
+                for j,d2 in enumerate(self.full_data):
+                    if j == i:
+                        continue
+                    if d["prompt"] == d2["prompt"]:
+                        if d["true"] != d2["true"] or d["false"] != d2["false"]:
+                            continue
+                        else:
+                            return False
+            seen.add(d["prompt"])
+        return True
         
     def slice(self, end, start=0):
         self.data   = self.data[start:end]
@@ -64,6 +97,7 @@ class MyDataset(Dataset):
         for d in tqdm(self.full_data, desc="Tokenizing prompts"):
             tokenized_prompt = self.tokenizer([d["prompt"], d["true"], d["false"]], return_length=True)
             d["length"] = tokenized_prompt["length"][0]
+            d["input_ids"] = tokenized_prompt["input_ids"][0]
             # find the position of d["false"] in the tokenized prompt
 
             assert len(tokenized_prompt["input_ids"][2]) < 3, "False token is too long"
@@ -76,7 +110,6 @@ class MyDataset(Dataset):
             d["position"] = tokenized_prompt["input_ids"][0].index(tokenized_prompt["input_ids"][2][token_position])
             d["token_true"] = tokenized_prompt["input_ids"][1][token_position]
             d["token_false"] = tokenized_prompt["input_ids"][2][token_position]
-            d["input_ids"] = tokenized_prompt["input_ids"][token_position]
         return list(set([d["length"] for d in self.full_data]))
     
     def slice_to_fit_batch(self, batch_size):
@@ -90,7 +123,7 @@ class MyDataset(Dataset):
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 class EvaluateMechanism:
-    def __init__(self, model_name:str, dataset:MyDataset, device="cpu"):
+    def __init__(self, model_name:str, dataset:MyDataset, device="cpu", batch_size=100):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
         self.model = self.model.to(device)
@@ -98,6 +131,7 @@ class EvaluateMechanism:
         self.dataset = dataset
         self.lenghts = self.dataset.lenghts
         self.device = device
+        self.batch_size = batch_size
         print("Model device", self.model.device)
         
     def check_prediction(self, logit, target):
@@ -124,7 +158,7 @@ class EvaluateMechanism:
     
     def evaluate(self, length):
         self.dataset.set_len(length)
-        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=100, shuffle=True)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)
         all_true_indices = []
@@ -138,7 +172,10 @@ class EvaluateMechanism:
             target_true += len(count[0])
             target_false += len(count[1])
             other += len(count[2])
-
+            
+            batch_indices = [self.dataset.original_index[i] for i in count[0] + count[1] + count[2]]
+            assert len(batch_indices) == len(set(batch_indices)), "There are duplicate indices in this batch."
+            
             all_true_indices.extend([self.dataset.original_index[i] for i in count[0]])
             all_false_indices.extend([self.dataset.original_index[i] for i in count[1]])
             all_other_indices.extend([self.dataset.original_index[i] for i in count[2]])
@@ -156,6 +193,15 @@ class EvaluateMechanism:
             target_false += result[1]
             other += result[2]
             
+            # all_indices = all_true_indices + all_false_indices + all_other_indices
+            # assert len(all_indices) == len(set(all_indices)), "There are duplicate indices across the entire evaluation."
+            all_indices = all_true_indices + all_false_indices + all_other_indices
+            unique_indices = set(all_indices)
+            if len(all_indices) != len(unique_indices):
+                print(f"Duplicate indices found: {len(all_indices) - len(unique_indices)}")
+            
+            
+    # ... (existing code)
             all_true_indices.extend(result[3])
             all_false_indices.extend(result[4])
             all_other_indices.extend(result[5])
