@@ -18,5 +18,5 @@ for model_name in models_name:
     dataset = MyDataset("../data/full_data.json", tokenizer=tokenizer, slice=10000)
     
     evaluator = EvaluateMechanism(
-        model_name, dataset, device=DEVICE)
+        model_name, dataset, device=DEVICE, batch_size=50)
     evaluator.evaluate_all()
