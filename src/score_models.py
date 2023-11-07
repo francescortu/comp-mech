@@ -62,7 +62,7 @@ class MyDataset(Dataset):
     def get_lengths(self):
         # return all the possible lengths in the dataset
         for d in tqdm(self.full_data, desc="Tokenizing prompts"):
-            tokenized_prompt = self.tokenizer([d["prompt"], d["true"], d["false"]], return_length=True)
+            tokenized_prompt = self.tokenizer([d["prompt"], d["target_true"], d["target_new"]], return_length=True)
             d["length"] = tokenized_prompt["length"][0]
             # find the position of d["false"] in the tokenized prompt
 
@@ -125,6 +125,7 @@ class EvaluateMechanism:
     def evaluate(self, length):
         self.dataset.set_len(length)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=100, shuffle=True)
+        batch_size = 100
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)
         all_true_indices = []
@@ -139,9 +140,9 @@ class EvaluateMechanism:
             target_false += len(count[1])
             other += len(count[2])
 
-            all_true_indices.extend([self.dataset.original_index[i] for i in count[0]])
-            all_false_indices.extend([self.dataset.original_index[i] for i in count[1]])
-            all_other_indices.extend([self.dataset.original_index[i] for i in count[2]])
+            all_true_indices.extend([self.dataset.original_index[i+idx*batch_size] for i in count[0]])
+            all_false_indices.extend([self.dataset.original_index[i+idx*batch_size] for i in count[1]])
+            all_other_indices.extend([self.dataset.original_index[i+idx*batch_size] for i in count[2]])
 
         return target_true, target_false, other, all_true_indices, all_false_indices, all_other_indices
     
@@ -155,6 +156,10 @@ class EvaluateMechanism:
             target_true += result[0]
             target_false += result[1]
             other += result[2]
+            
+            #assert duplicates
+            all_index = result[3] + result[4] + result[5]
+            assert len(all_index) == len(set(all_index)), "Duplicates in the indices"
             
             all_true_indices.extend(result[3])
             all_false_indices.extend(result[4])
