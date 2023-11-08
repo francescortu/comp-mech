@@ -1,4 +1,4 @@
-from src.dataset import MyDataset
+from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 import einops
 import torch
@@ -9,6 +9,9 @@ torch.set_grad_enabled(False)
 
 
 def to_logit_token(logit, target, normalize="logsoftmax"):
+    assert len(logit.shape) in [2,3], "logit should be of shape (batch_size, d_vocab) or (batch_size, seq_len, d_vocab)"
+    if len(logit.shape) == 3:
+        logit = logit[:,-1,:] # batch_size, d_vocab
     if normalize == "logsoftmax":
         logit = torch.log_softmax(logit, dim=-1)
     elif normalize == "softmax":
@@ -25,7 +28,7 @@ def to_logit_token(logit, target, normalize="logsoftmax"):
 
 
 class BaseExperiment():
-    def __init__(self, dataset:MyDataset, model:WrapHookedTransformer,  batch_size, filter_outliers=False):
+    def __init__(self, dataset:TlensDataset, model:WrapHookedTransformer,  batch_size, filter_outliers=False):
         self.dataset = dataset
         self.model = model
         self.model.eval()
@@ -44,7 +47,7 @@ class BaseExperiment():
         print("save filtered:", save_filtered)
         print("Number of examples before outliers:", len(self.dataset))
         clean_logit, corrupted_logit, target = self.compute_logit()
-        clean_logit_mem, clean_logit_cp = to_logit_token(clean_logit, target)
+        # clean_logit_mem, clean_logit_cp = to_logit_token(clean_logit, target)
         corrupted_logit_mem, corrupted_logit_cp = to_logit_token(corrupted_logit, target)
         
         outliers_under = torch.where(corrupted_logit_mem < (corrupted_logit_mem.mean() - corrupted_logit_mem.std()))[0]
@@ -93,7 +96,7 @@ class BaseExperiment():
         return positions.get(resid_pos, ValueError("resid_pos not recognized: should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"))
 
 class Ablate(BaseExperiment):
-    def __init__(self, dataset:MyDataset, model:WrapHookedTransformer,  batch_size, filter_outliers=False):
+    def __init__(self, dataset:TlensDataset, model:WrapHookedTransformer,  batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
 
     
@@ -176,6 +179,8 @@ class Ablate(BaseExperiment):
                         batch["corrupted_prompts"],
                         fwd_hooks=list_hooks,
                     )[:,-1,:]
+                    if logit.shape[0] != self.batch_size:
+                        print("Ops, the batch size is not correct")
                     mem, cp = to_logit_token(logit, batch["target"])
                     # norm_mem, norm_cp = normalize_logit_token(mem, cp, baseline="corrupted")
                     examples_mem[layer, head, idx, :] = mem.cpu()
@@ -196,7 +201,7 @@ class Ablate(BaseExperiment):
     
     
 class AblateMultiLen():
-    def __init__(self, dataset:MyDataset, model:WrapHookedTransformer,  batch_size):
+    def __init__(self, dataset:TlensDataset, model:WrapHookedTransformer,  batch_size):
         self.model = model
         self.batch_size = batch_size
         self.ablate = Ablate(dataset, model, batch_size)
@@ -223,7 +228,7 @@ class AblateMultiLen():
         return result_mem, result_cp
     
 class OVCircuit(BaseExperiment):
-    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size, filter_outliers=False):
+    def __init__(self, model:WrapHookedTransformer, dataset:TlensDataset, batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
 
     
@@ -347,12 +352,14 @@ class OVCircuit(BaseExperiment):
         subject_1_2 = 6
         subject_1_3 = 7 if length > 17 else 6
         subject_2_1 = object_positions + 2
-        subject_2_2 = object_positions + 3
-        subject_2_3 = object_positions + 4 if length > 17 else object_positions + 3
+        subject_2_2 = object_positions + 3 
+        subject_2_3 = object_positions + 4 
+        subject_2_2 = subject_2_2 if subject_2_2 < length else subject_2_1
+        subject_2_3 = subject_2_3 if subject_2_3 < length else subject_2_2
         last_position = length - 1
         object_positions_pre = object_positions - 1
         object_positions_next = object_positions + 1
-        
+        print("object_positions", object_positions, "subject_1_1", subject_1_1, "subject_1_2", subject_1_2, "subject_1_3", subject_1_3, "object_positions_pre", object_positions_pre, "object_positions_next", object_positions_next, "subject_2_1", subject_2_1, "subject_2_2", subject_2_2, "subject_2_3", subject_2_3, "last_position", last_position)
         result_aggregate = torch.zeros((self.model.cfg.n_layers, 14))
         result_aggregate[:,0] = logit_target[:,:subject_1_1].mean(dim=1)
         result_aggregate[:,1] = logit_target[:,subject_1_1]
@@ -376,8 +383,10 @@ class OVCircuit(BaseExperiment):
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
     
-        logit_target = torch.zeros(( self.model.cfg.n_layers, length,  num_batches, self.batch_size))
-        for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"OV circuit at all heads", disable=disable_tqdm):
+        logit_target = torch.zeros(( self.model.cfg.n_layers, length,  num_batches, self.batch_size), device="cpu")
+        if num_batches == 0:
+            return None
+        for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"OV circuit at all heads {length}", disable=disable_tqdm):
             _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
             for layer in range(self.model.cfg.n_layers):
                 for pos in range(length):
@@ -399,6 +408,7 @@ class OVCircuit(BaseExperiment):
             logit_target[layer] = -100 * (logit_target[layer] - avg_mean[layer]) / avg_mean[layer]
         # aggregate for positions
         object_positions = self.dataset.obj_pos[0]
+
         result_aggregate = self.aggregate_result(object_positions, logit_target, length)
         
         if plot:
@@ -415,24 +425,72 @@ class OVCircuit(BaseExperiment):
         lenghts = self.dataset.get_lengths()
         result = {}
         for l in lenghts:
-            result[l] = self.residual_stram_track_target( length=l, target=target, disable_tqdm=disable_tqdm, plot=False)
-        
+            residual = self.residual_stram_track_target( length=l, target=target, disable_tqdm=disable_tqdm, plot=False)
+            if residual is not None:
+                result[l] = residual
         result_score = torch.stack(list(result.values()), dim=0).mean(dim=0)
         if plot:
-            self.plot_heatmap(
-                result_score,
-                xlabel="position",
-                ylabel="layer",
-                x_ticks=["--", "1_1", "1_2", "1_3", "--", "o_pre", "o", "o_next", "2_1", "2_2", "2_3", "--", "l_pre", "last"],
-                title="Percentage increase or decrease of logit_target respect to the avg per layer"
-            )
+            try:
+                self.plot_heatmap(
+                    result_score,
+                    xlabel="position",
+                    ylabel="layer",
+                    x_ticks=["--", "1_1", "1_2", "1_3", "--", "o_pre", "o", "o_next", "2_1", "2_2", "2_3", "--", "l_pre", "last"],
+                    title="Percentage increase or decrease of logit_target respect to the avg per layer"
+                )
+            except:
+                print("Error in plotting, probably due to Matplotlib version (3.5.3 should work)")
+        
+        return result_score
+    
+    
+    
+class QK_circuit(BaseExperiment):
+    def __init__(self, model:WrapHookedTransformer, dataset:TlensDataset, batch_size, filter_outliers=False):
+        super().__init__(dataset, model, batch_size, filter_outliers)
+        
+    
+    def qk_single_len(self, layer, head, length, disable_tqdm=False):
+        self.set_len(length)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        num_batches = len(dataloader)
+        
+        attn_score = torch.zeros((num_batches, self.batch_size))
+        mem_logit = torch.zeros((num_batches, self.batch_size))
+        cp_logit = torch.zeros((num_batches, self.batch_size))
+        
+        W_QK = self.model.blocks[layer].attn.W_Q[head] @ self.model.blocks[layer].attn.W_K[head].T
+        for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"QK circuit at ({layer},{head})", disable=disable_tqdm):
+            logit,cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            
+            object_token = self.model.to_tokens(batch["corrupted_prompts"])[:,self.dataset.obj_pos[0]] # batch_size, 1
+            #logit of the head
+            output_weight_head = self.model.blocks[layer].attn.W_O[head]
+            logit_head = einops.einsum(output_weight_head, cache[f"blocks.{layer}.attn.hook_z"][:,:,head,:], "d_h d, b p d_h -> b p d")
+           
+           
+            # W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
+            logit_last = einops.einsum(self.model.W_U, logit_head[:,-1,:], "d d_v, b d -> b d_v")
             
         
-        return result
+            
+            mem_logit[idx], cp_logit[idx] = to_logit_token(logit_last, batch["target"])
+            
+            #subject token
+            subject_token = self.model.to_tokens(batch["corrupted_prompts"])[:,5] # batch_size, 1
+            attn_score[idx] = cache["pattern",layer][:,head,-1,object_token[0]] # batch_size
+            # attn_score[idx] = torch.diag(torch.matmul(W_QK, self.model.W_E.T)[:,subject_token][object_token,:]) # batch_size
+
+        attn_score = einops.rearrange(attn_score, "b s -> (b s)")
+        mem_logit = einops.rearrange(mem_logit, "b s -> (b s)")
+        cp_logit = einops.rearrange(cp_logit, "b s -> (b s)")
+        return attn_score, mem_logit, cp_logit
     
     
+    
+
 class Investigate_single_head(BaseExperiment):
-    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size, filter_outliers=False):
+    def __init__(self, model:WrapHookedTransformer, dataset:TlensDataset, batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
         
     def get_logit_target_single_head_single_len(self, layer, head, length):
@@ -506,7 +564,7 @@ class Investigate_single_head(BaseExperiment):
     
 
 class LogitLens(BaseExperiment):
-    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size, filter_outliers=False):
+    def __init__(self, model:WrapHookedTransformer, dataset:TlensDataset, batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
         
     def logit_lens_single_len(self, l, plot=False):
@@ -576,7 +634,7 @@ class LogitLens(BaseExperiment):
                 
                 
 class ResidCorrelation(BaseExperiment):
-    def __init__(self, model:WrapHookedTransformer, dataset:MyDataset, batch_size, filter_outliers=False):
+    def __init__(self, model:WrapHookedTransformer, dataset:TlensDataset, batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
         
     def get_logit_single_len(self, length, layer = 0, component="resid_post", position="o_pre"):

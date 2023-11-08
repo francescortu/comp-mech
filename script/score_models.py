@@ -3,9 +3,11 @@ sys.path.append('..')
 sys.path.append('../src')
 sys.path.append('../data')
 
-from src.score_models import MyDataset, EvaluateMechanism
+from src.score_models import EvaluateMechanism
+from src.dataset import SampleDataset, HFDataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
+import os
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 models_name = ["facebook/opt-125m", "facebook/opt-350m", "facebook/opt-1.3B", "facebook/opt-2.7B"]
@@ -15,7 +17,23 @@ for model_name in models_name:
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
     )
-    dataset = MyDataset("../data/full_data.json", tokenizer=tokenizer, slice=10000)
+    
+    if len(model_name.split("/")) > 1:
+        save_name = model_name.split("/")[1]
+
+    else:
+        save_name = model_name
+    dataset_path = f"../data/full_data_sampled_{save_name}.json"
+    if os.path.exists(dataset_path) == False:
+        print("Creating sampled data")
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        model = model.to(DEVICE)
+        model.eval()
+        sampler = SampleDataset("../data/full_data.json", model=model, save_path=dataset_path, tokenizer=tokenizer)
+        sampler.sample()
+        sampler.save()
+        
+    dataset = HFDataset(dataset_path, tokenizer=tokenizer, slice=10000)
     
     evaluator = EvaluateMechanism(
         model_name, dataset, device=DEVICE, batch_size=50)

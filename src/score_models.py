@@ -10,120 +10,10 @@ import json
 import torch
 from torch.utils.data import Dataset
 import einops
-
-class MyDataset(Dataset):
-    def __init__(self, path, tokenizer, slice=None):
-        with open(path, 'r') as file:
-            self.full_data = json.load(file)
-        
-        if slice is not None:
-            self.full_data = self.full_data[:slice]
-        # Initialize variables to avoid AttributeError before calling set_len
-        self.prompts = []
-        self.target = []
-        self.obj_pos = []
-        self.tokenizer = tokenizer
-        self.lenghts = self.get_lengths()
-        
-    def __len__(self):
-        return len(self.data) 
-    
-    def __getitem__(self, idx):
-        if not self.prompts:
-            raise ValueError("Set length using set_len before fetching items.")
-        return {
-            "prompt": self.prompts[idx],
-            "input_ids": self.input_ids[idx],
-            "target": self.target[idx],
-            "obj_pos": self.obj_pos[idx],
-        }
-    
-    def set_len(self, length):
-        self.data = [d for d in self.full_data if d["length"] == length]
-        self.original_index = [i for i, d in enumerate(self.full_data) if d["length"] == length]
-        self.prompts = [d["prompt"] for d in self.data]
-        self.obj_pos = [d["position"] for d in self.data]
-        self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]
-        # target1 = [torch.tensor(model.to_tokens(d["true"], prepend_bos=False)) for d in self.data]
-        # target2 = [torch.tensor(model.to_tokens(d["false"], prepend_bos=False)) for d in self.data]
-        target1 = torch.tensor([d["token_true"] for d in self.data])
-        target2 = torch.tensor([d["token_false"] for d in self.data])
-        # target1, target2 = [torch.zeros(10)], [torch.zeros(10)]
-        self.target = torch.stack([target1, target2], dim=1)
-
-        assert self.check_duplicate() == True, "Duplicate prompts"
-        assert self.check_index_mapping() == True, "Index mapping is wrong"
-        assert len(self.data) == len(set(d['prompt'] for d in self.data)), "There are duplicate prompts after filtering."
-        
-        # check if the index mapping is unique
-        assert len(self.original_index) == len(set(self.original_index)), "Original indices are not unique."
-        assert all(self.full_data[idx]["prompt"] == self.data[i]["prompt"] for i, idx in enumerate(self.original_index)), "Index mapping mismatch."
-
-        
-    def check_index_mapping(self):
-        # check if the index mapping is correct
-        for i, d in enumerate(self.data):
-            if d["prompt"] != self.full_data[self.original_index[i]]["prompt"]:
-                return False
-        return True
-    
-    def check_duplicate(self):
-        # check if full_data has duplicate prompts
-        #find duplicate in two lists
-        seen = set()
-        for i,d in enumerate(self.full_data):
-            if d["prompt"] in seen:
-                #check the other fields
-                for j,d2 in enumerate(self.full_data):
-                    if j == i:
-                        continue
-                    if d["prompt"] == d2["prompt"]:
-                        if d["true"] != d2["true"] or d["false"] != d2["false"]:
-                            continue
-                        else:
-                            return False
-            seen.add(d["prompt"])
-        return True
-        
-    def slice(self, end, start=0):
-        self.data   = self.data[start:end]
-        self.target = self.target[start:end]
-        self.clean_prompts = self.clean_prompts[start:end]
-        self.corrupted_prompts = self.corrupted_prompts[start:end]
-        self.obj_pos = self.obj_pos[start:end]
-        
-    def get_lengths(self):
-        # return all the possible lengths in the dataset
-        for d in tqdm(self.full_data, desc="Tokenizing prompts"):
-            tokenized_prompt = self.tokenizer([d["prompt"], d["target_true"], d["target_new"]], return_length=True)
-            d["length"] = tokenized_prompt["length"][0]
-            d["input_ids"] = tokenized_prompt["input_ids"][0]
-            # find the position of d["false"] in the tokenized prompt
-
-            assert len(tokenized_prompt["input_ids"][2]) < 3, "False token is too long"
-            
-            if len(tokenized_prompt["input_ids"][2]) == 2:
-                token_position = 1
-            if len(tokenized_prompt["input_ids"][2]) == 1:
-                token_position = 0
-                
-            d["position"] = tokenized_prompt["input_ids"][0].index(tokenized_prompt["input_ids"][2][token_position])
-            d["token_true"] = tokenized_prompt["input_ids"][1][token_position]
-            d["token_false"] = tokenized_prompt["input_ids"][2][token_position]
-        return list(set([d["length"] for d in self.full_data]))
-    
-    def slice_to_fit_batch(self, batch_size):
-        maxdatadize = (len(self.data)//batch_size)*batch_size
-        self.slice(maxdatadize)
-        
-    def save_filtered(self):
-        self.data_per_len[self.length] = self.data
-        
-        
 from transformers import AutoTokenizer, AutoModelForCausalLM
-
+from src.dataset import HFDataset
 class EvaluateMechanism:
-    def __init__(self, model_name:str, dataset:MyDataset, device="cpu", batch_size=100):
+    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
         self.model = self.model.to(device)
@@ -173,9 +63,9 @@ class EvaluateMechanism:
             target_false += len(count[1])
             other += len(count[2])
 
-            all_true_indices.extend([self.dataset.original_index[i+idx*batch_size] for i in count[0]])
-            all_false_indices.extend([self.dataset.original_index[i+idx*batch_size] for i in count[1]])
-            all_other_indices.extend([self.dataset.original_index[i+idx*batch_size] for i in count[2]])
+            all_true_indices.extend([self.dataset.original_index[i+idx*self.batch_size] for i in count[0]])
+            all_false_indices.extend([self.dataset.original_index[i+idx*self.batch_size] for i in count[1]])
+            all_other_indices.extend([self.dataset.original_index[i+idx*self.batch_size] for i in count[2]])
 
         return target_true, target_false, other, all_true_indices, all_false_indices, all_other_indices
     
@@ -203,7 +93,8 @@ class EvaluateMechanism:
         
         if len(self.model_name.split("/")) > 1:
             save_name = self.model_name.split("/")[1]
-        
+        else:
+            save_name = self.model_name
         #save results
         with open(f"../results/{save_name}_evaluate_mechanism.json", "w") as file:
             json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.dataset.full_data)}, file)
