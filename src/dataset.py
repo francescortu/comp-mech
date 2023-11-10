@@ -259,12 +259,14 @@ class SampleDataset:
                 empty_prompt = d["base_prompt"]
                 #encode the prompt
                 input_ids = self.tokenizer.encode(empty_prompt, return_tensors="pt")
+                input_ids = input_ids.to(self.model.device)
                 target_true = self.tokenizer.encode(d["target_true"], return_tensors="pt", add_special_tokens=False)
                 #predict the next token
-                logits = self.model(input_ids)["logits"][0, -1, :]
+                logits = self.model(input_ids)["logits"][0, -1, :].cpu()
                 #get the index of the predicted token
                 index = logits.argmax()
                 # check if the predicted token is the target
+
                 if index in target_true:
                     new_data.append(d)
                     if len(new_data) == size:
