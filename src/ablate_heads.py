@@ -227,7 +227,7 @@ class AblateMultiLen:
             print("Ablating examples of length", l, "...")
             mem, cp = self.ablate_single_len(l, filter_outliers=filter_outliers,
                                                                                  **kwargs)
-            if mem == None or cp == None:
+            if mem != None and cp != None:
                 result_mem_per_len[l], result_cp_per_len[l] = mem, cp
         # concatenate the results
         result_cp = torch.cat(list(result_cp_per_len.values()), dim=-1)
