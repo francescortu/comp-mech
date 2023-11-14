@@ -133,6 +133,8 @@ class Ablate(BaseExperiment):
                 # percentage increase or decrease of logit_cp
                 logit_cp = 100 * (logit_cp - corrupted_logit_cp) / corrupted_logit_cp
                 return -logit_mem, -logit_cp
+            elif baseline == "base_logit":
+                return corrupted_logit_mem, corrupted_logit_cp
 
         return normalize_logit_token
 
@@ -194,14 +196,91 @@ class Ablate(BaseExperiment):
 
         examples_mem = einops.rearrange(examples_mem, "l h b s -> l h (b s)")
         examples_cp = einops.rearrange(examples_cp, "l h b s -> l h (b s)")
-        for layer in range(self.model.cfg.n_layers):
-            for head in range(self.model.cfg.n_heads):
-                norm_mem, norm_cp = normalize_logit_token(examples_mem[layer, head, :], examples_cp[layer, head, :],
-                                                          baseline="corrupted")
-                examples_mem[layer, head, :] = norm_mem
-                examples_cp[layer, head, :] = norm_cp
+        base_logit_mem, base_logit_cp = normalize_logit_token(examples_mem, examples_cp, baseline="corrupted")
+        # for layer in range(self.model.cfg.n_layers):
+        #     for head in range(self.model.cfg.n_heads):
+        #         norm_mem, norm_cp, = normalize_logit_token(examples_mem[layer, head, :], examples_cp[layer, head, :],
+        #                                                   baseline="raw")
+        #         examples_mem[layer, head, :] = norm_mem
+        #         examples_cp[layer, head, :] = norm_cp
 
-        return examples_mem, examples_cp
+        return base_logit_mem, base_logit_cp
+    
+    def count_mem_win(self, mem, cp):
+        count = 0
+        for i in range(len(mem)):
+            if mem[i] > cp[i]:
+                count += 1
+        print("Number of examples where mem > cp:", count)
+        return count
+    
+    def ablate_attn_block(self):
+        normalize_logit_token = self.get_normalize_metric()
+        self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        self.num_batches = len(self.dataloader)
+
+        def attn_hook(activation, hook,  pos1=None, pos2=None):
+            activation[:,-1, :] = 0
+            return activation
+
+        def freeze_hook(activation, hook, clean_activation, pos1=None, pos2=None):
+            activation = clean_activation
+            return activation
+
+        examples_mem = torch.zeros((self.model.cfg.n_layers, self.num_batches, self.batch_size),
+                                   device="cpu")
+        examples_cp = torch.zeros((self.model.cfg.n_layers, self.num_batches, self.batch_size),
+                                  device="cpu")
+
+        for idx, batch in tqdm(enumerate(self.dataloader), total=self.num_batches, desc="Ablating batches"):
+            _, clean_cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            hooks = {}
+            for layer in range(self.model.cfg.n_layers):
+                # for head in range(self.model.cfg.n_heads):
+                hooks[f"L{layer}"] = (f"blocks.{layer}.hook_attn_out",
+                                      partial(
+                                          freeze_hook,
+                                          clean_activation=clean_cache[f"blocks.{layer}.hook_attn_out"],
+                                      )
+                                      )
+
+            for layer in range(self.model.cfg.n_layers):
+                tmp_hooks = deepcopy(hooks)
+                tmp_hooks[f"L{layer}"] = (f"blocks.{layer}.hook_attn_out",
+                                            partial(
+                                                attn_hook,
+                                            )
+                                            )
+
+                list_hooks = list(tmp_hooks.values())
+                self.model.reset_hooks()
+                logit = self.model.run_with_hooks(
+                    batch["corrupted_prompts"],
+                    fwd_hooks=list_hooks,
+                )[:, -1, :]
+                if logit.shape[0] != self.batch_size:
+                    print("Ops, the batch size is not correct")
+                mem, cp = to_logit_token(logit, batch["target"])
+                # norm_mem, norm_cp = normalize_logit_token(mem, cp, baseline="corrupted")
+                examples_mem[layer,  idx, :] = mem.cpu()
+                examples_cp[layer,  idx, :] = cp.cpu()
+            # remove the hooks for the previous layer
+
+                hooks.pop(f"L{layer}")
+
+        examples_mem = einops.rearrange(examples_mem, "l b s -> l (b s)")
+        examples_cp = einops.rearrange(examples_cp, "l b s -> l (b s)")
+        base_logit_mem, base_logit_cp = normalize_logit_token(examples_mem, examples_cp, baseline="corrupted")
+        
+        
+        # for layer in range(self.model.cfg.n_layers):
+        #     for head in range(self.model.cfg.n_heads):
+        #         norm_mem, norm_cp, = normalize_logit_token(examples_mem[layer, head, :], examples_cp[layer, head, :],
+        #                                                   baseline="raw")
+        #         examples_mem[layer, head, :] = norm_mem
+        #         examples_cp[layer, head, :] = norm_cp
+
+        return base_logit_mem, base_logit_cp
 
 
 class AblateMultiLen:
@@ -210,31 +289,40 @@ class AblateMultiLen:
         self.batch_size = batch_size
         self.ablate = Ablate(dataset, model, batch_size)
 
-    def ablate_single_len(self, length, filter_outliers=False, **kwargs):
+    def ablate_single_len(self, length, filter_outliers=False, ablate_target="head", **kwargs):
         self.ablate.set_len(length)
         n_samples = len(self.ablate.dataset)
         if n_samples  < self.batch_size:
             return None, None
         # self.ablate.create_dataloader(filter_outliers=filter_outliers, **kwargs)
-        return self.ablate.ablate_heads()
+        if ablate_target == "head":
+            return self.ablate.ablate_heads()
+        if ablate_target == "attn":
+            return self.ablate.ablate_attn_block()
 
     def ablate_multi_len(self, filter_outliers=False, **kwargs):
         lenghts = self.ablate.dataset.get_lengths()
         # lenghts = [11]
         result_cp_per_len = {}
         result_mem_per_len = {}
+        result_cp_base_per_len = {}
+        result_mem_base_per_len = {}
         for l in lenghts:
             print("Ablating examples of length", l, "...")
-            mem, cp = self.ablate_single_len(l, filter_outliers=filter_outliers,
-                                                                                 **kwargs)
+            mem, cp = self.ablate_single_len(l, filter_outliers=filter_outliers, **kwargs)
             if mem != None and cp != None:
                 result_mem_per_len[l], result_cp_per_len[l] = mem, cp
         # concatenate the results
         result_cp = torch.cat(list(result_cp_per_len.values()), dim=-1)
         result_mem = torch.cat(list(result_mem_per_len.values()), dim=-1)
-        print("result_cp.shape", result_cp.shape)
 
+        print("result_cp.shape", result_cp.shape)
+        
+        
         return result_mem, result_cp
+        
+        
+        # return result_mem, result_cp, result_mem_base, result_cp_base
 
 
 class OVCircuit(BaseExperiment):
@@ -679,7 +767,8 @@ class ResidCorrelation(BaseExperiment):
         self.set_len(length)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
-
+        if num_batches == 0:
+            return None, None
         position = self.get_position(position)
         # position = -1
 
@@ -705,8 +794,9 @@ class ResidCorrelation(BaseExperiment):
         final_logit = {}
         position_logit = {}
         for l in lenghts:
-            final_logit[l], position_logit[l] = self.get_logit_single_len(l, position=position, **kwargs)
-
+            final, pos = self.get_logit_single_len(l, position=position, **kwargs)
+            if final is not None and pos is not None:
+                final_logit[l], position_logit[l] = final, pos
         final_logit = torch.cat(list(final_logit.values()), dim=0)
         position_logit = torch.cat(list(position_logit.values()), dim=0)
         return final_logit, position_logit
@@ -728,3 +818,68 @@ class ResidCorrelation(BaseExperiment):
                     output_direction = (residual_stream[:, -1, :] @ W_OV)
 
                     project_ratio = torch.einsum("b d, b d -> b", output_direction, residual_stream[:, -1, :])
+
+
+from concurrent.futures import ThreadPoolExecutor
+
+class DecomposeResidDir(BaseExperiment):
+    def __init__(self, model: WrapHookedTransformer, dataset: TlensDataset, batch_size, filter_outliers=False):
+        super().__init__(dataset, model, batch_size, filter_outliers)
+        
+    def compute_solution(self, unembedding, mem_token, cp_token):
+        batch_shape = mem_token.shape[0]
+        b_mem = torch.zeros(batch_shape, unembedding.shape[-1], device=unembedding.device)
+        b_cp = torch.zeros(batch_shape, unembedding.shape[-1], device=unembedding.device)
+        b_mem[torch.arange(batch_shape), mem_token] = 10
+        b_cp[torch.arange(batch_shape), cp_token] = 10
+        print(b_mem.argmax(dim=-1), b_mem.shape)
+        print(torch.linalg.cond(unembedding.T))
+        batched_unembedding_transpose = einops.repeat(unembedding.T, "v d -> b v d", b=batch_shape)
+        sol_mem = torch.linalg.lstsq(batched_unembedding_transpose, b_mem)
+        sol_cp = torch.linalg.lstsq(batched_unembedding_transpose, b_cp)
+        
+        return sol_mem, sol_cp
+    
+    def compute_distances(self, resid, sol_mem, sol_cp):
+        dist_mem = torch.linalg.norm(resid - sol_mem)
+        dist_cp = torch.linalg.norm(resid - sol_cp)
+        return dist_mem, dist_cp
+    
+    def compute_distance_per_len(self, l):
+        self.set_len(l)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        num_batches = len(dataloader)
+        if num_batches == 0:
+            return None, None
+        # position = self.get_position(position)
+        position = -1
+        distance_mem = torch.zeros((num_batches, self.batch_size))
+        distance_cp = torch.zeros((num_batches, self.batch_size))
+        unembedding = self.model.W_U.cpu().detach()
+        layer = -1
+        for idx,batch in tqdm(enumerate(dataloader), total=num_batches):
+            _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            batch["target"] = batch["target"].to("cpu")
+            
+            # for layer in range(self.model.cfg.n_layers):
+                # iterate over tokens
+            sol_mem, sol_cp = self.compute_solution(unembedding, batch["target"][:,0], batch["target"][:,1])
+            dist_mem, dist_cp = self.compute_distances(cache["resid_post", layer][idx, position, :].cpu(), sol_mem, sol_cp)
+            distance_mem[idx] = dist_mem
+            distance_cp[idx] = dist_cp
+            print("Layer ", layer)
+        distance_mem = einops.rearrange(distance_mem, "b s -> (b s)")
+        distance_cp = einops.rearrange(distance_cp, "b s -> (b s)")
+        return distance_mem, distance_cp
+
+    
+    def compute_distance_all_len(self, **kwargs):
+        lenghts = self.dataset.get_lengths()
+        distance_mem = {}
+        distance_cp = {}
+        for l in lenghts:
+            distance_mem[l], distance_cp[l] = self.compute_distance_per_len(l, **kwargs)
+        distance_mem = torch.cat(list(distance_mem.values()), dim=0)
+        distance_cp = torch.cat(list(distance_cp.values()), dim=0)
+        return distance_mem, distance_cp
+            

@@ -4,8 +4,8 @@ import seaborn as sns
 import numpy as np
 
 def plot_heatmaps(result, result_std, title, interval, save=False, center=0.0):
-    sns.set()
-    sns.set_style("whitegrid", {"axes.grid": False})
+    # sns.set()
+    # sns.set_style("whitegrid", {"axes.grid": False})
     # add also the std heatmap
     fig, ax = plt.subplots(1, 2, figsize=(22, 8))
     ax[0].set_title("Average logit difference")
@@ -32,8 +32,6 @@ def plot_heatmaps(result, result_std, title, interval, save=False, center=0.0):
         cbar=False,
         ax=ax[1],
         center=0.0,
-        vmax=interval,
-        vmin=-interval,
         cmap="RdBu_r",
     )
     
@@ -127,3 +125,4 @@ def barplot_head(examples_cp, examples_mem):
     ax[3].set_xticklabels(df_mem_negative['labels'], rotation=90)
 
     plt.show()
+    return df_mem, df_cp
