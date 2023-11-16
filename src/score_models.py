@@ -96,6 +96,8 @@ class EvaluateMechanism:
             save_name = self.model_name.split("/")[1]
         else:
             save_name = self.model_name
+        if self.orthogonalize:
+            save_name += "orth"
         #save results
         with open(f"../results/{save_name}_evaluate_mechanism.json", "w") as file:
             json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.dataset.full_data)}, file)
