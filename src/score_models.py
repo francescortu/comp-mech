@@ -13,7 +13,7 @@ import einops
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from src.dataset import HFDataset
 class EvaluateMechanism:
-    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100):
+    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name) #, load_in_8bit=True, device_map="auto")
         self.model = self.model.to(device)
@@ -22,6 +22,7 @@ class EvaluateMechanism:
         self.lenghts = self.dataset.lenghts
         self.device = device
         self.batch_size = batch_size
+        self.orthogonalize = orthogonalize
         print("Model device", self.model.device)
         
     def check_prediction(self, logit, target):
@@ -47,7 +48,7 @@ class EvaluateMechanism:
         return  target_true_indices, target_false_indices, other_indices
     
     def evaluate(self, length):
-        self.dataset.set_len(length)
+        self.dataset.set_len(length, self.orthogonalize, self.model)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)

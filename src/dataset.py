@@ -6,6 +6,7 @@ from tqdm import tqdm
 import random
 from typing import Optional
 from src.model import WrapHookedTransformer
+from functools import partial
 
 class TlensDataset(Dataset):
     def __init__(self, path, model, slice=None):
@@ -130,17 +131,66 @@ class HFDataset(Dataset):
             "target": self.target[idx],
             "obj_pos": self.obj_pos[idx],
         }
-    
-    def set_len(self, length):
+        
+    def compute_orthogonal(self, string_token, model):
+        token = self.tokenizer.encode(string_token, return_tensors="pt")
+        token = token.to(model.device)
+        with torch.no_grad():
+            embedding = model.get_input_embeddings()(token)
+            embedding = einops.rearrange(embedding, "b n e ->  (b n e)")
+        
+        random_vector = torch.randn(embedding.shape[0])
+        # gram_schmidt
+        random_vector = random_vector - torch.dot(random_vector, embedding) * embedding / torch.dot(embedding, embedding)
+        # normalize
+        x = random_vector / torch.norm(random_vector)
+        
+        #project the embedding in the closest token
+        
+            # Get all embeddings from the model
+        embeddings_matrix = model.get_input_embeddings().weight
+
+        # Compute cosine similarity with all embeddings
+        similarities = torch.nn.functional.cosine_similarity(random_vector.unsqueeze(0), embeddings_matrix, dim=1)
+
+        # Find the index of the most similar token
+        most_similar_token_idx = torch.argmax(similarities).item()
+
+        # Decode the token
+        most_similar_token = self.tokenizer.decode([most_similar_token_idx])
+
+        # ############# DEBUG #############
+        # ort_token = self.tokenizer.encode(most_similar_token, return_tensors="pt")
+        # base_token = self.tokenizer.encode(string_token, return_tensors="pt")
+        # ort_embedding = model.get_input_embeddings()(ort_token)
+        # base_embedding = model.get_input_embeddings()(base_token)
+        # assert torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0) < 0.3, "Dot product is not zero"
+        
+        return most_similar_token
+        
+    def set_len(self, length, orthogonal=False, model=None):
         self.data = [d for d in self.full_data if d["length"] == length]
         self.original_index = [i for i, d in enumerate(self.full_data) if d["length"] == length]
-        self.prompts = [d["prompt"] for d in self.data]
+        if orthogonal:
+            assert model is not None, "You must pass a model to compute the orthogonal prompt."
+            compute_orthogonal = partial(self.compute_orthogonal, model=model)
+            orthogonal_target_new = [compute_orthogonal(string_token=d["target_new"]) for d in tqdm(self.data)]
+            target_new = orthogonal_target_new
+            token_false = [self.tokenizer.encode(tn, return_tensors="pt")[0, 0] for tn in target_new]
+        else:
+            target_new = [d["target_new"] for d in self.data]
+            token_false = [d["token_false"] for d in self.data]
+        self.prompts = []
+        for d, tn in zip(self.data, target_new):
+            self.prompts.append(d["template"].format("Redefine", tn))
+        #     self.prompts.append(d["template"].format("Redefine", d["target_new"]))
         self.obj_pos = [d["position"] for d in self.data]
         self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]
+        target1 = torch.tensor([d["token_true"] for d in self.data])
+        target2 = torch.tensor(token_false)
+        
         # target1 = [torch.tensor(model.to_tokens(d["true"], prepend_bos=False)) for d in self.data]
         # target2 = [torch.tensor(model.to_tokens(d["false"], prepend_bos=False)) for d in self.data]
-        target1 = torch.tensor([d["token_true"] for d in self.data])
-        target2 = torch.tensor([d["token_false"] for d in self.data])
         # target1, target2 = [torch.zeros(10)], [torch.zeros(10)]
         self.target = torch.stack([target1, target2], dim=1)
 

@@ -38,5 +38,5 @@ for model_name in models_name:
     dataset = HFDataset(dataset_path, tokenizer=tokenizer, slice=10000)
     
     evaluator = EvaluateMechanism(
-        model_name, dataset, device=DEVICE, batch_size=50)
+        model_name, dataset, device=DEVICE, batch_size=50, orthogonalize=True)
     evaluator.evaluate_all()
