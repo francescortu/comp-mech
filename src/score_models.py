@@ -5,6 +5,7 @@ sys.path.append('../data')
 
 import json
 from tqdm import tqdm
+import os
 
 import json
 import torch
@@ -13,7 +14,7 @@ import einops
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from src.dataset import HFDataset
 class EvaluateMechanism:
-    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False):
+    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False, family_name:str=None):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name) #, load_in_8bit=True, device_map="auto")
         self.model = self.model.to(device)
@@ -23,6 +24,7 @@ class EvaluateMechanism:
         self.device = device
         self.batch_size = batch_size
         self.orthogonalize = orthogonalize
+        self.family_name = family_name
         print("Model device", self.model.device)
         
     def check_prediction(self, logit, target):
@@ -99,12 +101,31 @@ class EvaluateMechanism:
         if self.orthogonalize:
             save_name += "orth"
         #save results
-        with open(f"../results/{save_name}_evaluate_mechanism.json", "w") as file:
-            json.dump({"target_true": target_true, "target_false": target_false, "other": other, "dataset_len":len(self.dataset.full_data)}, file)
-        # torch.save(index, f"../results/{self.model_name}_evaluate_mechanism.pt")
+        
+        filename = f"../results/{self.family_name}_evaluate_mechanism.csv"
+        #if file not exists, create it and write the header
+        if not os.path.isfile(filename):
+            with open(filename, "w") as file:
+                file.write("model_name,orthogonalize,target_true,target_false,other\n")
+        
+        with open(filename, "a") as file:
+            # if there is aleardy a line with the same model_name and orthogonalize, delete it
+            lines = file.readlines()
+            for i, line in enumerate(lines):
+                if line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize):
+                    del lines[i]
+                    break
+            file.write(f"{self.model_name},{self.orthogonalize},{target_true},{target_false},{other}\n")
+        
+        
+    
         
         # save indices
-        with open(f"../results/{save_name}_evaluate_mechanism_indices.json", "w") as file:
+        if not os.path.isdir(f"../results/{self.family_name}_evaluate_mechs_indices"):
+            # if the directory does not exist, create it
+            os.makedirs(f"../results/{self.family_name}_evaluate_mechs_indices")
+        
+        with open(f"../results/{self.family_name}_evaluate_mechs_indices/{save_name}_evaluate_mechanism_indices.json", "w") as file:
             json.dump({"target_true": all_true_indices, "target_false": all_false_indices, "other": all_other_indices}, file)
         
         return target_true, target_false, other
