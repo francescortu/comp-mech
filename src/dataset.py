@@ -186,6 +186,11 @@ class HFDataset(Dataset):
         #     self.prompts.append(d["template"].format("Redefine", d["target_new"]))
         self.obj_pos = [d["position"] for d in self.data]
         self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]
+        if orthogonal:
+            for idx, _ in enumerate(self.input_ids):
+                self.input_ids[idx][self.obj_pos[idx]] = token_false[idx]
+        
+        
         target1 = torch.tensor([d["token_true"] for d in self.data])
         target2 = torch.tensor(token_false)
         
