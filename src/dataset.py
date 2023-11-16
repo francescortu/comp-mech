@@ -139,7 +139,7 @@ class HFDataset(Dataset):
             embedding = model.get_input_embeddings()(token)
             embedding = einops.rearrange(embedding, "b n e ->  (b n e)")
         
-        random_vector = torch.randn(embedding.shape[0])
+        random_vector = torch.randn(embedding.shape[0]).cuda()
         # gram_schmidt
         random_vector = random_vector - torch.dot(random_vector, embedding) * embedding / torch.dot(embedding, embedding)
         # normalize
