@@ -15,7 +15,7 @@ from src.dataset import HFDataset
 class EvaluateMechanism:
     def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name) #, load_in_8bit=True, device_map="auto")
         self.model = self.model.to(device)
         self.model_name = model_name
         self.dataset = dataset

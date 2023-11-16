@@ -10,8 +10,8 @@ import torch
 import os
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-models_name = ["facebook/opt-125m", "facebook/opt-350m", "facebook/opt-1.3B", "facebook/opt-2.7B"]
-
+#models_name = ["facebook/opt-125m", "facebook/opt-350m", "facebook/opt-1.3B", "facebook/opt-2.7B"]
+models_name = ["EleutherAI/gpt-j-6b"]
 for model_name in models_name:
     print("Loading model", model_name)
     tokenizer = AutoTokenizer.from_pretrained(
@@ -32,7 +32,9 @@ for model_name in models_name:
         sampler = SampleDataset("../data/full_data.json", model=model, save_path=dataset_path, tokenizer=tokenizer)
         sampler.sample()
         sampler.save()
-        
+        del model
+        del sampler
+        torch.cuda.empty_cache()        
     dataset = HFDataset(dataset_path, tokenizer=tokenizer, slice=10000)
     
     evaluator = EvaluateMechanism(
