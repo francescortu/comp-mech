@@ -108,13 +108,21 @@ class EvaluateMechanism:
             with open(filename, "w") as file:
                 file.write("model_name,orthogonalize,target_true,target_false,other\n")
         
-        with open(filename, "a") as file:
+        with open(filename, "a+") as file:
+            file.seek(0)
             # if there is aleardy a line with the same model_name and orthogonalize, delete it
             lines = file.readlines()
-            for i, line in enumerate(lines):
-                if line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize):
-                    del lines[i]
-                    break
+            # Check if a line with the same model_name and orthogonalize exists
+            line_exists = any(line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize) for line in lines)
+
+            # If the line exists, remove it
+            if line_exists:
+                lines = [line for line in lines if not (line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize))]
+
+                # Rewrite the file without the removed line
+                file.seek(0)  # Move the file pointer to the start of the file
+                file.truncate()  # Truncate the file (i.e., remove all content)
+                file.writelines(lines)  # Write the updated lines back to the file
             file.write(f"{self.model_name},{self.orthogonalize},{target_true},{target_false},{other}\n")
         
         
