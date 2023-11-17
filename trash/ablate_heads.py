@@ -98,7 +98,53 @@ class BaseExperiment():
         return positions.get(resid_pos, ValueError(
             "resid_pos not recognized: should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"))
 
-
+    def aggregate_result(self, object_positions, pattern, length, dim=-1):
+        subject_1_1 = 5
+        subject_1_2 = 6 if length > 15 else 5
+        subject_1_3 = 7 if length > 17 else subject_1_2
+        subject_2_1 = object_positions + 2
+        subject_2_2 = object_positions + 3 if length > 15 else subject_2_1
+        subject_2_3 = object_positions + 4 if length > 17 else subject_2_2
+        subject_2_2 = subject_2_2 if subject_2_2 < length else subject_2_1
+        subject_2_3 = subject_2_3 if subject_2_3 < length else subject_2_2
+        last_position = length - 1
+        object_positions_pre = object_positions - 1
+        object_positions_next = object_positions + 1
+        *leading_dims, pen_len, last_len = pattern.shape
+        
+        result_aggregate = torch.zeros((*leading_dims, 13,13))
+        intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 13))
+        #aggregate for pre-last dimension
+        intermediate_aggregate[..., 0] = pattern[..., :subject_1_1].mean(dim=-1)
+        intermediate_aggregate[..., 1] = pattern[..., subject_1_1]
+        intermediate_aggregate[..., 2] = pattern[..., subject_1_2]
+        intermediate_aggregate[..., 3] = pattern[..., subject_1_3]
+        intermediate_aggregate[..., 4] = pattern[..., subject_1_3 + 1:object_positions_pre].mean(dim=-1)
+        intermediate_aggregate[..., 5] = pattern[..., object_positions_pre]
+        intermediate_aggregate[..., 6] = pattern[..., object_positions]
+        intermediate_aggregate[..., 7] = pattern[..., object_positions_next]
+        intermediate_aggregate[..., 8] = pattern[..., subject_2_1]
+        intermediate_aggregate[..., 9] = pattern[..., subject_2_2]
+        intermediate_aggregate[..., 10] = pattern[..., subject_2_3]
+        intermediate_aggregate[..., 11] = pattern[..., subject_2_3 + 1:last_position].mean(dim=-1)
+        intermediate_aggregate[..., 12] = pattern[..., last_position]
+        if dim == -1:
+            return intermediate_aggregate
+        #aggregate for last dimension
+        result_aggregate[..., 0,:] = intermediate_aggregate[..., :subject_1_1,:].mean(dim=-2)
+        result_aggregate[..., 1,:] = intermediate_aggregate[..., subject_1_1,:]
+        result_aggregate[..., 2,:] = intermediate_aggregate[..., subject_1_2,:]
+        result_aggregate[..., 3,:] = intermediate_aggregate[..., subject_1_3,:]
+        result_aggregate[..., 4,:] = intermediate_aggregate[..., subject_1_3 + 1:object_positions_pre,:].mean(dim=-2)
+        result_aggregate[..., 5,:] = intermediate_aggregate[..., object_positions_pre,:]
+        result_aggregate[..., 6,:] = intermediate_aggregate[..., object_positions,:]
+        result_aggregate[..., 7,:] = intermediate_aggregate[..., object_positions_next,:]
+        result_aggregate[..., 8,:] = intermediate_aggregate[..., subject_2_1,:]
+        result_aggregate[..., 9,:] = intermediate_aggregate[..., subject_2_2,:]
+        result_aggregate[..., 10,:] = intermediate_aggregate[..., subject_2_3,:]
+        result_aggregate[..., 11,:] = intermediate_aggregate[..., subject_2_3+ 1:last_position,:].mean(dim=-2)
+        result_aggregate[..., 12,:] = intermediate_aggregate[..., last_position,:]
+        return result_aggregate
 class Ablate(BaseExperiment):
     def __init__(self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
@@ -492,35 +538,35 @@ class OVCircuit(BaseExperiment):
             self.plot_heatmap(copy_score)
         return copy_score
 
-    def aggregate_result(self, object_positions, logit_target, length):
-        subject_1_1 = 5
-        subject_1_2 = 6 if length > 15 else 5
-        subject_1_3 = 7 if length > 17 else subject_1_2
-        subject_2_1 = object_positions + 2
-        subject_2_2 = object_positions + 3 if length > 15 else subject_2_1
-        subject_2_3 = object_positions + 4 if length > 17 else subject_2_2
-        subject_2_2 = subject_2_2 if subject_2_2 < length else subject_2_1
-        subject_2_3 = subject_2_3 if subject_2_3 < length else subject_2_2
-        last_position = length - 1
-        object_positions_pre = object_positions - 1
-        object_positions_next = object_positions + 1
-        result_aggregate = torch.zeros((self.model.cfg.n_layers, 13))
-        result_aggregate[:, 0] = logit_target[:, :subject_1_1].mean(dim=1)
-        result_aggregate[:, 1] = logit_target[:, subject_1_1]
-        result_aggregate[:, 2] = logit_target[:, subject_1_2]
-        result_aggregate[:, 3] = logit_target[:, subject_1_3]
-        result_aggregate[:, 4] = logit_target[:, subject_1_3 + 1:object_positions_pre].mean(dim=1)
-        result_aggregate[:, 5] = logit_target[:, object_positions_pre]
-        result_aggregate[:, 6] = logit_target[:, object_positions]
-        result_aggregate[:, 7] = logit_target[:, object_positions_next]
-        result_aggregate[:, 8] = logit_target[:, subject_2_1]
-        result_aggregate[:, 9] = logit_target[:, subject_2_2]
-        result_aggregate[:, 10] = logit_target[:, subject_2_3]
+    # def aggregate_result(self, object_positions, logit_target, length):
+    #     subject_1_1 = 5
+    #     subject_1_2 = 6 if length > 15 else 5
+    #     subject_1_3 = 7 if length > 17 else subject_1_2
+    #     subject_2_1 = object_positions + 2
+    #     subject_2_2 = object_positions + 3 if length > 15 else subject_2_1
+    #     subject_2_3 = object_positions + 4 if length > 17 else subject_2_2
+    #     subject_2_2 = subject_2_2 if subject_2_2 < length else subject_2_1
+    #     subject_2_3 = subject_2_3 if subject_2_3 < length else subject_2_2
+    #     last_position = length - 1
+    #     object_positions_pre = object_positions - 1
+    #     object_positions_next = object_positions + 1
+    #     result_aggregate = torch.zeros((self.model.cfg.n_layers, 13))
+    #     result_aggregate[:, 0] = logit_target[:, :subject_1_1].mean(dim=1)
+    #     result_aggregate[:, 1] = logit_target[:, subject_1_1]
+    #     result_aggregate[:, 2] = logit_target[:, subject_1_2]
+    #     result_aggregate[:, 3] = logit_target[:, subject_1_3]
+    #     result_aggregate[:, 4] = logit_target[:, subject_1_3 + 1:object_positions_pre].mean(dim=1)
+    #     result_aggregate[:, 5] = logit_target[:, object_positions_pre]
+    #     result_aggregate[:, 6] = logit_target[:, object_positions]
+    #     result_aggregate[:, 7] = logit_target[:, object_positions_next]
+    #     result_aggregate[:, 8] = logit_target[:, subject_2_1]
+    #     result_aggregate[:, 9] = logit_target[:, subject_2_2]
+    #     result_aggregate[:, 10] = logit_target[:, subject_2_3]
 
-        result_aggregate[:, 11] = logit_target[:, subject_2_3 + 1:last_position ].mean(dim=1)
-        # result_aggregate[:, 12] = logit_target[:, last_position - 1]
-        result_aggregate[:, 12] = logit_target[:, last_position]
-        return result_aggregate
+    #     result_aggregate[:, 11] = logit_target[:, subject_2_3 + 1:last_position ].mean(dim=1)
+    #     # result_aggregate[:, 12] = logit_target[:, last_position - 1]
+    #     result_aggregate[:, 12] = logit_target[:, last_position]
+    #     return result_aggregate
 
     def residual_stram_track_target(self, length, target="copy", disable_tqdm=False, plot=False):
         assert target in ["copy", "mem"], "target should be one of copy or mem"
@@ -919,7 +965,8 @@ class DecomposeResidDir(BaseExperiment):
 class AttentionPattern(BaseExperiment):
     def __init__(self, model: WrapHookedTransformer, dataset: TlensDataset, batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
-    def get_attention_pattern_single_len(self, length):
+                
+    def get_attention_pattern_single_len(self, length, aggregate=False):
         self.set_len(length, slice_to_fit_batch=False)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
@@ -941,5 +988,17 @@ class AttentionPattern(BaseExperiment):
         
         # rearrange to (n_batches, n_layers, n_heads, len, len)
         attention_pattern = einops.rearrange(attention_pattern, "l b h p q -> b l h p q")
+        object_positions = self.dataset.obj_pos[0]
+        if aggregate:
+            attention_pattern = self.aggregate_result(object_positions, attention_pattern, length, dim=-2)
         
         return attention_pattern
+    
+    def attention_pattern_all_len(self):
+        lenghts = self.dataset.get_lengths()
+        attention_pattern = {}
+        for l in lenghts:
+            attention_pattern[l] = self.get_attention_pattern_single_len(l, aggregate=True)
+        
+        result_attn_pattern = torch.cat(list(attention_pattern.values()), dim=0)
+        return result_attn_pattern
