@@ -133,23 +133,22 @@ class HFDataset(Dataset):
         }
         
     def compute_orthogonal(self, string_token, model):
-        token = self.tokenizer.encode(string_token, return_tensors="pt")
+        token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=False)
         token = token.to(model.device)
         with torch.no_grad():
             embedding = model.get_input_embeddings()(token)
-            embedding = einops.rearrange(embedding, "b n e ->  (b n e)")
+            assert embedding.shape[0] == 1 and embedding.shape[1] == 1, "Generated more then one embedding for tokens"
+            embedding = embedding[0,0]
         
         random_vector = torch.randn(embedding.shape[0]).cuda()
         # gram_schmidt
         random_vector = random_vector - torch.dot(random_vector, embedding) * embedding / torch.dot(embedding, embedding)
         # normalize
         x = random_vector / torch.norm(random_vector)
-        
         #project the embedding in the closest token
         
             # Get all embeddings from the model
         embeddings_matrix = model.get_input_embeddings().weight
-
         # Compute cosine similarity with all embeddings
         similarities = torch.nn.functional.cosine_similarity(random_vector.unsqueeze(0), embeddings_matrix, dim=1)
 
