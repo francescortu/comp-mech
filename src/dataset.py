@@ -133,12 +133,16 @@ class HFDataset(Dataset):
         }
         
     def compute_orthogonal(self, string_token, model):
-        token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=False)
+        token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=True)
+        if token.shape[1] > 1:
+            token = token[0,1]
+        else:
+            token = token[0,0]
+            
         token = token.to(model.device)
         with torch.no_grad():
             embedding = model.get_input_embeddings()(token)
-            assert embedding.shape[0] == 1 and embedding.shape[1] == 1, "Generated more then one embedding for tokens"
-            embedding = embedding[0,0].cuda()
+            embedding = embedding.cuda()
         
         random_vector = torch.randn(embedding.shape[0]).cuda()
         # gram_schmidt
@@ -164,7 +168,7 @@ class HFDataset(Dataset):
         # ort_embedding = model.get_input_embeddings()(ort_token)
         # base_embedding = model.get_input_embeddings()(base_token)
         # assert torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0) < 0.3, "Dot product is not zero"
-        
+        #print(most_similar_token, most_similar_token_idx)
         return most_similar_token
         
     def set_len(self, length, orthogonal=False, model=None):
@@ -175,7 +179,14 @@ class HFDataset(Dataset):
             compute_orthogonal = partial(self.compute_orthogonal, model=model)
             orthogonal_target_new = [compute_orthogonal(string_token=d["target_new"]) for d in tqdm(self.data)]
             target_new = orthogonal_target_new
-            token_false = [self.tokenizer.encode(tn, return_tensors="pt", add_special_tokens=False)[0] for tn in target_new]
+            token_false = []
+            for tn in target_new:
+                token = self.tokenizer.encode(tn, return_tensors="pt", add_special_tokens=True)
+                if token.shape[1] > 1:
+                    token = token[0,1]
+                else:
+                    token = token[0,0]
+                token_false.append(token)
         else:
             target_new = [d["target_new"] for d in self.data]
             token_false = [d["token_false"] for d in self.data]
@@ -186,9 +197,7 @@ class HFDataset(Dataset):
         self.obj_pos = [d["position"] for d in self.data]
         self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]
         if orthogonal:
-            for idx, _ in enumerate(self.input_ids):
-                if token_false[idx].shape[0] > 1:
-                     token_false[idx] = token_false[idx][0] 
+            for idx, _ in enumerate(self.input_ids):                    
                 self.input_ids[idx][self.obj_pos[idx]] = token_false[idx]
         
         

@@ -13,7 +13,8 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # models_name = ["facebook/opt-125m", "facebook/opt-350m", "facebook/opt-1.3B", "facebook/opt-2.7B"]
 #models_name = ["EleutherAI/gpt-j-6b"]
 #models_name = ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]
-models_name = [ "facebook/opt-350m"]
+#models_name = ["facebook/opt-350m"]
+
 for model_name in models_name:
     print("Loading model", model_name)
     tokenizer = AutoTokenizer.from_pretrained(
