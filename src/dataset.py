@@ -1,26 +1,29 @@
-import einops
+from token import OP
+from pyparsing import Opt
 import torch
 from torch.utils.data import Dataset
 import json
 from tqdm import tqdm
 import random
-from typing import Optional
+from typing import Optional, Union, List
 from src.model import WrapHookedTransformer
 from functools import partial
+from transformers import AutoTokenizer, AutoModelForCausalLM 
 
 class TlensDataset(Dataset):
-    def __init__(self, path, model, slice=None):
+    def __init__(self, path:str, model:WrapHookedTransformer, slice:Optional[int]):
         self.data = json.load(open(path))
         if slice is not None:
             self.data = self.data[:slice]
         print("Dataset loaded from", path)
         print("Number of samples:", len(self.data))
         self.model = model
-        self.pad_token = model.tokenizer.pad_token
+        self.pad_token = model.tokenizer.pad_token if model.tokenizer is not None else ValueError("You must pass a tokenizer to the model.")
         self.data_per_len = self.split_per_len()
         
     def __len__(self):
         return len(self.corrupted_prompts) 
+    
     def __getitem__(self, idx):
         return {
             # "clean_prompts": self.clean_prompts[idx],
@@ -51,15 +54,15 @@ class TlensDataset(Dataset):
         #         del data_per_len[length]
         return data_per_len
     
-    def set_len(self, length, model):
+    def set_len(self, length:int):
         self.length = length
         data = self.data_per_len[length]
         # self.clean_prompts = [d["template"].format(self.pad_token) for d in self.data]
         # self.corrupted_prompts = [d["template"].format(d["target_new"]) for d in self.data]
         self.corrupted_prompts = [d["prompt"] for d in data]
         self.obj_pos = [d["obj_pos"] for d in data]
-        target1 = [model.to_tokens(d["target_true"], prepend_bos=False) for d in data]
-        target2 = [model.to_tokens(d["target_new"], prepend_bos=False) for d in data]
+        target1 = [self.model.to_tokens(d["target_true"], prepend_bos=False) for d in data]
+        target2 = [self.model.to_tokens(d["target_new"], prepend_bos=False) for d in data]
         tensor_1 = torch.stack(target1, dim=0)
         tensor_2 = torch.stack(target2, dim=0)
         # stack the tensors
@@ -69,11 +72,11 @@ class TlensDataset(Dataset):
         assert len(self.target.shape) == 2, "The target should be a tensor of shape (batch_size, 2)"
         assert self.target.shape[1] == 2, "The target should be a tensor of shape (batch_size, 2)"
         
-    def filter_from_idx_all(self, index):
+    def filter_from_idx_all(self, index:List[int]):
         self.data = [self.data[i] for i in range(len(self.data)) if i in index]
         self.data_per_len = self.split_per_len()
         
-    def filter_from_idx(self, index, exclude=False, save_filtered=False):
+    def filter_from_idx(self, index:List[int], exclude:bool=False, save_filtered:bool=False):
         if exclude:
             self.target = [self.target[i] for i in range(len(self.target)) if i not in index]
             # self.clean_prompts = [self.clean_prompts[i] for i in range(len(self.clean_prompts)) if i not in index]
@@ -90,7 +93,8 @@ class TlensDataset(Dataset):
         if save_filtered:
             self.save_filtered()
     
-    def slice(self, end, start=0):
+    def slice(self, end:int, start:int=0):
+        assert end <= len(self.corrupted_prompts), "End index is greater than the dataset size"
         self.target = self.target[start:end]
         self.corrupted_prompts = self.corrupted_prompts[start:end]
         self.obj_pos = self.obj_pos[start:end]
@@ -98,15 +102,15 @@ class TlensDataset(Dataset):
     def get_lengths(self):
         return list(self.data_per_len.keys())
     
-    def slice_to_fit_batch(self, batch_size):
+    def slice_to_fit_batch(self, batch_size:int):
         maxdatadize = (len(self.corrupted_prompts)//batch_size)*batch_size
         self.slice(maxdatadize)
         
     def save_filtered(self):
         self.data_per_len[self.length] = self.data
-       
+
 class HFDataset(Dataset):
-    def __init__(self, path, tokenizer, slice=None):
+    def __init__(self, path:str, tokenizer, slice=None):
         with open(path, 'r') as file:
             self.full_data = json.load(file)
         
@@ -132,7 +136,8 @@ class HFDataset(Dataset):
             "obj_pos": self.obj_pos[idx],
         }
         
-    def compute_orthogonal(self, string_token, model):
+
+    def compute_orthogonal(self, string_token:str, model):
         token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=True)
         if token.shape[1] > 1:
             token = token[0,1]
@@ -171,7 +176,7 @@ class HFDataset(Dataset):
         #print(most_similar_token, most_similar_token_idx)
         return most_similar_token
         
-    def set_len(self, length, orthogonal=False, model=None):
+    def set_len(self, length:int, orthogonal:bool=False, model:AutoModelForCausalLM=None):
         self.data = [d for d in self.full_data if d["length"] == length]
         self.original_index = [i for i, d in enumerate(self.full_data) if d["length"] == length]
         if orthogonal:
@@ -243,7 +248,7 @@ class HFDataset(Dataset):
             seen.add(d["prompt"])
         return True
         
-    def slice(self, end, start=0):
+    def slice(self, end:int, start:int=0):
         self.data   = self.data[start:end]
         self.target = self.target[start:end]
         self.clean_prompts = self.clean_prompts[start:end]
@@ -266,7 +271,7 @@ class HFDataset(Dataset):
                 token_position = 0
                 
             d["position"] = tokenized_prompt["input_ids"][0].index(tokenized_prompt["input_ids"][2][token_position])
-            d["token_true"] = tokenized_prompt["input_ids"][1][token_position]
+            d["token_true"] = tokenized_prompt["input_ids"][1][token_position] 
             d["token_false"] = tokenized_prompt["input_ids"][2][token_position]
         return list(set([d["length"] for d in self.full_data]))
     
@@ -279,7 +284,7 @@ class HFDataset(Dataset):
 
        
 class SampleDataset:
-    def __init__(self, path, model, save_path, tokenizer:Optional[object]):
+    def __init__(self, path:str, model, save_path:str, tokenizer:Optional[object]):
         self.data = json.load(open(path))
         self.model = model
         self.save_path = save_path
@@ -290,16 +295,16 @@ class SampleDataset:
             self.model_type = "AutoModelForCausalLM"
             try:
                 self.tokenizer = tokenizer
-            except:
+            except:  
                 raise ValueError("With HuggingFace models, you must pass a tokenizer")
 
-    def sample(self, size=10000):
-        if self.model_type == "WrapHookedTransformer":
+    def sample(self, size:int=10000):
+        if type(self.model) == WrapHookedTransformer:
             self.sample_dataset_tlens(size)
         else:
             self.sample_dataset_hf(size)
     
-    def sample_dataset_tlens(self, size):
+    def sample_dataset_tlens(self, size:int):
         random.seed(42)
         new_data = []
         random.shuffle(self.data)
@@ -315,7 +320,7 @@ class SampleDataset:
                 pbar.update(len(new_data)-pbar.n)
             self.data = new_data
             
-    def sample_dataset_hf(self, size):
+    def sample_dataset_hf(self, size:int):
         random.seed(42)
         new_data = []
         random.shuffle(self.data)

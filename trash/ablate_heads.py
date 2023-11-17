@@ -35,9 +35,12 @@ class BaseExperiment():
         self.model.eval()
         self.batch_size = batch_size
         self.filter_outliers = filter_outliers
+        if self.model.cfg.model_name != self.dataset.model.cfg.model_name:
+            raise ValueError("Model and dataset should have the same model_name. Found {} in dataset and {} in model".format(
+                self.dataset.model.cfg.model_name, self.model.cfg.model_name))
 
     def set_len(self, length, slice_to_fit_batch=True):
-        self.dataset.set_len(length, self.model)
+        self.dataset.set_len(length)
         if self.filter_outliers:
             self._filter_outliers()
         elif slice_to_fit_batch:

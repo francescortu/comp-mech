@@ -1,15 +1,13 @@
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
-import einops
 import torch
 from tqdm import tqdm
-from functools import partial
-from copy import deepcopy
+from torch.utils.data import DataLoader
 
 torch.set_grad_enabled(False)
 
 
-def to_logit_token(logit, target, normalize="logsoftmax"):
+def to_logit_token(logit, target, normalize="logsoftmax") -> tuple[torch.Tensor, torch.Tensor]:
     assert len(logit.shape) in [2,
                                 3], "logit should be of shape (batch_size, d_vocab) or (batch_size, seq_len, d_vocab)"
     if len(logit.shape) == 3:
@@ -29,15 +27,18 @@ def to_logit_token(logit, target, normalize="logsoftmax"):
 
 
 class BaseExperiment():
-    def __init__(self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size, filter_outliers=False):
+    def __init__(self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size:int, filter_outliers:bool=False):
         self.dataset = dataset
         self.model = model
         self.model.eval()
         self.batch_size = batch_size
         self.filter_outliers = filter_outliers
+        if self.model.cfg.model_name != self.dataset.model.cfg.model_name:
+            raise ValueError("Model and dataset should have the same model_name, found {} and {}".format(
+                self.model.cfg.model_name, self.dataset.model.cfg.model_name))
 
-    def set_len(self, length, slice_to_fit_batch=True):
-        self.dataset.set_len(length, self.model)
+    def set_len(self, length:int, slice_to_fit_batch:bool=True) -> None:
+        self.dataset.set_len(length)
         if self.filter_outliers:
             self._filter_outliers()
         elif slice_to_fit_batch:
@@ -45,10 +46,10 @@ class BaseExperiment():
             self.dataset.slice_to_fit_batch(self.batch_size)
         
 
-    def _filter_outliers(self, save_filtered=False):
+    def _filter_outliers(self, save_filtered:bool=False)->None:
         print("save filtered:", save_filtered)
         print("Number of examples before outliers:", len(self.dataset))
-        clean_logit, corrupted_logit, target = self.compute_logit()
+        corrupted_logit, target = self.compute_logit()
         # clean_logit_mem, clean_logit_cp = to_logit_token(clean_logit, target)
         corrupted_logit_mem, corrupted_logit_cp = to_logit_token(corrupted_logit, target)
 
@@ -60,30 +61,28 @@ class BaseExperiment():
 
         self.dataset.filter_from_idx(outliers_indexes, exclude=True, save_filtered=save_filtered)
         self.dataset.slice(maxdatasize)
-        self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        self.dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         self.num_batches = len(self.dataloader)
         print("Number of examples after outliers:", len(self.dataloader) * self.batch_size)
 
-    def compute_logit(self):
-        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
-        clean_logit = []
+    def compute_logit(self) -> tuple[ torch.Tensor, torch.Tensor]:
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         corrupted_logit = []
         target = []
         for batch in tqdm(dataloader):
-            # clean_logit.append(self.model(batch["clean_prompts"])[:,-1,:].cpu())
             corrupted_logit.append(self.model(batch["corrupted_prompts"])[:, -1, :].cpu())
             target.append(batch["target"].cpu())
         # clean_logit = torch.cat(clean_logit, dim=0)
         corrupted_logit = torch.cat(corrupted_logit, dim=0)
         target = torch.cat(target, dim=0)
-        return clean_logit, corrupted_logit, target
+        return  corrupted_logit, target
 
-    def get_batch(self, len, **kwargs):
+    def get_batch(self, len:int, **kwargs):
         self.set_len(len, **kwargs)
-        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
-        return next(iter(self.dataloader))
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        return next(iter(dataloader))
 
-    def get_position(self, resid_pos: str):
+    def get_position(self, resid_pos: str) -> int:
         positions = {
             "1_1_subject": 5,
             "1_2_subject": 6,
@@ -98,7 +97,7 @@ class BaseExperiment():
         return positions.get(resid_pos, ValueError(
             "resid_pos not recognized: should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"))
 
-    def aggregate_result(self, object_positions, pattern, length, dim=-1):
+    def aggregate_result(self, object_positions:int, pattern:torch.Tensor, length:int, dim:int=-1) -> torch.Tensor:
         subject_1_1 = 5
         subject_1_2 = 6 if length > 15 else 5
         subject_1_3 = 7 if length > 17 else subject_1_2
@@ -145,3 +144,23 @@ class BaseExperiment():
         result_aggregate[..., 11,:] = intermediate_aggregate[..., subject_2_3+ 1:last_position,:].mean(dim=-2)
         result_aggregate[..., 12,:] = intermediate_aggregate[..., last_position,:]
         return result_aggregate
+    
+    @staticmethod
+    def to_logit_token(logit:torch.Tensor, target:torch.Tensor, normalize:str="logsoftmax") -> tuple[torch.Tensor, torch.Tensor]:
+        assert len(logit.shape) in [2,
+                                    3], "logit should be of shape (batch_size, d_vocab) or (batch_size, seq_len, d_vocab)"
+        assert normalize in ["logsoftmax", "softmax", "none"], "normalize should be one of logsoftmax, softmax, none"
+        if len(logit.shape) == 3:
+            logit = logit[:, -1, :]  # batch_size, d_vocab
+        if normalize == "logsoftmax":
+            logit = torch.log_softmax(logit, dim=-1)
+        elif normalize == "softmax":
+            logit = torch.softmax(logit, dim=-1)
+        elif normalize == "none":
+            pass
+        logit_mem = torch.zeros(target.shape[0])
+        logit_cp = torch.zeros(target.shape[0])
+        for i in range(target.shape[0]):
+            logit_mem[i] = logit[i, target[i, 0]]
+            logit_cp[i] = logit[i, target[i, 1]]
+        return logit_mem, logit_cp
