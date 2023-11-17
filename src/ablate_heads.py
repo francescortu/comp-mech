@@ -137,8 +137,10 @@ class Ablate(BaseExperiment):
                 return corrupted_logit_mem, corrupted_logit_cp
 
         return normalize_logit_token
-
-    def ablate_heads(self):
+    
+    
+    
+    def ablate_heads(self, return_type="diff"):
         normalize_logit_token = self.get_normalize_metric()
         self.dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         self.num_batches = len(self.dataloader)
@@ -196,6 +198,19 @@ class Ablate(BaseExperiment):
 
         examples_mem = einops.rearrange(examples_mem, "l h b s -> l h (b s)")
         examples_cp = einops.rearrange(examples_cp, "l h b s -> l h (b s)")
+        
+        if return_type == "diff":
+            # examples_mem = (einops.einsum(examples_mem, -examples_cp, "l h b, l h b -> l h b")).abs()
+            examples_mem = (examples_mem -examples_cp).abs()
+            examples_cp = examples_mem
+            base_logit_mem, base_logit_cp = normalize_logit_token(examples_mem, examples_cp, baseline="base_logit")
+            base_diff = (base_logit_mem - base_logit_cp).abs()
+            #percentage increade/decrease
+            examples_cp =  (examples_cp - base_diff) 
+            examples_mem = (examples_mem - base_diff) 
+            
+            return examples_mem, examples_cp
+        
         base_logit_mem, base_logit_cp = normalize_logit_token(examples_mem, examples_cp, baseline="corrupted")
         # for layer in range(self.model.cfg.n_layers):
         #     for head in range(self.model.cfg.n_heads):
@@ -379,6 +394,9 @@ class OVCircuit(BaseExperiment):
         self.set_len(length)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
+        if num_batches == 0:
+            return None
+        
         target_idx = 1 if target == "copy" else 0
         position = self.get_position(resid_pos)
         if logit_score == False:
@@ -455,6 +473,8 @@ class OVCircuit(BaseExperiment):
         copy_score = {l: self.ov_single_len_all_heads_score(resid_layer_input, resid_pos, l, target=target, plot=False,
                                                             disable_tqdm=False, logit_score=logit_score, **kwargs) for l
                       in lenghts}
+        # remove the None values
+        copy_score = {k: v for k, v in copy_score.items() if v is not None}
         copy_score = torch.stack(list(copy_score.values()), dim=0).mean(dim=0)
         if plot:
             copy_score[copy_score < 0] = 0
@@ -825,61 +845,64 @@ from concurrent.futures import ThreadPoolExecutor
 class DecomposeResidDir(BaseExperiment):
     def __init__(self, model: WrapHookedTransformer, dataset: TlensDataset, batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
+
+    def get_basis(self, token):
+        matrix = self.model.W_U.T
+        significant = (matrix[token,:] > matrix[token,:].mean() + 2*matrix[token,:].std()) # | (matrix[token,:] < matrix[token,:].mean() - 2*matrix[token,:].std())
+        indices = torch.where(significant)[0]
         
-    def compute_solution(self, unembedding, mem_token, cp_token):
-        batch_shape = mem_token.shape[0]
-        b_mem = torch.zeros(batch_shape, unembedding.shape[-1], device=unembedding.device)
-        b_cp = torch.zeros(batch_shape, unembedding.shape[-1], device=unembedding.device)
-        b_mem[torch.arange(batch_shape), mem_token] = 10
-        b_cp[torch.arange(batch_shape), cp_token] = 10
-        print(b_mem.argmax(dim=-1), b_mem.shape)
-        print(torch.linalg.cond(unembedding.T))
-        batched_unembedding_transpose = einops.repeat(unembedding.T, "v d -> b v d", b=batch_shape)
-        sol_mem = torch.linalg.lstsq(batched_unembedding_transpose, b_mem)
-        sol_cp = torch.linalg.lstsq(batched_unembedding_transpose, b_cp)
+        std_basis= torch.eye(matrix.size(1))[indices.cpu()]
+        # return matrix[token, indices].unsqueeze(0) * std_basis
+        return std_basis    
+    
+    def get_common_basis(self, base1, base2):
+        comparison = base1.unsqueeze(1) == base2.unsqueeze(0)
+        return base1[torch.where(comparison.all(dim=-1))[0],:]
+    
+    def project(self, vector, basis):
+        # projection = einops.einsum( vector.cuda(), basis.cuda(),"d, n d ->  n")
+        # projection = basis.cpu() @ vector.cpu()
+        # print("vector shape", vector.shape, "basis shape", basis.shape)
+        projection_matrix = basis.T @ basis
+        projection = projection_matrix.cuda() @ vector.cuda()
         
-        return sol_mem, sol_cp
+        # print("projection", projection, "projection norm", projection.norm())
+        return basis.shape[0]
     
-    def compute_distances(self, resid, sol_mem, sol_cp):
-        dist_mem = torch.linalg.norm(resid - sol_mem)
-        dist_cp = torch.linalg.norm(resid - sol_cp)
-        return dist_mem, dist_cp
-    
-    def compute_distance_per_len(self, l):
+    def analyze_subspace(self, l):
         self.set_len(l)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
-        if num_batches == 0:
-            return None, None
-        # position = self.get_position(position)
-        position = -1
-        distance_mem = torch.zeros((num_batches, self.batch_size))
-        distance_cp = torch.zeros((num_batches, self.batch_size))
-        unembedding = self.model.W_U.cpu().detach()
-        layer = -1
-        for idx,batch in tqdm(enumerate(dataloader), total=num_batches):
-            _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
-            batch["target"] = batch["target"].to("cpu")
-            
-            # for layer in range(self.model.cfg.n_layers):
-                # iterate over tokens
-            sol_mem, sol_cp = self.compute_solution(unembedding, batch["target"][:,0], batch["target"][:,1])
-            dist_mem, dist_cp = self.compute_distances(cache["resid_post", layer][idx, position, :].cpu(), sol_mem, sol_cp)
-            distance_mem[idx] = dist_mem
-            distance_cp[idx] = dist_cp
-            print("Layer ", layer)
-        distance_mem = einops.rearrange(distance_mem, "b s -> (b s)")
-        distance_cp = einops.rearrange(distance_cp, "b s -> (b s)")
-        return distance_mem, distance_cp
-
+        logit_diffs = []
+        norm = []
+        for i, batch in tqdm(enumerate(dataloader), total=num_batches):
+            logit, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            logit_mem, logit_cp = to_logit_token(logit[:,-1,:], batch["target"], normalize="none")
+            residual_stream = cache["resid_post", 11][:,-1,:]
+            for idx, tokens in enumerate(batch["target"]):
+                mem_token = tokens[0]
+                cp_token = tokens[1]
+                mem_base = self.get_basis(mem_token)
+                cp_base = self.get_basis(cp_token)
+                common_base = self.get_common_basis(mem_base, cp_base)
+                mem_projection = self.project(residual_stream[idx,:], common_base)
+                logit_diff = (logit_cp[idx] - logit_mem[idx]).abs()
+                # print("logit_diff", logit_diff, "basis_norm", mem_projection)
+                logit_diffs.append(logit_diff.item())
+                # logit_diffs.append(logit_diff.item())
+                norm.append(mem_projection)
+                
+        return logit_diffs, norm
     
-    def compute_distance_all_len(self, **kwargs):
-        lenghts = self.dataset.get_lengths()
-        distance_mem = {}
-        distance_cp = {}
-        for l in lenghts:
-            distance_mem[l], distance_cp[l] = self.compute_distance_per_len(l, **kwargs)
-        distance_mem = torch.cat(list(distance_mem.values()), dim=0)
-        distance_cp = torch.cat(list(distance_cp.values()), dim=0)
-        return distance_mem, distance_cp
-            
+    
+class AttentionPattern(BaseExperiment):
+    def get_attention_pattern_single_len(self, len):
+        self.set_len(len)
+        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        num_batches = len(dataloader)
+        assert num_batches > 0, f"Lenght {len} has no examples"
+
+        attention_pattern = torch.zeros((self.model.cfg.n_layers, self.model.cfg.n_heads, len, len, self.num_batches, self.batch_size))
+        for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"Attention pattern at len {len}"):
+            logit, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            attn_pattern = cache["pattern", 11]

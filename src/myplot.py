@@ -7,14 +7,14 @@ def plot_heatmaps(result, result_std, title, interval, save=False, center=0.0):
     # sns.set()
     # sns.set_style("whitegrid", {"axes.grid": False})
     # add also the std heatmap
-    fig, ax = plt.subplots(1, 2, figsize=(22, 8))
+    fig, ax = plt.subplots(1, 2, figsize=(15, 5))
     ax[0].set_title("Average logit difference")
     ax[1].set_title("Std logit difference")
     # make the center of the heatmap 0 and white color
     sns.heatmap(
         result.detach().cpu().numpy(),
         annot=True,
-        fmt=".2f",
+        fmt=".1f",
         cbar=False,
         ax=ax[0],
         center=center,
