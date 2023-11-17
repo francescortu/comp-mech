@@ -1,6 +1,6 @@
-./data
-./results
-./*/__pycache__
+/data
+/results
+/*/__pycache__
 
 /shelf/
 /workspace.xml
