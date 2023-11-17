@@ -1,7 +1,8 @@
 /data
 /results
 /*/__pycache__
-
+/.idea
+/.vscode
 /shelf/
 /workspace.xml
 # Editor-based HTTP Client requests
