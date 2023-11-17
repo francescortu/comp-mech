@@ -36,12 +36,14 @@ class BaseExperiment():
         self.batch_size = batch_size
         self.filter_outliers = filter_outliers
 
-    def set_len(self, length):
+    def set_len(self, length, slice_to_fit_batch=True):
         self.dataset.set_len(length, self.model)
         if self.filter_outliers:
             self._filter_outliers()
-        else:
+        elif slice_to_fit_batch:
+            print("WARNING: slicing to fit batch")
             self.dataset.slice_to_fit_batch(self.batch_size)
+        
 
     def _filter_outliers(self, save_filtered=False):
         print("save filtered:", save_filtered)
@@ -76,8 +78,8 @@ class BaseExperiment():
         target = torch.cat(target, dim=0)
         return clean_logit, corrupted_logit, target
 
-    def get_batch(self, len):
-        self.set_len(len)
+    def get_batch(self, len, **kwargs):
+        self.set_len(len, **kwargs)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         return next(iter(self.dataloader))
 
@@ -153,10 +155,9 @@ class Ablate(BaseExperiment):
             activation = clean_activation
             return activation
 
-        examples_mem = torch.zeros((self.model.cfg.n_layers, self.model.cfg.n_heads, self.num_batches, self.batch_size),
-                                   device="cpu")
-        examples_cp = torch.zeros((self.model.cfg.n_layers, self.model.cfg.n_heads, self.num_batches, self.batch_size),
-                                  device="cpu")
+
+        examples_mem_list = [[[] for _ in range(self.model.cfg.n_heads)] for _ in range(self.model.cfg.n_layers)]
+        examples_cp_list =  [[[] for _ in range(self.model.cfg.n_heads)] for _ in range(self.model.cfg.n_layers)]
 
         for idx, batch in tqdm(enumerate(self.dataloader), total=self.num_batches, desc="Ablating batches"):
             _, clean_cache = self.model.run_with_cache(batch["corrupted_prompts"])
@@ -186,19 +187,25 @@ class Ablate(BaseExperiment):
                         batch["corrupted_prompts"],
                         fwd_hooks=list_hooks,
                     )[:, -1, :]
-                    if logit.shape[0] != self.batch_size:
-                        print("Ops, the batch size is not correct")
                     mem, cp = to_logit_token(logit, batch["target"])
-                    # norm_mem, norm_cp = normalize_logit_token(mem, cp, baseline="corrupted")
-                    examples_mem[layer, head, idx, :] = mem.cpu()
-                    examples_cp[layer, head, idx, :] = cp.cpu()
+
+                    examples_mem_list[layer][head].append(mem.cpu())
+                    examples_cp_list[layer][head].append(cp.cpu())
                 # remove the hooks for the previous layer
 
                 hooks.pop(f"L{layer}")
-
-        examples_mem = einops.rearrange(examples_mem, "l h b s -> l h (b s)")
-        examples_cp = einops.rearrange(examples_cp, "l h b s -> l h (b s)")
         
+        for layer in range(self.model.cfg.n_layers):
+            for head in range(self.model.cfg.n_heads):
+                examples_mem_list[layer][head] = torch.cat(examples_mem_list[layer][head], dim=0)
+                examples_cp_list[layer][head] = torch.cat(examples_cp_list[layer][head], dim=0)
+        
+        flattened_mem = [tensor for layer in examples_mem_list for head in layer for tensor in head]
+        flattened_cp = [tensor for layer in examples_cp_list for head in layer for tensor in head]
+        
+        examples_mem = torch.stack(flattened_mem).view(self.model.cfg.n_layers, self.model.cfg.n_heads, -1)
+        examples_cp = torch.stack(flattened_cp).view(self.model.cfg.n_layers, self.model.cfg.n_heads, -1)
+
         if return_type == "diff":
             # examples_mem = (einops.einsum(examples_mem, -examples_cp, "l h b, l h b -> l h b")).abs()
             examples_mem = (examples_mem -examples_cp).abs()
@@ -212,12 +219,7 @@ class Ablate(BaseExperiment):
             return examples_mem, examples_cp
         
         base_logit_mem, base_logit_cp = normalize_logit_token(examples_mem, examples_cp, baseline="corrupted")
-        # for layer in range(self.model.cfg.n_layers):
-        #     for head in range(self.model.cfg.n_heads):
-        #         norm_mem, norm_cp, = normalize_logit_token(examples_mem[layer, head, :], examples_cp[layer, head, :],
-        #                                                   baseline="raw")
-        #         examples_mem[layer, head, :] = norm_mem
-        #         examples_cp[layer, head, :] = norm_cp
+
 
         return base_logit_mem, base_logit_cp
     
@@ -242,10 +244,13 @@ class Ablate(BaseExperiment):
             activation = clean_activation
             return activation
 
-        examples_mem = torch.zeros((self.model.cfg.n_layers, self.num_batches, self.batch_size),
-                                   device="cpu")
-        examples_cp = torch.zeros((self.model.cfg.n_layers, self.num_batches, self.batch_size),
-                                  device="cpu")
+        # examples_mem = torch.zeros((self.model.cfg.n_layers, self.num_batches, self.batch_size),
+        #                            device="cpu")
+        # examples_cp = torch.zeros((self.model.cfg.n_layers, self.num_batches, self.batch_size),
+        #                           device="cpu")
+        examples_mem_list = [[] for _ in range(self.model.cfg.n_layers)]
+        examples_cp_list = [[] for _ in range(self.model.cfg.n_layers)]
+
 
         for idx, batch in tqdm(enumerate(self.dataloader), total=self.num_batches, desc="Ablating batches"):
             _, clean_cache = self.model.run_with_cache(batch["corrupted_prompts"])
@@ -277,14 +282,19 @@ class Ablate(BaseExperiment):
                     print("Ops, the batch size is not correct")
                 mem, cp = to_logit_token(logit, batch["target"])
                 # norm_mem, norm_cp = normalize_logit_token(mem, cp, baseline="corrupted")
-                examples_mem[layer,  idx, :] = mem.cpu()
-                examples_cp[layer,  idx, :] = cp.cpu()
+                examples_mem_list[layer].append(mem.cpu())
+                examples_cp_list[layer].append(cp.cpu())
             # remove the hooks for the previous layer
 
                 hooks.pop(f"L{layer}")
 
-        examples_mem = einops.rearrange(examples_mem, "l b s -> l (b s)")
-        examples_cp = einops.rearrange(examples_cp, "l b s -> l (b s)")
+        for layer in range(self.model.cfg.n_layers):
+            examples_mem_list[layer] = torch.cat(examples_mem_list[layer], dim=0)
+            examples_cp_list[layer] = torch.cat(examples_cp_list[layer], dim=0)
+            
+        examples_mem = torch.stack(examples_mem_list).view(self.model.cfg.n_layers, -1)
+        examples_cp = torch.stack(examples_cp_list).view(self.model.cfg.n_layers, -1)
+        
         base_logit_mem, base_logit_cp = normalize_logit_token(examples_mem, examples_cp, baseline="corrupted")
         
         
@@ -305,10 +315,10 @@ class AblateMultiLen:
         self.ablate = Ablate(dataset, model, batch_size)
 
     def ablate_single_len(self, length, filter_outliers=False, ablate_target="head", **kwargs):
-        self.ablate.set_len(length)
-        n_samples = len(self.ablate.dataset)
-        if n_samples  < self.batch_size:
-            return None, None
+        self.ablate.set_len(length, slice_to_fit_batch=False)
+        # n_samples = len(self.ablate.dataset)
+        # if n_samples  < self.batch_size:
+        #     return None, None
         # self.ablate.create_dataloader(filter_outliers=filter_outliers, **kwargs)
         if ablate_target == "head":
             return self.ablate.ablate_heads()
@@ -350,6 +360,7 @@ class OVCircuit(BaseExperiment):
         num_batches = len(dataloader)
         position = self.get_position(resid_pos)
         logit_ov = torch.zeros((num_batches, self.batch_size, self.model.cfg.d_vocab))
+        
         for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"OV circuit at ({layer},{head})",
                                disable=disable_tqdm):
             _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
@@ -513,11 +524,12 @@ class OVCircuit(BaseExperiment):
 
     def residual_stram_track_target(self, length, target="copy", disable_tqdm=False, plot=False):
         assert target in ["copy", "mem"], "target should be one of copy or mem"
-        self.set_len(length)
+        self.set_len(length, slice_to_fit_batch=False)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
 
-        logit_target = torch.zeros((self.model.cfg.n_layers, length, num_batches, self.batch_size), device="cpu")
+        # logit_target = torch.zeros((self.model.cfg.n_layers, length, num_batches, self.batch_size), device="cpu")
+        logit_target_list = [[[] for _ in range(length)] for _ in range(self.model.cfg.n_layers)]
         if num_batches == 0:
             return None
         for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"OV circuit at all heads {length}",
@@ -530,10 +542,19 @@ class OVCircuit(BaseExperiment):
                     logit_output = self.model.ln_final(logit_output)
                     mem_logit, cp_logit = to_logit_token(logit_output, batch["target"])
                     if target == "copy":
-                        logit_target[layer, pos, idx] = cp_logit.cpu()
+                        logit_target_list[layer][pos].append(cp_logit.cpu())
+                        # logit_target[layer, pos, idx] = cp_logit.cpu()
                     elif target == "mem":
-                        logit_target[layer, pos, idx] = mem_logit.cpu()
-        logit_target = einops.rearrange(logit_target, "l p b s -> l p (b s)")
+                        logit_target_list[layer][pos].append(mem_logit.cpu())
+                        # logit_target[layer, pos, idx] = mem_logit.cpu()
+                        
+        for layer in range(self.model.cfg.n_layers):
+            for pos in range(length):
+                logit_target_list[layer][pos] = torch.cat(logit_target_list[layer][pos], dim=0)
+        flattened_logit_target = [tensor for layer in logit_target_list for pos in layer for tensor in pos]
+        logit_target = torch.stack(flattened_logit_target).view(self.model.cfg.n_layers, length, -1)
+        
+        # logit_target = einops.rearrange(logit_target, "l p b s -> l p (b s)")
         # compute avg logit_target for each layer accross al the position and examples
         avg_mean = logit_target.mean(dim=-1).mean(dim=-1)
         # mean over all examples
@@ -896,13 +917,29 @@ class DecomposeResidDir(BaseExperiment):
     
     
 class AttentionPattern(BaseExperiment):
-    def get_attention_pattern_single_len(self, len):
-        self.set_len(len)
+    def __init__(self, model: WrapHookedTransformer, dataset: TlensDataset, batch_size, filter_outliers=False):
+        super().__init__(dataset, model, batch_size, filter_outliers)
+    def get_attention_pattern_single_len(self, length):
+        self.set_len(length, slice_to_fit_batch=False)
         dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
-        assert num_batches > 0, f"Lenght {len} has no examples"
+        assert num_batches > 0, f"Lenght {length} has no examples"
 
-        attention_pattern = torch.zeros((self.model.cfg.n_layers, self.model.cfg.n_heads, len, len, self.num_batches, self.batch_size))
-        for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"Attention pattern at len {len}"):
+        # attention_pattern = torch.zeros((self.model.cfg.n_layers, self.model.cfg.n_heads, len, len, self.num_batches, self.batch_size))
+        attention_pattern = [[] for _ in range(self.model.cfg.n_layers)]
+        for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc=f"Attention pattern at len {length}"):
             logit, cache = self.model.run_with_cache(batch["corrupted_prompts"])
-            attn_pattern = cache["pattern", 11]
+            for layer in range(self.model.cfg.n_layers):
+                pattern = cache["pattern", layer] # (batch_size, n_heads, len, len)
+                attention_pattern[layer].append(pattern.cpu()) # list of [[(batch_size, n_heads, len, len),..], ...] for each layer
+                
+        # from list of list to list of tensor cat along the batch dimension
+        attention_pattern = [torch.cat(layer, dim=0) for layer in attention_pattern] # list of [(num_batches, n_heads, len, len), ...] for each layer
+        
+        # from list of tensor to tensor of shape (n_layers, num_batches, n_heads, len, len)
+        attention_pattern = torch.stack(attention_pattern, dim=0)
+        
+        # rearrange to (n_batches, n_layers, n_heads, len, len)
+        attention_pattern = einops.rearrange(attention_pattern, "l b h p q -> b l h p q")
+        
+        return attention_pattern
