@@ -138,7 +138,7 @@ class HFDataset(Dataset):
         with torch.no_grad():
             embedding = model.get_input_embeddings()(token)
             assert embedding.shape[0] == 1 and embedding.shape[1] == 1, "Generated more then one embedding for tokens"
-            embedding = embedding[0,0]
+            embedding = embedding[0,0].cuda()
         
         random_vector = torch.randn(embedding.shape[0]).cuda()
         # gram_schmidt
@@ -175,7 +175,7 @@ class HFDataset(Dataset):
             compute_orthogonal = partial(self.compute_orthogonal, model=model)
             orthogonal_target_new = [compute_orthogonal(string_token=d["target_new"]) for d in tqdm(self.data)]
             target_new = orthogonal_target_new
-            token_false = [self.tokenizer.encode(tn, return_tensors="pt")[0, 0] for tn in target_new]
+            token_false = [self.tokenizer.encode(tn, return_tensors="pt", add_special_tokens=False)[0, 0] for tn in target_new]
         else:
             target_new = [d["target_new"] for d in self.data]
             token_false = [d["token_false"] for d in self.data]
