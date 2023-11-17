@@ -10,3 +10,5 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+/src/experiment/__pycache__
+/.idea/
