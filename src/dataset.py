@@ -175,7 +175,7 @@ class HFDataset(Dataset):
             compute_orthogonal = partial(self.compute_orthogonal, model=model)
             orthogonal_target_new = [compute_orthogonal(string_token=d["target_new"]) for d in tqdm(self.data)]
             target_new = orthogonal_target_new
-            token_false = [self.tokenizer.encode(tn, return_tensors="pt", add_special_tokens=False)[0, 0] for tn in target_new]
+            token_false = [self.tokenizer.encode(tn, return_tensors="pt", add_special_tokens=False)[0] for tn in target_new]
         else:
             target_new = [d["target_new"] for d in self.data]
             token_false = [d["token_false"] for d in self.data]
@@ -187,6 +187,8 @@ class HFDataset(Dataset):
         self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]
         if orthogonal:
             for idx, _ in enumerate(self.input_ids):
+                if token_false[idx].shape[0] > 1:
+                     token_false[idx] = token_false[idx][0] 
                 self.input_ids[idx][self.obj_pos[idx]] = token_false[idx]
         
         
