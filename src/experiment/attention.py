@@ -109,7 +109,64 @@ class AttentionPattern(BaseExperiment):
             raise NotImplementedError
         
     
-    def get_ov_matrix(self, layer:int, head:int):
+    def get_ov_matrix(self, layer:int, head:int, remember=False):
+        """WARNING: the return matrix could be huge!!"""
         W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
-        return W_OV
+        return (self.model.W_U.T @ W_OV) @ self.model.W_E.T
+    
+    def get_ov_output(self, layer:int, head:int, token, mlp=True):
+        token_embedding = self.model.W_E[token,:] #shape d_vocab, d_model
+        # reshape to have batch dim and pos dim
+        token_embedding = token_embedding.unsqueeze(0).unsqueeze(0)
+        
+        effective_token_embedding = self.model.blocks[0].mlp(token_embedding)
+        W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
+        return einops.einsum((self.model.W_U.T @ W_OV), effective_token_embedding, "d_vocab d_model, batch pos d_model -> batch pos d_vocab")
+    
+    def get_ov_interaction(self, layer:int, head:int, target, max_min_rescale=False, rescale_to_standard=False, return_full_output=False,):
+        """
+        Return a (batched) matrix 2x2 where (i,j) means that i is the input (source token) of the OV circuit and j is the output (destination token). More in details:
+        (0,0) -> how is affected the mem token if attend to the mem token (after MLP)
+        (0,1) -> how is affected the mem token if attend to the copy token (after MLP)
+        (1,0) -> how is affected the copy token if attend to the mem token (after MLP)
+        (1,1) -> how is affected the copy token if attend to the copy token (after MLP)
+        """
+        
+        
+        #target is a tensor of shape [batch,2] 
+        token_embeddings = self.model.W_E[target] # (batch,2,d_model)
+        effective_token_embeddings = self.model.blocks[0].mlp(token_embeddings) # (batch,2,d_model)
+        W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
+        ov_interaction = einops.einsum((self.model.W_U.T @ W_OV), effective_token_embeddings, "d_vocab d_model, batch n_target d_model -> batch n_target d_vocab") #(batch,2,d_vocab)
+        
+        if max_min_rescale:
+            # Reshape for min-max scaling across batch and target dimensions
+            reshaped_ov_interaction = ov_interaction.view(-1, ov_interaction.size(-1))
+
+            # Compute the min and max values for each column
+            min_vals = reshaped_ov_interaction.min(dim=0, keepdim=True)[0]
+            max_vals = reshaped_ov_interaction.max(dim=0, keepdim=True)[0]
+
+            # Apply min-max scaling
+            ov_interaction = (ov_interaction - min_vals) / (max_vals - min_vals)
+            
+        if rescale_to_standard:
+                    # Reshape for mean and std deviation calculation across batch and target dimensions
+            reshaped_ov_interaction = ov_interaction.view(-1, ov_interaction.size(-1))
+
+            # Compute the mean and standard deviation for each column
+            mean_vals = reshaped_ov_interaction.mean(dim=0, keepdim=True)
+            std_vals = reshaped_ov_interaction.std(dim=0, keepdim=True)
+
+            # Apply standardization
+            ov_interaction = (ov_interaction - mean_vals) / std_vals
+        if return_full_output:
+            return ov_interaction
+        
+        #from (batch,2,d_vocab) to (batch,2,2)
+        selected_ov_interaction = ov_interaction[torch.arange(ov_interaction.shape[0])[:, None], :, target]
+        return selected_ov_interaction
+    
+    def compute_interaction_per_len(self, length:int):
+        self.set_len(length, slice_to_fit_batch=False)
         
