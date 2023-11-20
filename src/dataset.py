@@ -1,17 +1,16 @@
-from token import OP
-from pyparsing import Opt
 import torch
 from torch.utils.data import Dataset
 import json
 from tqdm import tqdm
 import random
-from typing import Optional, Union, List
+from typing import Optional,  List
 from src.model import WrapHookedTransformer
+from transformer_lens import HookedTransformer
 from functools import partial
-from transformers import AutoTokenizer, AutoModelForCausalLM 
+from transformers import  AutoModelForCausalLM 
 
 class TlensDataset(Dataset):
-    def __init__(self, path:str, model:WrapHookedTransformer, slice:Optional[int]):
+    def __init__(self, path:str, model:HookedTransformer, slice:Optional[int] = None):
         self.data = json.load(open(path))
         if slice is not None:
             self.data = self.data[:slice]

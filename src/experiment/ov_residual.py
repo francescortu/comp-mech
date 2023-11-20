@@ -13,7 +13,7 @@ import numpy as np
 
 
 class OVCircuit(BaseExperiment):
-    def __init__(self, model: WrapHookedTransformer, dataset: TlensDataset, batch_size, filter_outliers=False):
+    def __init__(self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size, filter_outliers=False):
         super().__init__(dataset, model, batch_size, filter_outliers)
 
     def ov_single_len(self, resid_layer_input, resid_pos: str, layer, head, length, disable_tqdm=False):
@@ -60,7 +60,7 @@ class OVCircuit(BaseExperiment):
 
     def ov_single_len_all_heads_score(self, resid_layer_input, resid_pos: str, length, target="copy",
                                       disable_tqdm=False, plot=False, logit_score=False, resid_read="resid_post"):
-        assert target in ["copy", "mem"], "target should be one of copy or mem"
+        assert target in ["copy", "mem", "diff"], "target should be one of copy or mem or diff"
         assert resid_pos in ["o_pre", "last_pre", "1_1_subject", "1_2_subject", "1_3_subject", "definition",
                              "2_1_subject", "2_2_subject",
                              "2_3_subject"], "resid_pos should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"
@@ -115,6 +115,7 @@ class OVCircuit(BaseExperiment):
                             logit_target[layer, head, idx] = cp_logit.cpu()
                         elif target == "mem":
                             logit_target[layer, head, idx] = mem_logit.cpu()
+
             logit_target = einops.rearrange(logit_target, "l h b s -> l h (b s)")
             avg_mean = logit_target.mean(dim=-1).mean(dim=-1)
             logit_target_std = logit_target.std(dim=-1)
