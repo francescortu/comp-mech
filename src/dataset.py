@@ -137,43 +137,45 @@ class HFDataset(Dataset):
         
 
     def compute_orthogonal(self, string_token:str, model):
-        token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=True)
-        if token.shape[1] > 1:
-            token = token[0,1]
-        else:
-            token = token[0,0]
+        while True:
+            token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=True)
+            if token.shape[1] > 1:
+                token = token[0,1]
+            else:
+                token = token[0,0]
+                
+            token = token.to(model.device)
+            with torch.no_grad():
+                embedding = model.get_input_embeddings()(token)
+                embedding = embedding.cuda()
             
-        token = token.to(model.device)
-        with torch.no_grad():
-            embedding = model.get_input_embeddings()(token)
-            embedding = embedding.cuda()
-        
-        random_vector = torch.randn(embedding.shape[0]).cuda()
-        # gram_schmidt
-        random_vector = random_vector - torch.dot(random_vector, embedding) * embedding / torch.dot(embedding, embedding)
-        # normalize
-        x = random_vector / torch.norm(random_vector)
-        #project the embedding in the closest token
-        
-            # Get all embeddings from the model
-        embeddings_matrix = model.get_input_embeddings().weight
-        # Compute cosine similarity with all embeddings
-        similarities = torch.nn.functional.cosine_similarity(random_vector.unsqueeze(0), embeddings_matrix, dim=1)
+            random_vector = torch.randn(embedding.shape[0]).cuda()
+            # gram_schmidt
+            random_vector = random_vector - torch.dot(random_vector, embedding) * embedding / torch.dot(embedding, embedding)
+            # normalize
+            x = random_vector / torch.norm(random_vector)
+            #project the embedding in the closest token
+            
+                # Get all embeddings from the model
+            embeddings_matrix = model.get_input_embeddings().weight
+            # Compute cosine similarity with all embeddings
+            similarities = torch.nn.functional.cosine_similarity(random_vector.unsqueeze(0), embeddings_matrix, dim=1)
 
-        # Find the index of the most similar token
-        most_similar_token_idx = torch.argmax(similarities).item()
+            # Find the index of the most similar token
+            most_similar_token_idx = torch.argmax(similarities).item()
 
-        # Decode the token
-        most_similar_token = self.tokenizer.decode([most_similar_token_idx])
+            # Decode the token
+            most_similar_token = self.tokenizer.decode([most_similar_token_idx])
 
-        # ############# DEBUG #############
-        # ort_token = self.tokenizer.encode(most_similar_token, return_tensors="pt")
-        # base_token = self.tokenizer.encode(string_token, return_tensors="pt")
-        # ort_embedding = model.get_input_embeddings()(ort_token)
-        # base_embedding = model.get_input_embeddings()(base_token)
-        # assert torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0) < 0.3, "Dot product is not zero"
-        #print(most_similar_token, most_similar_token_idx)
-        return most_similar_token
+            # ############# DEBUG #############
+            ort_token = self.tokenizer.encode(most_similar_token, return_tensors="pt")
+            base_token = self.tokenizer.encode(string_token, return_tensors="pt")
+            ort_embedding = model.get_input_embeddings()(ort_token)
+            base_embedding = model.get_input_embeddings()(base_token)
+            if torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0) < 0.3:
+                break
+            #print(most_similar_token, most_similar_token_idx)
+            return most_similar_token
         
     def set_len(self, length:int, orthogonal:bool=False, model:AutoModelForCausalLM=None):
         self.data = [d for d in self.full_data if d["length"] == length]

@@ -79,7 +79,7 @@ class BaseExperiment():
 
     def get_batch(self, len:int, **kwargs):
         self.set_len(len, **kwargs)
-        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         return next(iter(dataloader))
 
     def get_position(self, resid_pos: str) -> int:

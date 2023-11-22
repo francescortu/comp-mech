@@ -19,8 +19,14 @@ class WrapHookedTransformer(HookedTransformer):
         logits = self(prompt)
         return get_predictions(self, logits, k, return_type)
     
+    # @classmethod
+    # def from_pretrained(cls, *args, **kwargs):
+    #     # Call the superclass's from_pretrained method
+    #     hooked_transformer = super().from_pretrained(*args, **kwargs)
 
-
+    #     # Create a new instance of WrapHookedTransformer that wraps the HookedTransformer instance
+    #     return cls(hooked_transformer)
+    
     def show_predictions(self, prompt: str, n_tokens: int = 10, return_type: str = "logits"):
         """
         Print the next token(s) given a prompt
