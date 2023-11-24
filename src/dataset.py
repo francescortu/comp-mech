@@ -160,30 +160,33 @@ class HFDataset(Dataset):
             embeddings_matrix = model.get_input_embeddings().weight
             # Compute cosine similarity with all embeddings
             similarities = torch.nn.functional.cosine_similarity(random_vector.unsqueeze(0), embeddings_matrix, dim=1)
-
             # Find the index of the most similar token
             most_similar_token_idx = torch.argmax(similarities).item()
-
             # Decode the token
             most_similar_token = self.tokenizer.decode([most_similar_token_idx])
 
             # ############# DEBUG #############
             ort_token = self.tokenizer.encode(most_similar_token, return_tensors="pt")
             base_token = self.tokenizer.encode(string_token, return_tensors="pt")
-            ort_embedding = model.get_input_embeddings()(ort_token)
-            base_embedding = model.get_input_embeddings()(base_token)
-            if torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0) < 0.3:
+            ort_embedding = model.get_input_embeddings()(ort_token.cuda()).cuda()
+            base_embedding = model.get_input_embeddings()(base_token.cuda()).cuda()
+            if len(ort_embedding.squeeze().shape) > 1:
+                ort_embedding = ort_embedding.squeeze()[-1,:]
+            if len(base_embedding.squeeze().shape) > 1:
+                base_embedding = base_embedding.squeeze()[-1,:]
+            if torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item() < 0.3:
                 break
             #print(most_similar_token, most_similar_token_idx)
-            return most_similar_token
+        return most_similar_token
         
     def set_len(self, length:int, orthogonal:bool=False, model:AutoModelForCausalLM=None):
         self.data = [d for d in self.full_data if d["length"] == length]
         self.original_index = [i for i, d in enumerate(self.full_data) if d["length"] == length]
+
         if orthogonal:
             assert model is not None, "You must pass a model to compute the orthogonal prompt."
             compute_orthogonal = partial(self.compute_orthogonal, model=model)
-            orthogonal_target_new = [compute_orthogonal(string_token=d["target_new"]) for d in tqdm(self.data)]
+            orthogonal_target_new = [compute_orthogonal(string_token=d["target_true"]) for d in tqdm(self.data)]
             target_new = orthogonal_target_new
             token_false = []
             for tn in target_new:
