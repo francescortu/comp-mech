@@ -1,3 +1,4 @@
+from click import Option
 import torch
 from torch.utils.data import Dataset
 import json
@@ -153,7 +154,7 @@ class HFDataset(Dataset):
             # gram_schmidt
             random_vector = random_vector - torch.dot(random_vector, embedding) * embedding / torch.dot(embedding, embedding)
             # normalize
-            x = random_vector / torch.norm(random_vector)
+            # x = random_vector / torch.norm(random_vector)
             #project the embedding in the closest token
             
                 # Get all embeddings from the model
@@ -179,7 +180,7 @@ class HFDataset(Dataset):
             #print(most_similar_token, most_similar_token_idx)
         return most_similar_token
         
-    def set_len(self, length:int, orthogonal:bool=False, model:AutoModelForCausalLM=None):
+    def set_len(self, length:int, orthogonal:bool=False, model:Optional[AutoModelForCausalLM]=None, premise:Optional[str]=None):
         self.data = [d for d in self.full_data if d["length"] == length]
         self.original_index = [i for i, d in enumerate(self.full_data) if d["length"] == length]
 
@@ -196,12 +197,16 @@ class HFDataset(Dataset):
                 else:
                     token = token[0,0]
                 token_false.append(token)
+        
+        if premise is None:
+            premise = "Redefine"
+        
         else:
             target_new = [d["target_new"] for d in self.data]
             token_false = [d["token_false"] for d in self.data]
         self.prompts = []
         for d, tn in zip(self.data, target_new):
-            self.prompts.append(d["template"].format("Redefine", tn))
+            self.prompts.append(d["template"].format(premise, tn))
         #     self.prompts.append(d["template"].format("Redefine", d["target_new"]))
         self.obj_pos = [d["position"] for d in self.data]
         self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]

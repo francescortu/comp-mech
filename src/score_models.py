@@ -6,15 +6,17 @@ sys.path.append('../data')
 import json
 from tqdm import tqdm
 import os
+from typing import Optional
 
 import json
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import einops
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from src.dataset import HFDataset
+
 class EvaluateMechanism:
-    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False, family_name:str=None):
+    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False, premise=None, family_name:Optional[str]=None):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name) #, load_in_8bit=True, device_map="auto")
         self.model = self.model.to(device)
@@ -24,6 +26,7 @@ class EvaluateMechanism:
         self.device = device
         self.batch_size = batch_size
         self.orthogonalize = orthogonalize
+        self.premise = premise
         self.family_name = family_name
         print("Model device", self.model.device)
         
@@ -50,8 +53,8 @@ class EvaluateMechanism:
         return  target_true_indices, target_false_indices, other_indices
     
     def evaluate(self, length):
-        self.dataset.set_len(length, self.orthogonalize, self.model)
-        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
+        self.dataset.set_len(length, self.orthogonalize, self.model, self.premise)
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)
         all_true_indices = []
