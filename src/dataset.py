@@ -110,7 +110,7 @@ class TlensDataset(Dataset):
         self.data_per_len[self.length] = self.data
 
 class HFDataset(Dataset):
-    def __init__(self, path:str, tokenizer, slice=None):
+    def __init__(self, path:str, tokenizer, premise= "Redefine", slice=None):
         with open(path, 'r') as file:
             self.full_data = json.load(file)
         
@@ -121,6 +121,7 @@ class HFDataset(Dataset):
         self.target = []
         self.obj_pos = []
         self.tokenizer = tokenizer
+        self.premise = premise
         self.lenghts = self.get_lengths()
         
     def __len__(self):
@@ -135,7 +136,20 @@ class HFDataset(Dataset):
             "target": self.target[idx],
             "obj_pos": self.obj_pos[idx],
         }
-        
+
+    def generate_random_vector(self, embedding, similarity_range = (0,0.2):
+        min_sim, max_sim = similarity_range
+        random_vector = torch.randn(embedding.shape).cuda()
+        random_vector = random_vector / torch.norm(random_vector)
+
+        # Adjust the vector to fall within the desired similarity range
+        cos_angle = torch.rand(1).cuda() * (max_sim - min_sim) + min_sim
+        adjusted_vector = cos_angle * embedding + torch.sqrt(1 - cos_angle**2) * random_vector
+
+        # Check if the adjusted vector falls within the similarity range
+        similarity = torch.nn.functional.cosine_similarity(embedding.unsqueeze(0), adjusted_vector.unsqueeze(0), dim=1).item()
+        if min_sim <= similarity <= max_sim:
+            return adjusted_vector
 
     def compute_orthogonal(self, string_token:str, model):
         while True:
@@ -180,10 +194,11 @@ class HFDataset(Dataset):
             #print(most_similar_token, most_similar_token_idx)
         return most_similar_token
         
-    def set_len(self, length:int, orthogonal:bool=False, model:Optional[AutoModelForCausalLM]=None, premise:Optional[str]=None):
+    def set_len(self, length:int, orthogonal:bool=False, model:Optional[AutoModelForCausalLM]=None):
         self.data = [d for d in self.full_data if d["length"] == length]
         self.original_index = [i for i, d in enumerate(self.full_data) if d["length"] == length]
-
+     
+        
         if orthogonal:
             assert model is not None, "You must pass a model to compute the orthogonal prompt."
             compute_orthogonal = partial(self.compute_orthogonal, model=model)
@@ -197,23 +212,19 @@ class HFDataset(Dataset):
                 else:
                     token = token[0,0]
                 token_false.append(token)
-        
-        if premise is None:
-            premise = "Redefine"
-        
         else:
             target_new = [d["target_new"] for d in self.data]
             token_false = [d["token_false"] for d in self.data]
         self.prompts = []
         for d, tn in zip(self.data, target_new):
-            self.prompts.append(d["template"].format(premise, tn))
+            self.prompts.append(d["template"].format(self.premise, tn))
         #     self.prompts.append(d["template"].format("Redefine", d["target_new"]))
         self.obj_pos = [d["position"] for d in self.data]
         self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]
         if orthogonal:
             for idx, _ in enumerate(self.input_ids):                    
                 self.input_ids[idx][self.obj_pos[idx]] = token_false[idx]
-        
+                
         
         target1 = torch.tensor([d["token_true"] for d in self.data])
         target2 = torch.tensor(token_false)
@@ -267,7 +278,8 @@ class HFDataset(Dataset):
     def get_lengths(self):
         # return all the possible lengths in the dataset
         for d in tqdm(self.full_data, desc="Tokenizing prompts"):
-            tokenized_prompt = self.tokenizer([d["prompt"], d["target_true"], d["target_new"]], return_length=True)
+            prompt = d["template"].format(self.premise, d["target_new"])
+            tokenized_prompt = self.tokenizer([prompt, d["target_true"], d["target_new"]], return_length=True)
             d["length"] = tokenized_prompt["length"][0]
             d["input_ids"] = tokenized_prompt["input_ids"][0]
             # find the position of d["false"] in the tokenized prompt
