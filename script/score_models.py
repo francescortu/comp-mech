@@ -32,6 +32,8 @@ class Options:
     orthogonalize: List[bool] = field(default_factory=lambda: [True, False])
     alpha: List[float] = field(default_factory=lambda: [1, 0.75, 0.5, 0.25])
     interval: List[Tuple[float, float]] = field(default_factory=lambda: [(0, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1)])
+    #alpha: List[float] = field(default_factory=lambda: [ 0.5, 0.25])
+    #interval: List[Tuple[float, float]] = field(default_factory=lambda: [(0.5, 0.75), (0.75, 1)])
 
 @dataclass
 class LaunchConfig:
@@ -41,6 +43,7 @@ class LaunchConfig:
     interval: tuple[float, float]
     family_name: str
     premise: str = "Redefine"
+    batch_size:int = 50
     
     
 def launch_evaluation(config:LaunchConfig):
@@ -71,7 +74,7 @@ def launch_evaluation(config:LaunchConfig):
     dataset = HFDataset(dataset_path, tokenizer=tokenizer,config=HFDatasetConfig(premise = config.premise, alpha=config.alpha, interval=config.interval), slice=10000)
 
     evaluator = EvaluateMechanism(
-        model_name=config.model_name, dataset=dataset, device=DEVICE, batch_size=50, orthogonalize=config.orthogonalize, premise=config.premise, interval=config.interval, family_name=config.family_name)
+        model_name=config.model_name, dataset=dataset, device=DEVICE, batch_size=config.batch_size, orthogonalize=config.orthogonalize, premise=config.premise, interval=config.interval, family_name=config.family_name)
     evaluator.evaluate_all()
     
 def main():

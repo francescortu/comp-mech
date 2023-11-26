@@ -158,6 +158,7 @@ class HFDataset(Dataset):
         with torch.no_grad():
             embedding = model.get_input_embeddings()(token)
             embedding = embedding.cuda()
+        count = 0
         while True:
             random_vector = torch.randn(embedding.shape[0]).cuda()
             # gram_schmidt
@@ -186,7 +187,10 @@ class HFDataset(Dataset):
                 base_embedding = base_embedding.squeeze()[-1,:]
             if torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item()> self.config.interval[0] and torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item()< self.config.interval[1]:
                 return most_similar_token
-
+            count += 1
+            if count == 10000:
+                print("Discard.... Similarity:",torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0) )
+                return most_similar_token
 
     # def compute_orthogonal(self, string_token:str, model):
     #     while True:
@@ -239,7 +243,7 @@ class HFDataset(Dataset):
         if orthogonal:
             assert model is not None, "You must pass a model to compute the orthogonal prompt."
             compute_orthogonal = partial(self.compute_orthogonal, model=model)
-            orthogonal_target_new = [compute_orthogonal(string_token=d["target_true"]) for d in tqdm(self.data)]
+            orthogonal_target_new = [compute_orthogonal(string_token=d["target_true"]) for d in tqdm(self.data, desc="Orthogonalize length")]
             target_new = orthogonal_target_new
             token_false = []
             for tn in target_new:

@@ -125,11 +125,11 @@ class EvaluateMechanism:
             # if there is aleardy a line with the same model_name and orthogonalize, delete it
             lines = file.readlines()
             # Check if a line with the same model_name and orthogonalize exists
-            line_exists = any(line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize) and line.split(",")[2] == self.premise and line.split(",")[3] == self.interval for line in lines)
+            line_exists = any(line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize) and line.split(",")[2] == self.premise and line.split(",")[3] == self.interval[0] and line.split(",")[4] == self.interval[1] for line in lines)
 
             # If the line exists, remove it
             if line_exists:
-                lines = [line for line in lines if not (line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize and line.split(",")[2] == self.premise and line.split(",")[3] == self.interval))]
+                lines = [line for line in lines if not (line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize and line.split(",")[2] == self.premise and line.split(",")[3] == self.interval[0] and line.split(",")[4] == self.interval[1]))]
 
                 # Rewrite the file without the removed line
                 file.seek(0)  # Move the file pointer to the start of the file
