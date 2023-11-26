@@ -1,4 +1,6 @@
 import sys
+
+from matplotlib.transforms import interval_contains
 sys.path.append('..')
 sys.path.append('../src')
 sys.path.append('../data')
@@ -14,9 +16,15 @@ from torch.utils.data import Dataset, DataLoader
 import einops
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from src.dataset import HFDataset
+from dataclasses import dataclass
+
+
+
+
+
 
 class EvaluateMechanism:
-    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False, premise="Redefine", family_name:Optional[str]=None):
+    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False, premise="Redefine", interval=None, family_name:Optional[str]=None):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name) #, load_in_8bit=True, device_map="auto")
         self.model = self.model.to(device)
@@ -28,6 +36,7 @@ class EvaluateMechanism:
         self.orthogonalize = orthogonalize
         self.premise = premise
         self.family_name = family_name
+        self.interval = interval
         print("Model device", self.model.device)
         
     def check_prediction(self, logit, target):
@@ -60,7 +69,7 @@ class EvaluateMechanism:
         all_true_indices = []
         all_false_indices = []
         all_other_indices = []
-        
+
         for idx, batch in tqdm(enumerate(dataloader), total=n_batch):
             input_ids = batch["input_ids"].to(self.device)
             logits = self.model(input_ids)["logits"]
@@ -105,38 +114,38 @@ class EvaluateMechanism:
             save_name += "orth"
         #save results
         
-        filename = f"../results/{self.family_name}_evaluate_mechanism.csv"
+        filename = f"results/{self.family_name}_evaluate_mechanism.csv"
         #if file not exists, create it and write the header
         if not os.path.isfile(filename):
             with open(filename, "w") as file:
-                file.write("model_name,orthogonalize,target_true,target_false,other\n")
+                file.write("model_name,orthogonalize,premise,interval,target_true,target_false,other\n")
         
         with open(filename, "a+") as file:
             file.seek(0)
             # if there is aleardy a line with the same model_name and orthogonalize, delete it
             lines = file.readlines()
             # Check if a line with the same model_name and orthogonalize exists
-            line_exists = any(line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize) and line.split(",")[2] == self.premise for line in lines)
+            line_exists = any(line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize) and line.split(",")[2] == self.premise and line.split(",")[3] == self.interval for line in lines)
 
             # If the line exists, remove it
             if line_exists:
-                lines = [line for line in lines if not (line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize and line.split(",")[2] == self.premise))]
+                lines = [line for line in lines if not (line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize and line.split(",")[2] == self.premise and line.split(",")[3] == self.interval))]
 
                 # Rewrite the file without the removed line
                 file.seek(0)  # Move the file pointer to the start of the file
                 file.truncate()  # Truncate the file (i.e., remove all content)
                 file.writelines(lines)  # Write the updated lines back to the file
-            file.write(f"{self.model_name},{self.orthogonalize},{self.premise},{target_true},{target_false},{other}\n")
+            file.write(f"{self.model_name},{self.orthogonalize},{self.premise},{self.interval},{target_true},{target_false},{other}\n")
         
         
     
         
         # save indices
-        if not os.path.isdir(f"../results/{self.family_name}_evaluate_mechs_indices"):
+        if not os.path.isdir(f"results/{self.family_name}_evaluate_mechs_indices"):
             # if the directory does not exist, create it
-            os.makedirs(f"../results/{self.family_name}_evaluate_mechs_indices")
+            os.makedirs(f"results/{self.family_name}_evaluate_mechs_indices")
         
-        with open(f"../results/{self.family_name}_evaluate_mechs_indices/{save_name}_evaluate_mechanism_indices.json", "w") as file:
+        with open(f"results/{self.family_name}_evaluate_mechs_indices/{save_name}_evaluate_mechanism_indices.json", "w") as file:
             json.dump({"target_true": all_true_indices, "target_false": all_false_indices, "other": all_other_indices}, file)
         
         return target_true, target_false, other

@@ -1,3 +1,5 @@
+from ast import Tuple
+from attr import dataclass
 from click import Option
 import torch
 from torch.utils.data import Dataset
@@ -9,6 +11,7 @@ from src.model import WrapHookedTransformer
 from transformer_lens import HookedTransformer
 from functools import partial
 from transformers import  AutoModelForCausalLM 
+from dataclasses import dataclass
 
 class TlensDataset(Dataset):
     def __init__(self, path:str, model:HookedTransformer, slice:Optional[int] = None):
@@ -109,8 +112,14 @@ class TlensDataset(Dataset):
     def save_filtered(self):
         self.data_per_len[self.length] = self.data
 
+@dataclass
+class HFDatasetConfig:
+    premise: str = "Redefine"
+    alpha: float = 1.0
+    interval: tuple[float, float] = (0, 0.2)
+
 class HFDataset(Dataset):
-    def __init__(self, path:str, tokenizer, premise= "Redefine", slice=None):
+    def __init__(self, path:str, tokenizer, config:HFDatasetConfig, slice=None):
         with open(path, 'r') as file:
             self.full_data = json.load(file)
         
@@ -121,7 +130,8 @@ class HFDataset(Dataset):
         self.target = []
         self.obj_pos = []
         self.tokenizer = tokenizer
-        self.premise = premise
+        # self.premise = premise
+        self.config = config
         self.lenghts = self.get_lengths()
         
     def __len__(self):
@@ -137,62 +147,89 @@ class HFDataset(Dataset):
             "obj_pos": self.obj_pos[idx],
         }
 
-    def generate_random_vector(self, embedding, similarity_range = (0,0.2):
-        min_sim, max_sim = similarity_range
-        random_vector = torch.randn(embedding.shape).cuda()
-        random_vector = random_vector / torch.norm(random_vector)
-
-        # Adjust the vector to fall within the desired similarity range
-        cos_angle = torch.rand(1).cuda() * (max_sim - min_sim) + min_sim
-        adjusted_vector = cos_angle * embedding + torch.sqrt(1 - cos_angle**2) * random_vector
-
-        # Check if the adjusted vector falls within the similarity range
-        similarity = torch.nn.functional.cosine_similarity(embedding.unsqueeze(0), adjusted_vector.unsqueeze(0), dim=1).item()
-        if min_sim <= similarity <= max_sim:
-            return adjusted_vector
-
     def compute_orthogonal(self, string_token:str, model):
-        while True:
-            token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=True)
-            if token.shape[1] > 1:
-                token = token[0,1]
-            else:
-                token = token[0,0]
-                
-            token = token.to(model.device)
-            with torch.no_grad():
-                embedding = model.get_input_embeddings()(token)
-                embedding = embedding.cuda()
+        token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=True)
+        if token.shape[1] > 1:
+            token = token[0,1]
+        else:
+            token = token[0,0]
             
+        token = token.to(model.device)
+        with torch.no_grad():
+            embedding = model.get_input_embeddings()(token)
+            embedding = embedding.cuda()
+        while True:
             random_vector = torch.randn(embedding.shape[0]).cuda()
             # gram_schmidt
             random_vector = random_vector - torch.dot(random_vector, embedding) * embedding / torch.dot(embedding, embedding)
-            # normalize
-            # x = random_vector / torch.norm(random_vector)
-            #project the embedding in the closest token
+            random_vector = embedding + self.config.alpha * (random_vector - embedding) # alpha = 1 is the orthogonal vector
             
-                # Get all embeddings from the model
-            embeddings_matrix = model.get_input_embeddings().weight
-            # Compute cosine similarity with all embeddings
-            similarities = torch.nn.functional.cosine_similarity(random_vector.unsqueeze(0), embeddings_matrix, dim=1)
-            # Find the index of the most similar token
-            most_similar_token_idx = torch.argmax(similarities).item()
-            # Decode the token
+            embedding_matrix = model.get_input_embeddings().weight
+            similarities = torch.nn.functional.cosine_similarity(random_vector.unsqueeze(0), embedding_matrix, dim=1)
+            sorted_indices = torch.argsort(similarities, descending=True)
+            sorted_indices = sorted_indices[sorted_indices != token] # exclude the original token
+            most_similar_token_idx = sorted_indices[0] 
+            
+            # map the index to the token
             most_similar_token = self.tokenizer.decode([most_similar_token_idx])
-
+            
             # ############# DEBUG #############
+            #print similarity between the original token and the orthogonalized token
             ort_token = self.tokenizer.encode(most_similar_token, return_tensors="pt")
             base_token = self.tokenizer.encode(string_token, return_tensors="pt")
             ort_embedding = model.get_input_embeddings()(ort_token.cuda()).cuda()
             base_embedding = model.get_input_embeddings()(base_token.cuda()).cuda()
+            # print(torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item())
             if len(ort_embedding.squeeze().shape) > 1:
                 ort_embedding = ort_embedding.squeeze()[-1,:]
             if len(base_embedding.squeeze().shape) > 1:
                 base_embedding = base_embedding.squeeze()[-1,:]
-            if torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item() < 0.3:
-                break
-            #print(most_similar_token, most_similar_token_idx)
-        return most_similar_token
+            if torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item()> self.config.interval[0] and torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item()< self.config.interval[1]:
+                return most_similar_token
+
+
+    # def compute_orthogonal(self, string_token:str, model):
+    #     while True:
+    #         token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=True)
+    #         if token.shape[1] > 1:
+    #             token = token[0,1]
+    #         else:
+    #             token = token[0,0]
+                
+    #         token = token.to(model.device)
+    #         with torch.no_grad():
+    #             embedding = model.get_input_embeddings()(token)
+    #             embedding = embedding.cuda()
+            
+    #         random_vector = torch.randn(embedding.shape[0]).cuda()
+    #         # gram_schmidt
+    #         random_vector = random_vector - torch.dot(random_vector, embedding) * embedding / torch.dot(embedding, embedding)
+    #         # normalize
+    #         # x = random_vector / torch.norm(random_vector)
+    #         #project the embedding in the closest token
+            
+    #             # Get all embeddings from the model
+    #         embeddings_matrix = model.get_input_embeddings().weight
+    #         # Compute cosine similarity with all embeddings
+    #         similarities = torch.nn.functional.cosine_similarity(random_vector.unsqueeze(0), embeddings_matrix, dim=1)
+    #         # Find the index of the most similar token
+    #         most_similar_token_idx = torch.argmax(similarities).item()
+    #         # Decode the token
+    #         most_similar_token = self.tokenizer.decode([most_similar_token_idx])
+
+    #         # ############# DEBUG #############
+    #         ort_token = self.tokenizer.encode(most_similar_token, return_tensors="pt")
+    #         base_token = self.tokenizer.encode(string_token, return_tensors="pt")
+    #         ort_embedding = model.get_input_embeddings()(ort_token.cuda()).cuda()
+    #         base_embedding = model.get_input_embeddings()(base_token.cuda()).cuda()
+    #         if len(ort_embedding.squeeze().shape) > 1:
+    #             ort_embedding = ort_embedding.squeeze()[-1,:]
+    #         if len(base_embedding.squeeze().shape) > 1:
+    #             base_embedding = base_embedding.squeeze()[-1,:]
+    #         if torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item() < 0.3:
+    #             break
+    #         #print(most_similar_token, most_similar_token_idx)
+    #     return most_similar_token
         
     def set_len(self, length:int, orthogonal:bool=False, model:Optional[AutoModelForCausalLM]=None):
         self.data = [d for d in self.full_data if d["length"] == length]
@@ -217,7 +254,7 @@ class HFDataset(Dataset):
             token_false = [d["token_false"] for d in self.data]
         self.prompts = []
         for d, tn in zip(self.data, target_new):
-            self.prompts.append(d["template"].format(self.premise, tn))
+            self.prompts.append(d["template"].format(self.config.premise, tn))
         #     self.prompts.append(d["template"].format("Redefine", d["target_new"]))
         self.obj_pos = [d["position"] for d in self.data]
         self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]
@@ -278,7 +315,7 @@ class HFDataset(Dataset):
     def get_lengths(self):
         # return all the possible lengths in the dataset
         for d in tqdm(self.full_data, desc="Tokenizing prompts"):
-            prompt = d["template"].format(self.premise, d["target_new"])
+            prompt = d["template"].format(self.config.premise, d["target_new"])
             tokenized_prompt = self.tokenizer([prompt, d["target_true"], d["target_new"]], return_length=True)
             d["length"] = tokenized_prompt["length"][0]
             d["input_ids"] = tokenized_prompt["input_ids"][0]
