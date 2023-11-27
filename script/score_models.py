@@ -117,17 +117,17 @@ def main():
 
     if args.all:
         for model_name in options.models_name:
-            for premise in options.premise:
                 for orthogonalize in options.orthogonalize:
                     if orthogonalize is False:
-                        config = LaunchConfig(
-                            model_name,
-                            orthogonalize,
-                            1,
-                            (0, 0.25),
-                            FAMILY_NAME,
-                            premise,
-                        )
+                        for premise in options.premise:
+                            config = LaunchConfig(
+                                model_name,
+                                orthogonalize,
+                                1,
+                                (0, 0.25),
+                                FAMILY_NAME,
+                                premise,
+                            )
                     elif orthogonalize is True:
                         for idx in range(len(options.alpha)):
                             config = LaunchConfig(
@@ -136,8 +136,7 @@ def main():
                                 options.alpha[idx],
                                 options.interval[idx],
                                 FAMILY_NAME,
-                                premise,
-                                num_samples=100
+                                num_samples=1
                             )
                             launch_evaluation(config)
 

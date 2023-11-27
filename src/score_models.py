@@ -38,7 +38,7 @@ class EvaluateMechanism:
         self.premise = premise
         self.family_name = family_name
         self.interval = interval
-        self.num_samples = num_samples
+        self.n_samples = num_samples
         print("Model device", self.model.device)
         
     def check_prediction(self, logit, target):
@@ -88,7 +88,7 @@ class EvaluateMechanism:
     
     def evaluate_all(self):
         target_true, target_false, other = 0, 0, 0
-        for sample in range(len(self.n_samples)):
+        for sample in range(self.n_samples):
             target_true_tmp, target_false_tmp, other_tmp = 0, 0, 0
             all_true_indices = []
             all_false_indices = []
