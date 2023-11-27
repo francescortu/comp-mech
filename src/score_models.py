@@ -2,9 +2,10 @@ import sys
 
 from matplotlib.transforms import interval_contains
 from responses import target
-sys.path.append('..')
-sys.path.append('../src')
-sys.path.append('../data')
+
+sys.path.append("..")
+sys.path.append("../src")
+sys.path.append("../data")
 
 import json
 from tqdm import tqdm
@@ -20,14 +21,23 @@ from src.dataset import HFDataset
 from dataclasses import dataclass
 
 
-
-
-
-
 class EvaluateMechanism:
-    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False, premise="Redefine", interval=None, family_name:Optional[str]=None, num_samples=1):
+    def __init__(
+        self,
+        model_name: str,
+        dataset: HFDataset,
+        device="cpu",
+        batch_size=100,
+        orthogonalize=False,
+        premise="Redefine",
+        interval=None,
+        family_name: Optional[str] = None,
+        num_samples=1,
+    ):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name) #, load_in_8bit=True, device_map="auto")
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name
+        )  # , load_in_8bit=True, device_map="auto")
         self.model = self.model.to(device)
         self.model_name = model_name
         self.dataset = dataset
@@ -40,9 +50,9 @@ class EvaluateMechanism:
         self.interval = interval
         self.n_samples = num_samples
         print("Model device", self.model.device)
-        
+
     def check_prediction(self, logit, target):
-        probs = torch.softmax(logit, dim=-1)[:,-1,:]
+        probs = torch.softmax(logit, dim=-1)[:, -1, :]
         # count the number of times the model predicts the target[:, 0] or target[:, 1]
         num_samples = target.shape[0]
         target_true = 0
@@ -61,10 +71,10 @@ class EvaluateMechanism:
             else:
                 other += 1
                 other_indices.append(i)
-        return  target_true_indices, target_false_indices, other_indices
-    
+        return target_true_indices, target_false_indices, other_indices
+
     def evaluate(self, length):
-        self.dataset.set_len(length, orthogonal = self.orthogonalize, model = self.model)
+        self.dataset.set_len(length, orthogonal=self.orthogonalize, model=self.model)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)
@@ -80,14 +90,36 @@ class EvaluateMechanism:
             target_false += len(count[1])
             other += len(count[2])
 
-            all_true_indices.extend([self.dataset.original_index[i+idx*self.batch_size] for i in count[0]])
-            all_false_indices.extend([self.dataset.original_index[i+idx*self.batch_size] for i in count[1]])
-            all_other_indices.extend([self.dataset.original_index[i+idx*self.batch_size] for i in count[2]])
+            all_true_indices.extend(
+                [
+                    self.dataset.original_index[i + idx * self.batch_size]
+                    for i in count[0]
+                ]
+            )
+            all_false_indices.extend(
+                [
+                    self.dataset.original_index[i + idx * self.batch_size]
+                    for i in count[1]
+                ]
+            )
+            all_other_indices.extend(
+                [
+                    self.dataset.original_index[i + idx * self.batch_size]
+                    for i in count[2]
+                ]
+            )
 
-        return target_true, target_false, other, all_true_indices, all_false_indices, all_other_indices
-    
+        return (
+            target_true,
+            target_false,
+            other,
+            all_true_indices,
+            all_false_indices,
+            all_other_indices,
+        )
+
     def evaluate_all(self):
-        target_true, target_false, other = 0, 0, 0
+        target_true, target_false, other = [], [], []
         for sample in range(self.n_samples):
             target_true_tmp, target_false_tmp, other_tmp = 0, 0, 0
             all_true_indices = []
@@ -98,68 +130,108 @@ class EvaluateMechanism:
                 target_true_tmp += result[0]
                 target_false_tmp += result[1]
                 other_tmp += result[2]
-                
-                #assert duplicates
+
+                # assert duplicates
                 all_index = result[3] + result[4] + result[5]
-                assert len(all_index) == len(set(all_index)), "Duplicates in the indices"
-                
+                assert len(all_index) == len(
+                    set(all_index)
+                ), "Duplicates in the indices"
+
                 all_true_indices.extend(result[3])
                 all_false_indices.extend(result[4])
                 all_other_indices.extend(result[5])
-            
+
             # add the results of the sample to the total
-            target_true += target_true_tmp
-            target_false += target_false_tmp
-            other += other_tmp
-        
-        #average the results over the number of samples
-        target_true /= self.n_samples
-        target_false /= self.n_samples
-        other /= self.n_samples
-            
-        print(f"Total: Target True: {target_true}, Target False: {target_false}, Other: {other}")
+            target_true.append(target_true_tmp)
+            target_false.append(target_false_tmp)
+            other.append(other_tmp)
+
+        # average the results over the number of samples
+
+        target_true = torch.mean(torch.tensor(target_true))
+        target_false = torch.mean(torch.tensor(target_false))
+        other = torch.mean(torch.tensor(other))
+
+        target_true_std = torch.std(torch.tensor(target_true))
+        target_false_std = torch.std(torch.tensor(target_false))
+        other_std = torch.std(torch.tensor(other))
+
+        print(
+            f"Total: Target True: {target_true}, Target False: {target_false}, Other: {other}"
+        )
         # index = torch.cat(index, dim=1)
-        
+
         if len(self.model_name.split("/")) > 1:
             save_name = self.model_name.split("/")[1]
         else:
             save_name = self.model_name
         if self.orthogonalize:
             save_name += "orth"
-        #save results
-        
+        # save results
+
         filename = f"results/{self.family_name}_evaluate_mechanism.csv"
-        #if file not exists, create it and write the header
+        # if file not exists, create it and write the header
         if not os.path.isfile(filename):
             with open(filename, "w") as file:
-                file.write("model_name,orthogonalize,premise,interval,target_true,target_false,other\n")
-        
+                file.write(
+                    "model_name,orthogonalize,premise,interval,target_true,target_false,other,target_true_std,target_false_std,other_std\n"
+                )
+
         with open(filename, "a+") as file:
             file.seek(0)
             # if there is aleardy a line with the same model_name and orthogonalize, delete it
             lines = file.readlines()
             # Check if a line with the same model_name and orthogonalize exists
-            line_exists = any(line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize) and line.split(",")[2] == self.premise and line.split(",")[3] == self.interval[0] and line.split(",")[4] == self.interval[1] for line in lines)
+            line_exists = any(
+                line.split(",")[0] == self.model_name
+                and line.split(",")[1] == str(self.orthogonalize)
+                and line.split(",")[2] == self.premise
+                and line.split(",")[3] == self.interval[0]
+                and line.split(",")[4] == self.interval[1]
+                for line in lines
+            )
 
             # If the line exists, remove it
             if line_exists:
-                lines = [line for line in lines if not (line.split(",")[0] == self.model_name and line.split(",")[1] == str(self.orthogonalize and line.split(",")[2] == self.premise and line.split(",")[3] == self.interval[0] and line.split(",")[4] == self.interval[1]))]
+                lines = [
+                    line
+                    for line in lines
+                    if not (
+                        line.split(",")[0] == self.model_name
+                        and line.split(",")[1]
+                        == str(
+                            self.orthogonalize
+                            and line.split(",")[2] == self.premise
+                            and line.split(",")[3] == self.interval[0]
+                            and line.split(",")[4] == self.interval[1]
+                        )
+                    )
+                ]
 
                 # Rewrite the file without the removed line
                 file.seek(0)  # Move the file pointer to the start of the file
                 file.truncate()  # Truncate the file (i.e., remove all content)
                 file.writelines(lines)  # Write the updated lines back to the file
-            file.write(f"{self.model_name},{self.orthogonalize},{self.premise},{self.interval},{target_true},{target_false},{other}\n")
-        
-        
-    
-        
+            file.write(
+                f"{self.model_name},{self.orthogonalize},{self.premise},{self.interval},{target_true},{target_false},{other},{target_true_std},{target_false_std},{other_std}\n"
+            )
+
         # save indices
         if not os.path.isdir(f"results/{self.family_name}_evaluate_mechs_indices"):
             # if the directory does not exist, create it
             os.makedirs(f"results/{self.family_name}_evaluate_mechs_indices")
-        
-        with open(f"results/{self.family_name}_evaluate_mechs_indices/{save_name}_evaluate_mechanism_indices.json", "w") as file:
-            json.dump({"target_true": all_true_indices, "target_false": all_false_indices, "other": all_other_indices}, file)
-        
+
+        with open(
+            f"results/{self.family_name}_evaluate_mechs_indices/{save_name}_evaluate_mechanism_indices.json",
+            "w",
+        ) as file:
+            json.dump(
+                {
+                    "target_true": all_true_indices,
+                    "target_false": all_false_indices,
+                    "other": all_other_indices,
+                },
+                file,
+            )
+
         return target_true, target_false, other
