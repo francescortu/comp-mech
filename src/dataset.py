@@ -161,7 +161,7 @@ class HFDataset(Dataset):
             embeddings = embeddings.cuda()
             token_embedding = embeddings(token)
             
-        cosine_similarity = torch.nn.functional.cosine_similarity(embeddings.weight, token_embedding, dim=1)
+        cosine_similarity = torch.nn.functional.cosine_similarity(embeddings.weight, token_embedding.unsqueeze(0), dim=1)
         
         #sorted by similarity
         cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)

@@ -22,7 +22,7 @@ from argparse import ArgumentParser
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
-
+NUM_SAMPLES = 10
 FAMILY_NAME = "gpt2"
 
 
@@ -136,7 +136,7 @@ def main():
                                 options.alpha[idx],
                                 options.interval[idx],
                                 FAMILY_NAME,
-                                num_samples=1
+                                num_samples=NUM_SAMPLES
                             )
                             launch_evaluation(config)
 
