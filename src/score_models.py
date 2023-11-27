@@ -1,6 +1,7 @@
 import sys
 
 from matplotlib.transforms import interval_contains
+from responses import target
 sys.path.append('..')
 sys.path.append('../src')
 sys.path.append('../data')
@@ -24,7 +25,7 @@ from dataclasses import dataclass
 
 
 class EvaluateMechanism:
-    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False, premise="Redefine", interval=None, family_name:Optional[str]=None):
+    def __init__(self, model_name:str, dataset:HFDataset, device="cpu", batch_size=100, orthogonalize=False, premise="Redefine", interval=None, family_name:Optional[str]=None, num_samples=1):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForCausalLM.from_pretrained(model_name) #, load_in_8bit=True, device_map="auto")
         self.model = self.model.to(device)
@@ -37,6 +38,7 @@ class EvaluateMechanism:
         self.premise = premise
         self.family_name = family_name
         self.interval = interval
+        self.num_samples = num_samples
         print("Model device", self.model.device)
         
     def check_prediction(self, logit, target):
@@ -86,22 +88,34 @@ class EvaluateMechanism:
     
     def evaluate_all(self):
         target_true, target_false, other = 0, 0, 0
-        all_true_indices = []
-        all_false_indices = []
-        all_other_indices = []
-        for length in self.lenghts:
-            result = self.evaluate(length)
-            target_true += result[0]
-            target_false += result[1]
-            other += result[2]
+        for sample in range(len(self.n_samples)):
+            target_true_tmp, target_false_tmp, other_tmp = 0, 0, 0
+            all_true_indices = []
+            all_false_indices = []
+            all_other_indices = []
+            for length in self.lenghts:
+                result = self.evaluate(length)
+                target_true_tmp += result[0]
+                target_false_tmp += result[1]
+                other_tmp += result[2]
+                
+                #assert duplicates
+                all_index = result[3] + result[4] + result[5]
+                assert len(all_index) == len(set(all_index)), "Duplicates in the indices"
+                
+                all_true_indices.extend(result[3])
+                all_false_indices.extend(result[4])
+                all_other_indices.extend(result[5])
             
-            #assert duplicates
-            all_index = result[3] + result[4] + result[5]
-            assert len(all_index) == len(set(all_index)), "Duplicates in the indices"
-            
-            all_true_indices.extend(result[3])
-            all_false_indices.extend(result[4])
-            all_other_indices.extend(result[5])
+            # add the results of the sample to the total
+            target_true += target_true_tmp
+            target_false += target_false_tmp
+            other += other_tmp
+        
+        #average the results over the number of samples
+        target_true /= self.n_samples
+        target_false /= self.n_samples
+        other /= self.n_samples
             
         print(f"Total: Target True: {target_true}, Target False: {target_false}, Other: {other}")
         # index = torch.cat(index, dim=1)

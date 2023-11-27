@@ -1,4 +1,5 @@
 from ast import Tuple
+from math import cos
 from attr import dataclass
 from click import Option
 import torch
@@ -156,41 +157,42 @@ class HFDataset(Dataset):
             
         token = token.to(model.device)
         with torch.no_grad():
-            embedding = model.get_input_embeddings()(token)
-            embedding = embedding.cuda()
-        count = 0
-        while True:
-            random_vector = torch.randn(embedding.shape[0]).cuda()
-            # gram_schmidt
-            random_vector = random_vector - torch.dot(random_vector, embedding) * embedding / torch.dot(embedding, embedding)
-            random_vector = embedding + self.config.alpha * (random_vector - embedding) # alpha = 1 is the orthogonal vector
+            embeddings = model.get_input_embeddings()
+            embeddings = embeddings.cuda()
+            token_embedding = embeddings(token)
             
-            embedding_matrix = model.get_input_embeddings().weight
-            similarities = torch.nn.functional.cosine_similarity(random_vector.unsqueeze(0), embedding_matrix, dim=1)
-            sorted_indices = torch.argsort(similarities, descending=True)
-            sorted_indices = sorted_indices[sorted_indices != token] # exclude the original token
-            most_similar_token_idx = sorted_indices[0] 
-            
-            # map the index to the token
-            most_similar_token = self.tokenizer.decode([most_similar_token_idx])
-            
-            # ############# DEBUG #############
-            #print similarity between the original token and the orthogonalized token
-            ort_token = self.tokenizer.encode(most_similar_token, return_tensors="pt")
-            base_token = self.tokenizer.encode(string_token, return_tensors="pt")
-            ort_embedding = model.get_input_embeddings()(ort_token.cuda()).cuda()
-            base_embedding = model.get_input_embeddings()(base_token.cuda()).cuda()
-            # print(torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item())
-            if len(ort_embedding.squeeze().shape) > 1:
-                ort_embedding = ort_embedding.squeeze()[-1,:]
-            if len(base_embedding.squeeze().shape) > 1:
-                base_embedding = base_embedding.squeeze()[-1,:]
-            if torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item()> self.config.interval[0] and torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0).item()< self.config.interval[1]:
-                return most_similar_token
-            count += 1
-            if count == 10000:
-                print("Discard.... Similarity:",torch.cosine_similarity(ort_embedding.squeeze(), base_embedding.squeeze(), dim=0) )
-                return most_similar_token
+        cosine_similarity = torch.nn.functional.cosine_similarity(embeddings.weight, token_embedding, dim=1)
+        
+        #sorted by similarity
+        cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
+        
+        #remove the first element, which is the token itself
+        sorted_indices = sorted_indices[1:]
+        cosine_similarity = cosine_similarity[1:]
+        
+        # divide in 4 groups based on the similarity
+        group1 = sorted_indices[cosine_similarity < torch.quantile(cosine_similarity, 0.25)]
+        group2 = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.25)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))]
+        group3 = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.5)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))]
+        group4 = sorted_indices[cosine_similarity >= torch.quantile(cosine_similarity, 0.75)]
+        
+        #pick a random token from each group
+        if self.config.interval[1] == 0.25:
+            random_token = torch.randint(0, len(group1), (1,)).item()
+            return self.tokenizer.decode([group1[random_token]])
+    
+        if self.config.interval[1] == 0.5:
+            random_token = torch.randint(0, len(group2), (1,)).item()
+            return self.tokenizer.decode([group2[random_token]])
+        
+        if self.config.interval[1] == 0.75:
+            random_token = torch.randint(0, len(group3), (1,)).item()
+            return self.tokenizer.decode([group3[random_token]])
+        
+        if self.config.interval[1] == 1.0:
+            random_token = torch.randint(0, len(group4), (1,)).item()
+            return self.tokenizer.decode([group4[random_token]])
+        
 
     # def compute_orthogonal(self, string_token:str, model):
     #     while True:
@@ -234,6 +236,39 @@ class HFDataset(Dataset):
     #             break
     #         #print(most_similar_token, most_similar_token_idx)
     #     return most_similar_token
+    
+    # def compute_orthogonal(self, string_token: str, model):
+    #     token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=True)
+    #     if token.shape[1] > 1:
+    #         token = token[0,1]
+    #     else:
+    #         token = token[0,0]
+
+    #     token = token.to(model.device)
+    #     with torch.no_grad():
+    #         embedding = model.get_input_embeddings()(token)
+    #         embedding = embedding.cuda()
+        
+    #     if len(embedding.shape) > 1:
+    #         embedding = embedding.squeeze()[-1,:]
+
+    #     count = 0
+    #     max_iterations = 1000000  # Set a limit to prevent infinite loop
+    #     while count < max_iterations:
+    #         random_vector = torch.randn(embedding.shape[0]).cuda()
+
+    #         # Check similarity first
+    #         # print(random_vector.shape, embedding.shape)
+    #         similarity = torch.nn.functional.cosine_similarity(random_vector, embedding, dim=0).item()
+    #         print(similarity)
+    #         if self.config.interval[0] <= similarity and similarity <= self.config.interval[1]:
+    #             return self.tokenizer.decode([random_vector.argmax()])
+            
+    #         count += 1
+
+    #     # If no suitable vector is found
+    #     print("No suitable vector found within similarity range after", max_iterations, "iterations.")
+    #     return None
         
     def set_len(self, length:int, orthogonal:bool=False, model:Optional[AutoModelForCausalLM]=None):
         self.data = [d for d in self.full_data if d["length"] == length]
