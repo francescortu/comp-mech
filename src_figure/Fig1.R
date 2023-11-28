@@ -43,7 +43,7 @@ ggplot(data_long, aes(fill=interaction(prediction, orthogonalize), x=model_name,
 
 ############################################
 # Calculate percentages
-data <- read.csv("plot_data/gpt2_count.csv")
+data <- read.csv("results/plot_data/gpt2_count.csv")
 data$model[1] <- "gpt2-small"
 data$model[2] <- "gpt2-medium"
 data$model[3] <- "gpt2-large"
@@ -97,14 +97,14 @@ library(ggpattern)
 data_long$pattern_type <- ifelse(data_long$orthogonalize, "stripe", "none")
 data_long$model_name <- factor(data_long$model_name, levels = c("gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"))
 ggplot(data_long, aes(fill = interaction(prediction, orthogonalize), x = model_name, y = percentage)) + 
-  geom_bar_pattern(aes(pattern_density=orthogonalize), position = "dodge", stat = "identity", colour="black") +
+  geom_bar_pattern(aes(pattern_density=orthogonalize), position = "dodge", stat = "identity", colour="black", size=0.2) +
   geom_linerange(aes(ymin = percentage - std_percentage, ymax = percentage + std_percentage), 
                  width = .2, position = position_dodge(.9), col = "black", size=1.2) +
   coord_flip() +
   facet_wrap(~prediction, ncol = 1, labeller = labeller(prediction = c(target_true_perc = "Factual token", 
                                                                        target_false_perc = "Altered token", 
                                                                        other_perc = "Other token"))) +
-  scale_fill_manual(values = c("#539987","#730d41","#443F78","#539987","#730d41","#443F78")) +
+  scale_fill_manual(values = c("#FF725C","#96CCFF","#9EEBCF","#FF725C","#96CCFF","#9EEBCF")) +
 
   #scale_fill_manual(values = c("True" = "#136d52", "False" = "#afacd3")) +  # Adjust colors as needed
   theme_minimal() +

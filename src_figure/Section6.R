@@ -4,7 +4,7 @@ library(dplyr)
 library(tidyr)
 
 # Load the dataset (Assuming the CSV is in the current working directory)
-data <- read.csv("plot_data/ov_mem_cp.csv")
+data <- read.csv("results/plot_data/ov_mem_cp.csv")
 
 # Remove the 'Unnamed: 0' column
 data <- data[ , !(names(data) %in% c('Unnamed: 0'))]
@@ -61,13 +61,13 @@ plot_data$subtitle <- factor(plot_data$subtitle, levels = subtitle_order)
 custom_labeller <- function(variable, value) {
   return(as.character(value))
 }
-
+sample_data <- sample_n(plot_data, 50000)
 # Create the scatter plot with modified titles
-ggplot(plot_data, aes(x = head_mem, y = head_cp)) +
-  geom_point(col="#0F7173", alpha=0.8) +
+ggplot(sample_data, aes(x = head_mem, y = head_cp)) +
+  geom_point(col="#357EDD", alpha=0.8) +
   facet_wrap(~ subtitle, ncol = 2, nrow=5, labeller = custom_labeller) +
   theme_light()+
-  labs(x = "Subject token", y = "Attribute token")+
+  labs(x = "Source token = Subject", y = "Source token = Altered")+
   theme(
     axis.text.x = element_text(size=15, angle = 90), # Increase x-axis label size and angle
     axis.text.y = element_text(size=15), # Increase y-axis label size
@@ -76,5 +76,5 @@ ggplot(plot_data, aes(x = head_mem, y = head_cp)) +
     title = element_text(size=20),
     strip.text = element_text(size = 20), # Increase subtitle size
   )
-ggsave("plots/ov_mem_cp.pdf", width = 20, height = 30, units = "cm")
+ggsave("results/plots/ov_mem_cp.pdf", width = 20, height = 30, units = "cm", dpi = 100)
 

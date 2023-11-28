@@ -1,14 +1,14 @@
 library(ggplot2)
 
-data <- read.csv("plot_data/gpt2_residual_stream_mem.csv")
+data <- read.csv("results/plot_data/gpt2_residual_stream_mem.csv")
 
 ggplot(data, aes(x=data$column, y=data$index, fill=data$value)) +
   #geom_tile()+
   geom_point(shape=21, stroke=0.6, size=33)+
   geom_text(aes(label=paste(paste(round(data$value, 1)))), color="#0f0f0f", size=10)+
-  scale_fill_gradient2(low = "#011e5c",
+  scale_fill_gradient2(low = "#000022",
                        mid = "#ffffff",
-                       high="#993955",
+                       high="#357EDD",
                        labels = function(x) paste0(round(x, 1), "%"))+
   labs(x='Postion', y='Layers', fill='Above Mean (%)')+
   scale_y_continuous(breaks = seq(0, 11, 1))+
@@ -27,19 +27,19 @@ ggplot(data, aes(x=data$column, y=data$index, fill=data$value)) +
       axis.title.y = element_text(size=40), # Increase y-axis label size
       title = element_text(size=30)
       )
-ggsave("plots/gpt2_residual_stream_mem.pdf", width=20, height=15, dpi=300)
+ggsave("results/plots/gpt2_residual_stream_mem.pdf", width=20, height=15, dpi=300)
 
 
 
-data <- read.csv("plot_data/gpt2_residual_stream_copy.csv")
+data <- read.csv("results/plot_data/gpt2_residual_stream_copy.csv")
 
 ggplot(data, aes(x=data$column, y=data$index, fill=data$value)) +
   #geom_tile()+
   geom_point(shape=21, stroke=0.6, size=33)+
   geom_text(aes(label=paste(paste(round(data$value, 1)))), color="#0f0f0f", size=10)+
-  scale_fill_gradient2(low = "#011e5c",
+  scale_fill_gradient2(low = "#000022",
                        mid = "#ffffff",
-                       high="#B6D094",
+                       high="#FF725C",
                        labels = function(x) paste0(round(x, 1), "%"))+
   labs(x='Postion', y='Layers', fill='Above Mean (%)')+
   scale_y_continuous(breaks = seq(0, 11, 1))+
@@ -58,5 +58,5 @@ ggplot(data, aes(x=data$column, y=data$index, fill=data$value)) +
     axis.title.y = element_text(size=40), # Increase y-axis label size
     title = element_text(size=30)
   )
-ggsave("plots/gpt2_residual_stream_copy.pdf", width=20, height=15, dpi=300)
+ggsave("results/plots/gpt2_residual_stream_copy.pdf", width=20, height=15, dpi=300)
 
