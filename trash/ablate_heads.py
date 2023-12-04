@@ -327,8 +327,6 @@ class Ablate(BaseExperiment):
                     batch["corrupted_prompts"],
                     fwd_hooks=list_hooks,
                 )[:, -1, :]
-                if logit.shape[0] != self.batch_size:
-                    print("Ops, the batch size is not correct")
                 mem, cp = to_logit_token(logit, batch["target"])
                 # norm_mem, norm_cp = normalize_logit_token(mem, cp, baseline="corrupted")
                 examples_mem_list[layer].append(mem.cpu())

@@ -67,6 +67,7 @@ class BaseExperiment():
 
     def compute_logit(self) -> tuple[ torch.Tensor, torch.Tensor]:
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        num_batches = len(dataloader)
         corrupted_logit = []
         target = []
         for batch in tqdm(dataloader):

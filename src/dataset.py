@@ -58,6 +58,9 @@ class TlensDataset(Dataset):
         #         del data_per_len[length]
         return data_per_len
     
+    def get_len(self):
+        return self.length
+    
     def set_len(self, length:int):
         self.length = length
         data = self.data_per_len[length]
