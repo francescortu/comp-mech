@@ -1,0 +1,5 @@
+model_name,orthogonalize,target_true,target_false,other
+gpt2,True,449,8971,580
+gpt2-medium,True,807,8423,770
+gpt2-large,True,1129,7931,940
+gpt2-xl,True,2250,6654,1096

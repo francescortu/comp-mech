@@ -1,0 +1,5 @@
+,model,target_true
+0,gpt2,4.13
+1,gpt2_medium,4.31
+2,gpt2_large,10.2
+3,gpt2_xl,7.26

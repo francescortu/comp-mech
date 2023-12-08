@@ -1,0 +1,9 @@
+model_name,orthogonalize,target_true,target_false,other
+facebook/opt-125m,True,156,9610,234
+facebook/opt-350m,True,345,8868,787
+facebook/opt-1.3B,True,494,8753,753
+facebook/opt-2.7B,True,809,8112,1079
+facebook/opt-125m,False,934,8880,186
+facebook/opt-350m,False,902,8889,209
+facebook/opt-1.3B,False,550,9339,111
+facebook/opt-2.7B,False,984,8942,74
