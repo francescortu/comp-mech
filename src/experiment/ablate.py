@@ -2,6 +2,7 @@ from locale import normalize
 from unittest import result
 
 from cvxpy import length
+from numpy import string_
 from sklearn import base
 from src.base_experiment import BaseExperiment, to_logit_token
 from src.dataset import TlensDataset
@@ -38,7 +39,7 @@ class Ablate(BaseExperiment):
     def get_normalize_metric(self) -> Callable[[torch.Tensor, torch.Tensor, str], Tuple[torch.Tensor, torch.Tensor]]:
         corrupted_logit, target = self.compute_logit()
         # clean_logit_mem, clean_logit_cp = to_logit_token(clean_logit, target)
-        corrupted_logit_mem, corrupted_logit_cp = to_logit_token(corrupted_logit, target)
+        corrupted_logit_mem, corrupted_logit_cp, _, _ = to_logit_token(corrupted_logit, target)
 
         def normalize_logit_token(logit_mem:torch.Tensor, logit_cp:torch.Tensor, baseline:str="corrupted") -> Tuple[torch.Tensor, torch.Tensor]:
             # logit_mem, logit_cp = to_logit_token(logit, target)
@@ -103,7 +104,7 @@ class Ablate(BaseExperiment):
                         batch["corrupted_prompts"],
                         fwd_hooks=list_hooks,
                     )[:, -1, :] # type: ignore
-                    mem, cp = to_logit_token(logit, batch["target"])
+                    mem, cp, _, _ = to_logit_token(logit, batch["target"])
 
                     examples_mem_list[layer][head].append(mem.cpu())
                     examples_cp_list[layer][head].append(cp.cpu())
@@ -196,9 +197,9 @@ class Ablate(BaseExperiment):
                 self.model.reset_hooks()
                 logit = self.model.run_with_hooks( # type: ignore
                     batch["corrupted_prompts"],
-                    fwd_hooks=hook,
+                    fwd_hooks=hook, # type: ignore
                 )[:, -1, :]
-                mem, cp = to_logit_token(logit, batch["target"])
+                mem, cp, _, _ = to_logit_token(logit, batch["target"])
                 # norm_mem, norm_cp = normalize_logit_token(mem, cp, baseline="corrupted")
                 examples_mem_list[layer].append(mem.cpu())
                 examples_cp_list[layer].append(cp.cpu())
@@ -273,7 +274,7 @@ class Ablate(BaseExperiment):
                     batch["corrupted_prompts"],
                     fwd_hooks=list_hooks,
                 )[:, -1, :]
-                mem, cp = to_logit_token(logit, batch["target"])
+                mem, cp, _, _ = to_logit_token(logit, batch["target"])
                 # norm_mem, norm_cp = normalize_logit_token(mem, cp, baseline="corrupted")
                 examples_mem_list[layer].append(mem.cpu())
                 examples_cp_list[layer].append(cp.cpu())
@@ -363,7 +364,7 @@ class AblateMLP(BaseExperiment):
     def get_normalize_metric(self) -> Callable[[torch.Tensor, torch.Tensor, str], Tuple[torch.Tensor, torch.Tensor]]:
         corrupted_logit, target = self.compute_logit()
         # clean_logit_mem, clean_logit_cp = to_logit_token(clean_logit, target)
-        corrupted_logit_mem, corrupted_logit_cp = to_logit_token(corrupted_logit, target)
+        corrupted_logit_mem, corrupted_logit_cp, _, _ = to_logit_token(corrupted_logit, target)
 
         def normalize_logit_token(logit_mem:torch.Tensor, logit_cp:torch.Tensor, baseline:str="corrupted") -> Tuple[torch.Tensor, torch.Tensor]:
             # logit_mem, logit_cp = to_logit_token(logit, target)
@@ -380,7 +381,7 @@ class AblateMLP(BaseExperiment):
 
         return normalize_logit_token
     
-    def ablate_single_len(self, length:int, target="mlp"):
+    def ablate_single_len(self, length:int, target="mlp", interval=0):
         if target == "mlp":
             hook_string = "hook_mlp_out"
         elif target == "attn":
@@ -389,7 +390,7 @@ class AblateMLP(BaseExperiment):
             raise ValueError("target must be either 'mlp' or 'attn'")
             
             
-        self.set_len(length)
+        self.set_len(length, interval=interval)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
         
@@ -406,7 +407,7 @@ class AblateMLP(BaseExperiment):
             return activation
         
         if num_batches == 0:
-            return None, None
+            return None, None, None, None
         # normalize_logit_token = self.get_normalize_metric()
         
         for idx, batch in tqdm(enumerate(dataloader), total=num_batches, desc="Ablating batches"):
@@ -437,7 +438,7 @@ class AblateMLP(BaseExperiment):
                         batch["corrupted_prompts"],
                         fwd_hooks=list_hooks,
                     )[:, -1, :]
-                    mem, cp = to_logit_token(logit, batch["target"])
+                    mem, cp, _, _ = to_logit_token(logit, batch["target"], normalize="softmax")
                     mem_logit_list[layer][pos].append(mem.cpu())
                     cp_logit_list[layer][pos].append(cp.cpu())
                 
@@ -447,11 +448,9 @@ class AblateMLP(BaseExperiment):
                     
         for layer in range(self.model.cfg.n_layers):
             for pos in range(length):
-                mem_logit_list[layer][pos] = torch.cat(mem_logit_list[layer][pos], dim=0)
-                cp_logit_list[layer][pos] = torch.cat(cp_logit_list[layer][pos], dim=0)
+                mem_logit_list[layer][pos] = torch.cat(mem_logit_list[layer][pos], dim=0) # type: ignore
+                cp_logit_list[layer][pos] = torch.cat(cp_logit_list[layer][pos], dim=0) # type: ignore
         
-        
-
         
         flattened_mem_logit = [tensor for layer in mem_logit_list for pos in layer for tensor in pos]
         flattened_cp_logit = [tensor for layer in cp_logit_list for pos in layer for tensor in pos]
@@ -466,29 +465,34 @@ class AblateMLP(BaseExperiment):
         base_mem_logit = einops.rearrange(base_mem_logit, "l p b -> b l p")
         base_cp_logit = einops.rearrange(base_cp_logit, "l p b -> b l p")
         
-        
-        
-        
-        
         object_pos = self.dataset.obj_pos[0]
         base_mem_aggr = self.aggregate_result(object_pos, base_mem_logit, length)
         base_cp_aggr = self.aggregate_result(object_pos, base_cp_logit, length)
+        base_logit, target = self.compute_logit()
+        base_logit_mem, base_logit_cp, _, _ = to_logit_token(base_logit, target)
         
-        
-        return base_mem_aggr, base_cp_aggr
+        return base_mem_aggr, base_cp_aggr, base_logit_mem, base_logit_cp
     
-    def ablate_multi_len(self, target) -> tuple[torch.Tensor, torch.Tensor]:
+    def ablate_multi_len(self, target, interval) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         lenghts = self.dataset.get_lengths()
         result_cp_per_len = {}
         result_mem_per_len = {}
+        base_logit_mem = {}
+        base_logit_cp = {}
         for l in lenghts:
             print("Ablating examples of length", l, "...")
-            mem, cp = self.ablate_single_len(l,target)
+            mem, cp, b_mem,b_cp = self.ablate_single_len(l,target, interval=interval)
             if mem is not None and cp is not None:
                 result_mem_per_len[l], result_cp_per_len[l] = mem, cp
+                base_logit_mem[l], base_logit_cp[l] = b_mem, b_cp
         # concatenate the results
         result_cp = torch.cat(list(result_cp_per_len.values()), dim=0)
         result_mem = torch.cat(list(result_mem_per_len.values()), dim=0)
+        base_logit_mem = torch.cat(list(base_logit_mem.values()), dim=0)
+        base_logit_cp = torch.cat(list(base_logit_cp.values()), dim=0)
         
-        return result_mem, result_cp
+        return result_mem, result_cp, base_logit_mem, base_logit_cp
+                
+                
+                
                 

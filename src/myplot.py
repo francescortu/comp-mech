@@ -3,13 +3,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
-def plot_heatmaps(result, result_std, title, interval, save=False, center=0.0):
+def plot_heatmaps(result, result_std, title1, title2, interval, save=False, center=0.0):
     # sns.set()
     # sns.set_style("whitegrid", {"axes.grid": False})
     # add also the std heatmap
     fig, ax = plt.subplots(1, 2, figsize=(15, 5))
-    ax[0].set_title("Average logit difference")
-    ax[1].set_title("Std logit difference")
+    ax[0].set_title(title1)
+    ax[1].set_title(title2)
     # make the center of the heatmap 0 and white color
     sns.heatmap(
         result.detach().cpu().numpy(),
@@ -23,7 +23,7 @@ def plot_heatmaps(result, result_std, title, interval, save=False, center=0.0):
         cmap="RdBu_r",
     )
     # label the axes
-    ax[0].set_xlabel("Head")
+    ax[0].set_xlabel("Position")
     ax[0].set_ylabel("Layer")
     sns.heatmap(
         result_std.detach().cpu().numpy(),
@@ -34,6 +34,9 @@ def plot_heatmaps(result, result_std, title, interval, save=False, center=0.0):
         center=0.0,
         cmap="RdBu_r",
     )
+        # label the axes
+    ax[1].set_xlabel("Position")
+    ax[1].set_ylabel("Layer")
     
     
 def barplot_head(examples_cp, examples_mem):

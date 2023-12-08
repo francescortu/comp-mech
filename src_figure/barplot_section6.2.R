@@ -18,10 +18,10 @@ data$model_name <- factor(data$model_name, levels = c("GPT2-small", "GPT2-medium
 ggplot(data, aes(x=model_name, y= percentage_true, fill=interval)) +
   geom_bar(stat = "identity", position ="dodge", size=0.5, colour="black")+
   coord_flip() +
-  scale_fill_manual(values = c("#999999", "#FD816D","#D8689C","#B34ECB","#8E35FA"), name="Similarity level:",
+  scale_fill_manual(values = c("#999999", "#829cbc","#6290c8","#376996","#1f487e"), name="Similarity level:",
                     labels = c("Original", "Level 0 (less similar)", "Level 1", "Level 2", "Level 3 (most similar)")) +
   theme_minimal()+
-  labs(y="Number of factual prediction (%)",
+  labs(y="Percentage of cases where Mechanism 1 wins (%)",
        x="",
        legend="ciao")+
   theme(axis.text.y = element_text(size=80, angle = 0, hjust = 1),
@@ -36,6 +36,6 @@ ggplot(data, aes(x=model_name, y= percentage_true, fill=interval)) +
         legend.position = "bottom",
   )+
   guides(fill = guide_legend(ncol = 1))
-  ggsave("results/plots/score_model.pdf", width = 32, height = 45, units = "in") 
+  ggsave("results/plots/score_model.pdf", width = 37, height = 45, units = "in") 
   
   

@@ -77,8 +77,8 @@ class AttentionPattern(BaseExperiment):
             logit_residual_stream_before = self.model.ln_final(logit_residual_stream_before)
             logit_residual_output_head = self.model.ln_final(logit_residual_output_head) 
             
-            mem_pre, cp_pre = to_logit_token(logit_residual_stream_before[:,-1,:], batch["target"])
-            mem_post, cp_post = to_logit_token(logit_residual_output_head[:,-1,:], batch["target"])
+            mem_pre, cp_pre, _, _ = to_logit_token(logit_residual_stream_before[:,-1,:], batch["target"])
+            mem_post, cp_post, _, _ = to_logit_token(logit_residual_output_head[:,-1,:], batch["target"])
             logit_diff_before.append((mem_pre - cp_pre).abs())
             logit_diff_after.append((mem_post - cp_post).abs())
             

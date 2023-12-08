@@ -4,11 +4,13 @@ from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 import einops
 import torch
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from functools import partial
 from copy import deepcopy
 import numpy as np
-
+import matplotlib
+import matplotlib.pyplot as plt
 
 
 
@@ -18,7 +20,7 @@ class OVCircuit(BaseExperiment):
 
     def ov_single_len(self, resid_layer_input, resid_pos: str, layer, head, length, disable_tqdm=False):
         self.set_len(length)
-        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
         position = self.get_position(resid_pos)
         logit_ov = torch.zeros((num_batches, self.batch_size, self.model.cfg.d_vocab))
@@ -27,7 +29,7 @@ class OVCircuit(BaseExperiment):
                                disable=disable_tqdm):
             _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
             residual_stream = cache["resid_post", resid_layer_input]
-            W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
+            W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head] # type: ignore
             logit_output = einops.einsum(self.model.W_U, (residual_stream[:, position, :] @ W_OV),
                                          "d d_v, b d -> b d_v")
             logit_ov[idx] = self.model.ln_final(logit_output)
@@ -41,7 +43,7 @@ class OVCircuit(BaseExperiment):
         num_examples = logit_ov.shape[0]
         topk = 10
         topk_tokens = torch.topk(logit_ov, k=topk, dim=-1).indices
-        target_list = [self.model.to_string(self.dataset.target[i, target_idx]) for i in range(num_examples)]
+        target_list = [self.model.to_string(self.dataset.target[i, target_idx]) for i in range(num_examples)] 
         count = sum([1 for i in range(num_examples) if
                      target_list[i] in [self.model.to_string(topk_tokens[i, j]) for j in range(topk)]])
         return 100 * count / num_examples
@@ -65,7 +67,7 @@ class OVCircuit(BaseExperiment):
                              "2_1_subject", "2_2_subject",
                              "2_3_subject"], "resid_pos should be one of 1_1_subject, 1_2_subject, 1_3_subject, definition, 2_1_subject, 2_2_subject, 2_3_subject"
         self.set_len(length)
-        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
         if num_batches == 0:
             return None
@@ -81,7 +83,7 @@ class OVCircuit(BaseExperiment):
                 for layer in range(self.model.cfg.n_layers):
                     for head in range(self.model.cfg.n_heads):
                         residual_stream = cache[resid_read, resid_layer_input]
-                        W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
+                        W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head] # type: ignore
                         logit_output = einops.einsum(self.model.W_U, (residual_stream[:, position, :] @ W_OV),
                                                      "d d_v, b d -> b d_v")
                         logit_output = self.model.ln_final(logit_output)
@@ -106,11 +108,11 @@ class OVCircuit(BaseExperiment):
                 for layer in range(self.model.cfg.n_layers):
                     for head in range(self.model.cfg.n_heads):
                         residual_stream = cache[resid_read, resid_layer_input]
-                        W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head]
+                        W_OV = (self.model.blocks[layer].attn.W_V @ self.model.blocks[layer].attn.W_O)[head] # type: ignore
                         logit_output = einops.einsum(self.model.W_U, (residual_stream[:, position, :] @ W_OV),
                                                      "d d_v, b d -> b d_v")
                         logit_output = self.model.ln_final(logit_output)
-                        mem_logit, cp_logit = to_logit_token(logit_output, batch["target"])
+                        mem_logit, cp_logit, _, _ = to_logit_token(logit_output, batch["target"])
                         if target == "copy":
                             logit_target[layer, head, idx] = cp_logit.cpu()
                         elif target == "mem":
@@ -185,10 +187,10 @@ class OVCircuit(BaseExperiment):
     #     result_aggregate[:, 12] = logit_target[:, last_position]
     #     return result_aggregate
 
-    def residual_stram_track_target(self, length, target="copy", disable_tqdm=False, plot=False):
+    def residual_stram_track_target(self, length, target="copy", disable_tqdm=False, plot=False, component="resid_post"):
         assert target in ["copy", "mem"], "target should be one of copy or mem"
         self.set_len(length, slice_to_fit_batch=False)
-        dataloader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
 
         # logit_target = torch.zeros((self.model.cfg.n_layers, length, num_batches, self.batch_size), device="cpu")
@@ -200,10 +202,10 @@ class OVCircuit(BaseExperiment):
             _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
             for layer in range(self.model.cfg.n_layers):
                 for pos in range(length):
-                    residual_stream = cache["resid_post", layer]
+                    residual_stream = cache[component, layer]
                     logit_output = einops.einsum(self.model.W_U, residual_stream[:, pos, :], "d d_v, b d -> b d_v")
                     logit_output = self.model.ln_final(logit_output)
-                    mem_logit, cp_logit = to_logit_token(logit_output, batch["target"])
+                    mem_logit, cp_logit, _, _ = to_logit_token(logit_output, batch["target"])
                     if target == "copy":
                         logit_target_list[layer][pos].append(cp_logit.cpu())
                         # logit_target[layer, pos, idx] = cp_logit.cpu()
@@ -218,13 +220,13 @@ class OVCircuit(BaseExperiment):
         logit_target = torch.stack(flattened_logit_target).view(self.model.cfg.n_layers, length, -1)
         
         # logit_target = einops.rearrange(logit_target, "l p b s -> l p (b s)")
-        # compute avg logit_target for each layer accross al the position and examples
-        avg_mean = logit_target.mean(dim=-1).mean(dim=-1)
+        # # compute avg logit_target for each layer accross al the position and examples
+        # avg_mean = logit_target.mean(dim=-1).mean(dim=-1)
         # mean over all examples
         logit_target = logit_target.mean(dim=-1)
         # for each layer, compute the percentage increase or decrease of logit_target
-        for layer in range(self.model.cfg.n_layers):
-            logit_target[layer] = -100 * (logit_target[layer] - avg_mean[layer]) / avg_mean[layer] + 1e-6
+        # for layer in range(self.model.cfg.n_layers):
+        #     logit_target[layer] = -100 * (logit_target[layer] - avg_mean[layer]) / avg_mean[layer] + 1e-6
         # aggregate for positions
         object_positions = self.dataset.obj_pos[0]
 
@@ -241,11 +243,11 @@ class OVCircuit(BaseExperiment):
 
         return result_aggregate
 
-    def residual_stram_track_target_all_len(self, target="copy", disable_tqdm=False, plot=False):
+    def residual_stram_track_target_all_len(self, target="copy", disable_tqdm=False, plot=False, **kwargs):
         lenghts = self.dataset.get_lengths()
         result = {}
         for l in lenghts:
-            residual = self.residual_stram_track_target(length=l, target=target, disable_tqdm=disable_tqdm, plot=False)
+            residual = self.residual_stram_track_target(length=l, target=target, disable_tqdm=disable_tqdm, plot=False, **kwargs)
             if residual is not None:
                 result[l] = residual
         result_score = torch.stack(list(result.values()), dim=0).mean(dim=0)
