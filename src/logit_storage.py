@@ -1,6 +1,7 @@
 import torch
 from typing import Tuple, Optional
 import einops
+from src.utils import aggregate_result
 
     
 class LogitStorage:
@@ -28,56 +29,27 @@ class LogitStorage:
     def _reshape_tensor_back(self, tensor:torch.Tensor):
         return einops.rearrange(tensor, "examples layer position -> layer position examples")
     
-    def _aggregate_result(self, object_positions:int, pattern:torch.Tensor, dim:int=-1) -> torch.Tensor:
+    def _aggregate_result(self, object_positions:int, pattern:torch.Tensor) -> torch.Tensor:
         
         pattern = self._reshape_tensor(pattern)
-        subject_1_1 = 5
-        subject_1_2 = 6 if self.length > 15 else 5
-        subject_1_3 = 7 if self.length > 17 else subject_1_2
-        subject_2_1 = object_positions + 2
-        subject_2_2 = object_positions + 3 if self.length > 15 else subject_2_1
-        subject_2_3 = object_positions + 4 if self.length > 17 else subject_2_2
-        subject_2_2 = subject_2_2 if subject_2_2 < self.length else subject_2_1
-        subject_2_3 = subject_2_3 if subject_2_3 < self.length else subject_2_2
-        last_position = self.length - 1
-        object_positions_pre = object_positions - 1
-        object_positions_next = object_positions + 1
-        *leading_dims, pen_len, last_len = pattern.shape
-        
-        result_aggregate = torch.zeros((*leading_dims, 13,13))
-        intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 13))
-        #aggregate for pre-last dimension
-        intermediate_aggregate[..., 0] = pattern[..., :subject_1_1].mean(dim=-1)
-        intermediate_aggregate[..., 1] = pattern[..., subject_1_1]
-        intermediate_aggregate[..., 2] = pattern[..., subject_1_2]
-        intermediate_aggregate[..., 3] = pattern[..., subject_1_3]
-        intermediate_aggregate[..., 4] = pattern[..., subject_1_3 + 1:object_positions_pre].mean(dim=-1)
-        intermediate_aggregate[..., 5] = pattern[..., object_positions_pre]
-        intermediate_aggregate[..., 6] = pattern[..., object_positions]
-        intermediate_aggregate[..., 7] = pattern[..., object_positions_next]
-        intermediate_aggregate[..., 8] = pattern[..., subject_2_1]
-        intermediate_aggregate[..., 9] = pattern[..., subject_2_2]
-        intermediate_aggregate[..., 10] = pattern[..., subject_2_3]
-        intermediate_aggregate[..., 11] = pattern[..., subject_2_3 + 1:last_position].mean(dim=-1)
-        intermediate_aggregate[..., 12] = pattern[..., last_position]
-        if dim == -1:
-            return self._reshape_tensor_back(intermediate_aggregate)
+        intermediate_aggregate = aggregate_result(pattern, object_positions, self.length)
+        return self._reshape_tensor_back(intermediate_aggregate)
 
-        result_aggregate[..., 0,:] = intermediate_aggregate[..., :subject_1_1,:].mean(dim=-2)
-        result_aggregate[..., 1,:] = intermediate_aggregate[..., subject_1_1,:]
-        result_aggregate[..., 2,:] = intermediate_aggregate[..., subject_1_2,:]
-        result_aggregate[..., 3,:] = intermediate_aggregate[..., subject_1_3,:]
-        result_aggregate[..., 4,:] = intermediate_aggregate[..., subject_1_3 + 1:object_positions_pre,:].mean(dim=-2)
-        result_aggregate[..., 5,:] = intermediate_aggregate[..., object_positions_pre,:]
-        result_aggregate[..., 6,:] = intermediate_aggregate[..., object_positions,:]
-        result_aggregate[..., 7,:] = intermediate_aggregate[..., object_positions_next,:]
-        result_aggregate[..., 8,:] = intermediate_aggregate[..., subject_2_1,:]
-        result_aggregate[..., 9,:] = intermediate_aggregate[..., subject_2_2,:]
-        result_aggregate[..., 10,:] = intermediate_aggregate[..., subject_2_3,:]
-        result_aggregate[..., 11,:] = intermediate_aggregate[..., subject_2_3+ 1:last_position,:].mean(dim=-2)
-        result_aggregate[..., 12,:] = intermediate_aggregate[..., last_position,:]
-        print(result_aggregate.shape)
-        return result_aggregate
+        # result_aggregate[..., 0,:] = intermediate_aggregate[..., :subject_1_1,:].mean(dim=-2)
+        # result_aggregate[..., 1,:] = intermediate_aggregate[..., subject_1_1,:]
+        # result_aggregate[..., 2,:] = intermediate_aggregate[..., subject_1_2,:]
+        # result_aggregate[..., 3,:] = intermediate_aggregate[..., subject_1_3,:]
+        # result_aggregate[..., 4,:] = intermediate_aggregate[..., subject_1_3 + 1:object_positions_pre,:].mean(dim=-2)
+        # result_aggregate[..., 5,:] = intermediate_aggregate[..., object_positions_pre,:]
+        # result_aggregate[..., 6,:] = intermediate_aggregate[..., object_positions,:]
+        # result_aggregate[..., 7,:] = intermediate_aggregate[..., object_positions_next,:]
+        # result_aggregate[..., 8,:] = intermediate_aggregate[..., subject_2_1,:]
+        # result_aggregate[..., 9,:] = intermediate_aggregate[..., subject_2_2,:]
+        # result_aggregate[..., 10,:] = intermediate_aggregate[..., subject_2_3,:]
+        # result_aggregate[..., 11,:] = intermediate_aggregate[..., subject_2_3+ 1:last_position,:].mean(dim=-2)
+        # result_aggregate[..., 12,:] = intermediate_aggregate[..., last_position,:]
+        # print(result_aggregate.shape)
+        # return result_aggregate
 
 
     def store(self, layer: int, position: int, logit:Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]], head: int = 0):

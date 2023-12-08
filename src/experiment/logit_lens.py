@@ -26,7 +26,7 @@ class LogitLens(BaseExperiment):
             logit = self.model.ln_final(logit)
             yield logit
         
-    def project_length(self, length:int, component:str, return_index:bool=False, normalize:str="softmax"):
+    def project_length(self, length:int, component:str, return_index:bool=False, normalize:str="none"):
 
 
         self.set_len(length, slice_to_fit_batch=False)
@@ -66,7 +66,7 @@ class LogitLens(BaseExperiment):
         return storer.get_aggregate_logit(object_position=object_positions)
         
         
-    def project(self, component:str, return_index:bool=False, normalize:str="softmax"):
+    def project(self, component:str, return_index:bool=False, normalize:str="none"):
         lengths = self.dataset.get_lengths()
         result = {}
         for l in lengths:
@@ -87,7 +87,7 @@ class LogitLens(BaseExperiment):
         # compute the percentage increase for each position/head over the mean for the same layer across all positions/heads
         raise NotImplementedError("TODO")
     
-    def project_and_return_df(self, component:str, return_index:bool=False, normalize:str="softmax"):
+    def run(self, component:str, return_index:bool=False, normalize:str="none"):
         result = self.project(component, return_index=return_index, normalize=normalize)
         
         import pandas as pd

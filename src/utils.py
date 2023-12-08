@@ -91,3 +91,34 @@ def dict_of_lists_to_dict_of_tensors(dict_of_lists):
         dict_of_tensors[key] = torch.stack(tensor_list)
     return dict_of_tensors
 
+def aggregate_result(pattern:torch.Tensor, object_positions:int, length:int) -> torch.Tensor:
+    subject_1_1 = 5
+    subject_1_2 = 6 if length > 15 else 5
+    subject_1_3 = 7 if length > 17 else subject_1_2
+    subject_2_1 = object_positions + 2
+    subject_2_2 = object_positions + 3 if length > 15 else subject_2_1
+    subject_2_3 = object_positions + 4 if length > 17 else subject_2_2
+    subject_2_2 = subject_2_2 if subject_2_2 < length else subject_2_1
+    subject_2_3 = subject_2_3 if subject_2_3 < length else subject_2_2
+    last_position = length - 1
+    object_positions_pre = object_positions - 1
+    object_positions_next = object_positions + 1
+    *leading_dims, pen_len, last_len = pattern.shape
+    
+
+    intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 13))
+    #aggregate for pre-last dimension
+    intermediate_aggregate[..., 0] = pattern[..., :subject_1_1].mean(dim=-1)
+    intermediate_aggregate[..., 1] = pattern[..., subject_1_1]
+    intermediate_aggregate[..., 2] = pattern[..., subject_1_2]
+    intermediate_aggregate[..., 3] = pattern[..., subject_1_3]
+    intermediate_aggregate[..., 4] = pattern[..., subject_1_3 + 1:object_positions_pre].mean(dim=-1)
+    intermediate_aggregate[..., 5] = pattern[..., object_positions_pre]
+    intermediate_aggregate[..., 6] = pattern[..., object_positions]
+    intermediate_aggregate[..., 7] = pattern[..., object_positions_next]
+    intermediate_aggregate[..., 8] = pattern[..., subject_2_1]
+    intermediate_aggregate[..., 9] = pattern[..., subject_2_2]
+    intermediate_aggregate[..., 10] = pattern[..., subject_2_3]
+    intermediate_aggregate[..., 11] = pattern[..., subject_2_3 + 1:last_position].mean(dim=-1)
+    intermediate_aggregate[..., 12] = pattern[..., last_position]
+    return intermediate_aggregate
