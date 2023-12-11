@@ -78,3 +78,11 @@ ggplot(sample_data, aes(x = head_mem, y = head_cp)) +
   )
 ggsave("results/plots/ov_mem_cp.pdf", width = 20, height = 30, units = "cm", dpi = 100)
 
+
+
+
+
+
+
+
+
