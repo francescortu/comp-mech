@@ -19,12 +19,13 @@ create_heatmap <- function(data, x, y, fill, title) {
   y_sym <- rlang::sym(y)
   fill_sym <- rlang::sym(fill)
   
-  ggplot(data, aes(!!x_sym, !!y_sym, fill = !!fill_sym)) +
+  p<- ggplot(data, aes(!!x_sym, !!y_sym, fill = !!fill_sym)) +
     geom_tile() +
     scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     labs(x = x, y = y, title = title) +
     geom_text(aes(label = sprintf("%.2f", !!fill_sym)), color = "black", size = 3)
+  return(p)
 }
 ########################################## script #############################################################
 # Set working directory and read data
@@ -36,34 +37,40 @@ data <- read.csv(paste(folder_name, "logit_attribution_data.csv", sep = "/"))
 #############################################################################################################
 
 ## filter the data to only include label of type LiHj
+
 data_head <- data %>% filter(grepl("^L[0-9]+H[0-9]+$", label))
 
 ## filter to have just position 12
-data_head <- data_head %>% filter(position == 12)
+for (pos in 0:12) {
 
-# for each row split L and H and create a new column for each
-data_head <- data_head %>% separate(label, c("layer", "head"), sep = "H")
-#remove L from layer
-data_head$layer <- gsub("L", "", data_head$layer)
-
-max_layer <- max(as.numeric(data_head$layer))
-max_head <- max(as.numeric(data_head$head))
-data_head$layer <- factor(data_head$layer, levels = c(0:max_layer))
-data_head$head <- factor(data_head$head, levels = c(0:max_head))
-
-# Your existing ggplot code
-p <- create_heatmap(data_head, "head", "layer", "diff_mean", "Head Attribution for Position 12")
-if (std_dev == 1) {
-  long_data <- data_head %>% 
-    gather(key = "attribute", value = "value", diff_mean, diff_std)
-
-  # Creating the heatmap with facet_wrap
-  p <- create_heatmap(long_data, "head", "layer", "value", "Head Attribution for Position 12") +
-    facet_wrap(~ attribute, ncol = 1)
+  data_head_ <- data_head %>% filter(position == pos)
+  
+  # for each row split L and H and create a new column for each
+  data_head_ <- data_head_ %>% separate(label, c("layer", "head"), sep = "H")
+  #remove L from layer
+  data_head_$layer <- gsub("L", "", data_head_$layer)
+  
+  max_layer <- max(as.numeric(data_head_$layer))
+  max_head <- max(as.numeric(data_head_$head))
+  data_head_$layer <- factor(data_head_$layer, levels = c(0:max_layer))
+  data_head_$head <- factor(data_head_$head, levels = c(0:max_head))
+  
+  # Your existing ggplot code
+  p <- create_heatmap(data_head_, "head", "layer", "diff_mean", "Head Attribution for Position 12")
+  if (std_dev == 1) {
+    long_data <- data_head_ %>% 
+      gather(key = "attribute", value = "value", diff_mean, diff_std)
+  
+    # Creating the heatmap with facet_wrap
+    p <- create_heatmap(long_data, "head", "layer", "value", "Head Attribution for Position 12") +
+      facet_wrap(~ attribute, ncol = 1)
+  }
+  # save the plot
+  #ggsave( paste("logit_attribution_head_position", pos, ".pdf", sep=""), p, width = 10, height = 10, units = "in")
+  
+  ggsave(paste(folder_name, paste("logit_attribution_head_position", position, ".pdf", sep=""), sep="/"), p, width = 10, height = 10, units = "in")
+  #ggsave(paste(folder_name, "logit_attribution_head.pdf", sep = "/"), p, width = 10, height = 10, units = "in")
 }
-# save the plot
-ggsave(paste(folder_name, "logit_attribution_head.pdf", sep = "/"), p, width = 10, height = 10, units = "in")
-
 
 ####################################################################################################
 ####################################  MLP OUT #####################################################

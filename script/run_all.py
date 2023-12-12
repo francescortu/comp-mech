@@ -9,12 +9,19 @@ sys.path.append(os.path.join(script_dir, ".."))
 sys.path.append(os.path.join(script_dir, "..", "src"))
 from src.model import WrapHookedTransformer
 from src.dataset import TlensDataset
-from src.experiment import LogitAttribution, LogitLens, OV
+from src.experiment import LogitAttribution, LogitLens, OV, Ablate
 from dataclasses import dataclass, field
 from typing import Optional, Literal
 import subprocess
 import argparse
 
+class Col:
+    """Colors for terminal output."""
+
+    BLUE = "\033[94m"
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    END = "\033[0m"
 
 @dataclass
 class Config:
@@ -24,6 +31,7 @@ class Config:
     dataset_slice: Optional[int] = None
     produce_plots: bool = True
     normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
+    std_dev: int = 0  # 0 False, 1 True
 
     @classmethod
     def from_args(cls, args):
@@ -33,6 +41,7 @@ class Config:
             dataset_path=f"../data/full_data_sampled_{args.model_name}.json",
             dataset_slice=args.slice,
             produce_plots=args.produce_plots,
+            std_dev = 0 if not args.std_dev else 1
         )
 
 
@@ -56,13 +65,16 @@ def save_dataframe(folder_path, file_name, dataframe):
 
 
 def logit_attribution(model, dataset, config, args):
+    dataset_slice_name = (
+        "full" if config.dataset_slice is None else config.dataset_slice
+    )
     if args.only_plot:
         subprocess.run(
             [
                 "Rscript",
                 "../src_figure/logit_attribution.R",
-                f"../results/logit_attribution/{config.model_name}_{config.dataset_slice}",
-                f"{logit_attribution_config.std_dev}",
+                f"../results/logit_attribution/{config.model_name}_{dataset_slice_name}",
+                f"{config.std_dev}",
             ]
         )
         return
@@ -70,9 +82,6 @@ def logit_attribution(model, dataset, config, args):
     print("Running logit attribution")
     attributor = LogitAttribution(dataset, model, config.batch_size)
     dataframe = attributor.run(normalize_logit=config.normalize_logit)
-    dataset_slice_name = (
-        "full" if config.dataset_slice is None else config.dataset_slice
-    )
     save_dataframe(
         f"../results/logit_attribution/{config.model_name}_{dataset_slice_name}",
         "logit_attribution_data",
@@ -86,18 +95,19 @@ def logit_attribution(model, dataset, config, args):
                 "Rscript",
                 "../src_figure/logit_attribution.R",
                 f"../results/logit_attribution/{config.model_name}_{dataset_slice_name}",
-                f"{logit_attribution_config.std_dev}",
+                f"{config.std_dev}",
             ]
         )
 
 
 def logit_lens(model, dataset, config, args):
+    data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
     if args.only_plot:
         subprocess.run(
             [
                 "Rscript",
                 "../src_figure/logit_lens.R",
-                f"../results/logit_lens/{config.model_name}_{config.dataset_slice}",
+                f"../results/logit_lens/{config.model_name}_{data_slice_name}",
             ]
         )
         return
@@ -110,7 +120,6 @@ def logit_lens(model, dataset, config, args):
         logit_lens_cnfg.return_index,
         normalize_logit=config.normalize_logit,
     )
-    data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
     save_dataframe(
         f"../results/logit_lens/{config.model_name}_{data_slice_name}",
         "logit_lens_data",
@@ -129,12 +138,13 @@ def logit_lens(model, dataset, config, args):
 
 
 def ov_difference(model, dataset, config, args):
+    data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
     if args.only_plot:
         subprocess.run(
             [
                 "Rscript",
                 "../src_figure/ov_difference.R",
-                f"../results/ov_difference/{config.model_name}_{config.dataset_slice}",
+                f"../results/ov_difference/{config.model_name}_{data_slice_name}",
             ]
         )
         return
@@ -142,7 +152,6 @@ def ov_difference(model, dataset, config, args):
     print("Running ov difference")
     ov = OV(dataset, model, config.batch_size)
     dataframe = ov.run(normalize_logit=config.normalize_logit)
-    data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
     save_dataframe(
         f"../results/ov_difference/{config.model_name}_{data_slice_name}",
         "ov_difference_data",
@@ -158,11 +167,42 @@ def ov_difference(model, dataset, config, args):
                 f"../results/ov_difference/{config.model_name}_{data_slice_name}",
             ]
         )
+        
+def ablate(model, dataset, config, args):
+    data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
+    if args.only_plot:
+        subprocess.run(
+            [
+                "Rscript",
+                "../src_figure/ablation.R",
+                f"../results/ablation/{config.model_name}_{data_slice_name}",
+                f"{config.std_dev}"
+            ]
+        )
+        return
+    ablator = Ablate(dataset, model, config.batch_size)
+    dataframe = ablator.run_all(normalize_logit=config.normalize_logit)
+    save_dataframe(
+        f"../results/ablation/{config.model_name}_{data_slice_name}",
+        "ablation_data",
+        dataframe,
+    )
+    
+    if config.produce_plots:
+        # run the R script
+        subprocess.run(
+            [
+                "Rscript",
+                "../src_figure/ablation.R",
+                f"../results/ablation/{config.model_name}_{data_slice_name}",
+                f"{config.std_dev}"
+            ]
+        )
 
 
 def main(args):
     config = Config().from_args(args)
-    print("Config", config)
+    print(f"{Col.GREEN} Config: \n {config} {Col.END}")
     model = WrapHookedTransformer.from_pretrained(config.model_name)
     dataset = TlensDataset(config.dataset_path, model, slice=config.dataset_slice)
 
@@ -181,11 +221,13 @@ def main(args):
         experiments.append(logit_lens)
     if args.ov_diff:
         experiments.append(ov_difference)
+    if args.ablate:
+        experiments.append(ablate)
     if args.all:
-        experiments = [logit_attribution, logit_lens, ov_difference]
+        experiments = [logit_attribution, logit_lens, ov_difference, ablate]
 
     for experiment in experiments:
-        print("Running experiment", experiment.__name__)
+        print(f"{Col.BLUE} Running experiment {experiment.__name__} {Col.END}")
         experiment(model, dataset, config, args)
 
 
@@ -201,9 +243,11 @@ if __name__ == "__main__":
     parser.add_argument("--batch", type=int, default=config_defaults.batch_size)
     parser.add_argument("--only-plot", action="store_true")
 
-    parser.add_argument("--logit_attribution", action="store_true")
+    parser.add_argument("--logit-attribution", action="store_true")
     parser.add_argument("--logit_lens", action="store_true")
     parser.add_argument("--ov-diff", action="store_true")
+    parser.add_argument("--ablate", action="store_true")
     parser.add_argument("--all", action="store_true")
+    parser.add_argument("--std-dev", action="store_true")
     args = parser.parse_args()
     main(args)

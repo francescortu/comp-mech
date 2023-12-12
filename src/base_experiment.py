@@ -3,7 +3,7 @@ from src.model import WrapHookedTransformer
 import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Literal
 import einops
 
 torch.set_grad_enabled(False)
@@ -81,6 +81,26 @@ class BaseExperiment():
         self.dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         self.num_batches = len(self.dataloader)
         print("Number of examples after outliers:", len(self.dataloader) * self.batch_size)
+    
+    def get_basic_logit(self, normalize_logit:Literal["none", "softmax", "log_softmax"] = "none") -> tuple[torch.Tensor, torch.Tensor]:
+        lengths = self.dataset.get_lengths()
+        for length in lengths:
+            self.set_len(length, slice_to_fit_batch=False)
+            dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+            num_batches = len(dataloader)
+            logit_mem_list, logit_cp_list = [], []
+            if num_batches == 0:
+                continue
+            for batch in tqdm(dataloader, total=num_batches):
+                logit, _ = self.model.run_with_cache(batch["corrupted_prompts"])
+                logit = logit[:, -1, :] # type: ignore
+                logit_mem, logit_cp,_,_ = to_logit_token(logit, batch["target"])
+                logit_mem_list.append(logit_mem)
+                logit_cp_list.append(logit_cp)
+            
+            logit_mem = torch.cat(logit_mem_list, dim=0)
+            logit_cp = torch.cat(logit_cp_list, dim=0)
+            return logit_mem, logit_cp
 
     def compute_logit(self) -> tuple[ torch.Tensor, torch.Tensor]:
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
@@ -182,4 +202,5 @@ class BaseExperiment():
             logit_mem[i] = logit[i, target[i, 0]]
             logit_cp[i] = logit[i, target[i, 1]]
         return logit_mem, logit_cp
+    
   
