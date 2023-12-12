@@ -82,7 +82,7 @@ class OV(BaseExperiment):
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
         
-        for batch in tqdm(dataloader, total=num_batches, desc="Computing OV circuit"):
+        for batch in dataloader:
             for layer in range(self.model.cfg.n_layers):
                 for head in range(self.model.cfg.n_layers):
                     logit_diff_mem_input, logit_diff_cp_input = self.compute_logit_diff_(batch["target"], layer, head, **kwargs)

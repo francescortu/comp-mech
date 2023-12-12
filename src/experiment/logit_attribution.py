@@ -99,9 +99,8 @@ class LogitAttribution(BaseExperiment):
         self.set_len(length, slice_to_fit_batch=False)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)
-        print("length", length, "num_batches", num_batches)
         # Create a storage object to store the logits
-        for batch in tqdm(dataloader, total=num_batches):
+        for batch in dataloader:
             # print cuda memory
             logits, cache = self.model.run_with_cache(batch["corrupted_prompts"])
             if normalize_logit != "none":
@@ -140,8 +139,7 @@ class LogitAttribution(BaseExperiment):
         """
         storage = AttributeStorage()
         lengths = self.dataset.get_lengths()
-        print("lengths", lengths)
-        for length in lengths:
+        for length in tqdm(lengths, desc="Attributing"):
             if length == 11:
                 continue
             self.attribute_single_len(

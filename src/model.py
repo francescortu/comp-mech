@@ -4,7 +4,8 @@ from typing import List
 from functools import partial
 import einops
 
-from .utils import C, get_predictions
+
+from .utils import  get_predictions
 
 torch.set_grad_enabled(False)
 

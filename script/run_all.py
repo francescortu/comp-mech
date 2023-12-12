@@ -1,27 +1,36 @@
-import sys
-import os
-
-# Get the directory of the current script
-script_dir = os.path.dirname(os.path.abspath(__file__))
-# Add the parent directory (..) to sys.path
-sys.path.append(os.path.join(script_dir, ".."))
-# Optionally, add the 'src' directory directly
-sys.path.append(os.path.join(script_dir, "..", "src"))
-from src.model import WrapHookedTransformer
-from src.dataset import TlensDataset
-from src.experiment import LogitAttribution, LogitLens, OV, Ablate
+# Standard library imports
 from dataclasses import dataclass, field
-from typing import Optional, Literal
+from math import exp, log
+import os
 import subprocess
+import sys
+import threading
+import time
+from typing import Optional, Literal
+
+# Third-party library imports
+from rich.console import Console
+from rich.live import Live
+from rich.progress import track
 import argparse
+import logging
 
-class Col:
-    """Colors for terminal output."""
+# Local application/library specific imports
+sys.path.append(os.path.abspath(os.path.join("..")))
+sys.path.append(os.path.abspath(os.path.join("../src")))
+sys.path.append(os.path.abspath(os.path.join("../data")))
+from src.dataset import TlensDataset  # noqa: E402
+from src.experiment import LogitAttribution, LogitLens, OV, Ablate  # noqa: E402
+from src.model import WrapHookedTransformer  # noqa: E402
+from src.utils import display_config, display_experiments, update_live, update_status  # noqa: E402
 
-    BLUE = "\033[94m"
-    GREEN = "\033[92m"
-    RED = "\033[91m"
-    END = "\033[0m"
+console = Console()
+# set logging level to suppress warnings
+logging.basicConfig(level=logging.ERROR)
+
+
+
+
 
 @dataclass
 class Config:
@@ -41,7 +50,7 @@ class Config:
             dataset_path=f"../data/full_data_sampled_{args.model_name}.json",
             dataset_slice=args.slice,
             produce_plots=args.produce_plots,
-            std_dev = 0 if not args.std_dev else 1
+            std_dev=0 if not args.std_dev else 1,
         )
 
 
@@ -80,7 +89,7 @@ def logit_attribution(model, dataset, config, args):
         return
 
     print("Running logit attribution")
-    attributor = LogitAttribution(dataset, model, config.batch_size)
+    attributor = LogitAttribution(dataset, model, config.batch_size // 5)
     dataframe = attributor.run(normalize_logit=config.normalize_logit)
     save_dataframe(
         f"../results/logit_attribution/{config.model_name}_{dataset_slice_name}",
@@ -167,7 +176,8 @@ def ov_difference(model, dataset, config, args):
                 f"../results/ov_difference/{config.model_name}_{data_slice_name}",
             ]
         )
-        
+
+
 def ablate(model, dataset, config, args):
     data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
     if args.only_plot:
@@ -176,7 +186,7 @@ def ablate(model, dataset, config, args):
                 "Rscript",
                 "../src_figure/ablation.R",
                 f"../results/ablation/{config.model_name}_{data_slice_name}",
-                f"{config.std_dev}"
+                f"{config.std_dev}",
             ]
         )
         return
@@ -187,7 +197,7 @@ def ablate(model, dataset, config, args):
         "ablation_data",
         dataframe,
     )
-    
+
     if config.produce_plots:
         # run the R script
         subprocess.run(
@@ -195,25 +205,32 @@ def ablate(model, dataset, config, args):
                 "Rscript",
                 "../src_figure/ablation.R",
                 f"../results/ablation/{config.model_name}_{data_slice_name}",
-                f"{config.std_dev}"
+                f"{config.std_dev}",
             ]
         )
+import sys
+import io
+
+class CustomOutputStream(io.StringIO):
+    def __init__(self, live, index, status, experiments):
+        super().__init__()
+        self.live = live
+        self.index = index
+        self.status = status
+        self.experiments = experiments
+
+    def write(self, text):
+        super().write(text)
+        self.status[self.index] = text
+        self.live.update(display_experiments(self.experiments, self.status))
 
 
 def main(args):
     config = Config().from_args(args)
-    print(f"{Col.GREEN} Config: \n {config} {Col.END}")
+    console.print(display_config(config))
     model = WrapHookedTransformer.from_pretrained(config.model_name)
     dataset = TlensDataset(config.dataset_path, model, slice=config.dataset_slice)
 
-    print(
-        "Running experiment on",
-        config.model_name,
-        "with",
-        config.dataset_slice,
-        "samples",
-    )
-    # create the list of experiments to run
     experiments = []
     if args.logit_attribution:
         experiments.append(logit_attribution)
@@ -226,10 +243,16 @@ def main(args):
     if args.all:
         experiments = [logit_attribution, logit_lens, ov_difference, ablate]
 
-    for experiment in experiments:
-        print(f"{Col.BLUE} Running experiment {experiment.__name__} {Col.END}")
-        experiment(model, dataset, config, args)
+    status = ["Pending" for _ in experiments]
 
+
+    for i, experiment in enumerate(experiments):
+        status[i] = "Running"
+        table = display_experiments(experiments, status)
+        console.print(table)
+        experiment(model, dataset, config, args)
+        status[i] = "Done"
+    
 
 if __name__ == "__main__":
     config_defaults = Config()
@@ -238,16 +261,17 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default=config_defaults.model_name)
     parser.add_argument("--slice", type=int, default=config_defaults.dataset_slice)
     parser.add_argument(
-        "--produce_plots", type=bool, default=config_defaults.produce_plots
+        "--no-plot", dest="produce_plots", action="store_false", default=True
     )
     parser.add_argument("--batch", type=int, default=config_defaults.batch_size)
     parser.add_argument("--only-plot", action="store_true")
+    parser.add_argument("--std-dev", action="store_true")
 
     parser.add_argument("--logit-attribution", action="store_true")
     parser.add_argument("--logit_lens", action="store_true")
     parser.add_argument("--ov-diff", action="store_true")
     parser.add_argument("--ablate", action="store_true")
     parser.add_argument("--all", action="store_true")
-    parser.add_argument("--std-dev", action="store_true")
+    
     args = parser.parse_args()
     main(args)

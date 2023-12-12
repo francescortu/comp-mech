@@ -68,7 +68,7 @@ for (pos in 0:12) {
   # save the plot
   #ggsave( paste("logit_attribution_head_position", pos, ".pdf", sep=""), p, width = 10, height = 10, units = "in")
   
-  ggsave(paste(folder_name, paste("logit_attribution_head_position", position, ".pdf", sep=""), sep="/"), p, width = 10, height = 10, units = "in")
+  ggsave(paste(folder_name, paste("logit_attribution_head_position", pos, ".pdf", sep=""), sep="/"), p, width = 10, height = 10, units = "in")
   #ggsave(paste(folder_name, "logit_attribution_head.pdf", sep = "/"), p, width = 10, height = 10, units = "in")
 }
 

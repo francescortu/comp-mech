@@ -129,7 +129,7 @@ class Ablate(BaseExperiment):
         else:
             raise ValueError(f"component {component} not supported")
         
-        for batch in tqdm(dataloader, total=num_batches):
+        for batch in dataloader:
             _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
             freezed_attn = self._get_freezed_attn_pattern(cache) if component == "mlp_out" else self._get_freezed_attn(cache) 
             for layer in range(self.model.cfg.n_layers):
@@ -156,7 +156,7 @@ class Ablate(BaseExperiment):
         if 11 in lengths:
             lengths.remove(11)
         result = {}
-        for length in lengths:
+        for length in tqdm(lengths, desc=f"Ablating {component}", total=len(lengths)) :
             result[length] = self.ablate_single_len(length, component, normalize_logit)
             
         tuple_shape = len(result[lengths[0]])

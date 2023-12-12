@@ -91,7 +91,7 @@ class BaseExperiment():
             logit_mem_list, logit_cp_list = [], []
             if num_batches == 0:
                 continue
-            for batch in tqdm(dataloader, total=num_batches):
+            for batch in dataloader:
                 logit, _ = self.model.run_with_cache(batch["corrupted_prompts"])
                 logit = logit[:, -1, :] # type: ignore
                 logit_mem, logit_cp,_,_ = to_logit_token(logit, batch["target"])
@@ -107,7 +107,7 @@ class BaseExperiment():
 
         corrupted_logit = []
         target = []
-        for batch in tqdm(dataloader):
+        for batch in dataloader:
             corrupted_logit.append(self.model(batch["corrupted_prompts"])[:, -1, :].cpu())
             target.append(batch["target"].cpu())
         # clean_logit = torch.cat(clean_logit, dim=0)

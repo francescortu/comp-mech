@@ -7,18 +7,57 @@ import transformer_lens.patching as patching
 from typing import List
 import warnings
 import einops
+from rich.panel import Panel
+from rich.columns import Columns
+from rich.text import Text
+from queue import Queue
+from rich.table import Table
+from rich.panel import Panel
+from rich.live import Live
+from contextlib import redirect_stdout, redirect_stderr
+from io import StringIO
+import time
+
+def display_experiments(experiments, status):
+    table = Table(show_header=True, header_style="bold magenta", expand=True)
+    table.add_column("Experiment", style="dim", width=3)
+    table.add_column("Status", width=1)
+    table.add_column("Live Output")  # New column for future live output
+    for experiment, stat in zip(experiments, status):
+        table.add_row(experiment.__name__, stat, "")  # Empty string for future live output
+    return table
 
 
-class C:
-    """Color class for printing colored text in terminal"""
+def display_config(config):
+    config_items = [
+        Text.assemble(("Model Name: ", "bold"), str(config.model_name)),
+        Text.assemble(("Batch Size: ", "bold"), str(config.batch_size)),
+        Text.assemble(("Dataset Path: ", "bold"), config.dataset_path),
+        Text.assemble(("Dataset Slice: ", "bold"), str(config.dataset_slice)),
+        Text.assemble(("Produce Plots: ", "bold"), str(config.produce_plots)),
+        Text.assemble(("Normalize Logit: ", "bold"), str(config.normalize_logit)),
+        Text.assemble(("Std Dev: ", "bold"), str(config.std_dev)),
+    ]
 
-    RED = "\033[91m"
-    GREEN = "\033[92m"
-    BLUE = "\033[94m"
-    YELLOW = "\033[93m"
-    END = "\033[0m"
-    
-    
+    columns = Columns(config_items, equal=True, expand=True)
+    panel = Panel(columns, title="Configuration", border_style="green")
+    return panel
+
+def update_status(i, status):
+    try:
+        dots = "."
+        while status[i] == "Running" or status[i].startswith("Running."):
+            status[i] = "Running" + dots + " " * (3 - len(dots))  # Pad with spaces
+            dots = dots + "." if len(dots) < 3 else "."
+            time.sleep(0.5)
+    except Exception as e:
+        raise e
+
+def update_live(live, experiments, status):
+    while True:
+        live.update(display_experiments(experiments, status))
+        time.sleep(0.1)
+
 
 
 

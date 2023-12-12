@@ -211,7 +211,7 @@ class LogitLens(BaseExperiment):
                     storer, self.model.cfg.n_heads
                 )
 
-        for batch in tqdm(dataloader, total=num_batches):
+        for batch in dataloader:
             _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
             for layer in range(self.model.cfg.n_layers):
                 if component in self.valid_blocks:
@@ -268,7 +268,7 @@ class LogitLens(BaseExperiment):
         if 11 in lengths:
             lengths.remove(11)
         result = {}
-        for l in lengths:
+        for l in tqdm(lengths, desc="Logit lens:"):
             result[l] = self.project_length(
                 l, component, return_index=return_index, normalize_logit=normalize_logit
             )
