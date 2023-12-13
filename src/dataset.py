@@ -1,366 +1,294 @@
-from ast import Tuple
-from math import cos
-from attr import dataclass
-from click import Option
+from abc import abstractmethod
+from cgitb import Hook
+
 import torch
 from torch.utils.data import Dataset
 import json
 from tqdm import tqdm
 import random
-from typing import Optional,  List
+from typing import Optional, Tuple, Union
 from src.model import WrapHookedTransformer
+from transformers import AutoModelForCausalLM
 from transformer_lens import HookedTransformer
-from functools import partial
-from transformers import  AutoModelForCausalLM 
-from dataclasses import dataclass
+import logging
 
-class TlensDataset(Dataset):
-    def __init__(self, path:str, model:HookedTransformer, slice:Optional[int] = None):
-        self.data = json.load(open(path))
-        if slice is not None:
-            self.data = self.data[:slice]
-        print("Dataset loaded from", path)
-        print("Number of samples:", len(self.data))
-        self.model = model
-        self.pad_token = model.tokenizer.pad_token if model.tokenizer is not None else ValueError("You must pass a tokenizer to the model.")
-        self.data_per_len = self.split_per_len()
-        
-    def __len__(self):
-        return len(self.corrupted_prompts) 
-    
-    def __getitem__(self, idx):
-        return {
-            # "clean_prompts": self.clean_prompts[idx],
-            "corrupted_prompts": self.corrupted_prompts[idx],
-            "target": self.target[idx],
-            "obj_pos": self.obj_pos[idx],
-        }
-        
-    def split_per_len(self):
-        for d in self.data:
-            string_tokens = self.model.to_str_tokens(d["prompt"])
-            d["length"] = len(string_tokens)
-            for i, token in enumerate(string_tokens):
-                # print(token, d["target_true"])
-                if token == d["target_new"]:
-                    d["obj_pos"] = i
-                    break
-        data_per_len = {}
-        for sample in self.data:
-            length = sample["length"]
-            if length not in data_per_len:
-                data_per_len[length] = []
-            data_per_len[length].append(sample)
-            
-        # remove the lengths that have less than 100 samples
-        # for length in list(data_per_len.keys()):
-        #     if len(data_per_len[length]) < 100:
-        #         del data_per_len[length]
-        return data_per_len
-    
-    def get_len(self):
-        return self.length
-    
-    def compute_orthogonal(self, string_token:str, model, interval = 0.75) -> (str | List[str]):
-        token = self.model.to_tokens(string_token, prepend_bos=False)
-        with torch.no_grad():
-            token_embedding = self.model.W_E[token].squeeze(0)
-            embeddings = self.model.W_E
-            
 
-        cosine_similarity = torch.nn.functional.cosine_similarity(embeddings, token_embedding, dim=1)
-        
-        #sorted by similarity
-        cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
-        
-
-        
-        #remove the first element, which is the token itself
-        sorted_indices = sorted_indices[1:]
-        cosine_similarity = cosine_similarity[1:]
-        
-        # divide in 4 groups based on the similarity
-        group1 = sorted_indices[cosine_similarity < torch.quantile(cosine_similarity, 0.25)]
-        group2 = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.25)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))]
-        group3 = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.5)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))]
-        group4 = sorted_indices[cosine_similarity >= torch.quantile(cosine_similarity, 0.75)]
-        
-        #pick a random token from each group
-        if interval == 0.25:
-            random_token = torch.randint(0, len(group1), (1,)).item()
-            return self.model.to_string([group1[random_token]])
-    
-        elif interval == 0.5:
-            random_token = torch.randint(0, len(group2), (1,)).item()
-            return self.model.to_string([group2[random_token]])
-        
-        elif interval == 0.75:
-            random_token = torch.randint(0, len(group3), (1,)).item()
-            return self.model.to_string([group3[random_token]])
-        
-        elif interval == 1.0:
-            random_token = torch.randint(0, len(group4), (1,)).item()
-            return self.model.to_string([group4[random_token]])
-        else:
-            raise ValueError("Interval must be one of 0.25, 0.5, 0.75, 1.0")
-    
-    def set_len(self, length:int, interval):
-        orthogonality = True if interval != 0 else False
-        self.length = length
-        data = self.data_per_len[length]
-
-        self.corrupted_prompts = [d["prompt"] for d in data]
-        if orthogonality:
-            target2 = []
-            for idx,  _ in enumerate(self.corrupted_prompts):
-                #replace the target with the orthogonalized target
-                orthogonal_token = self.compute_orthogonal(data[idx]["target_new"], self.model)
-                target2.append(self.model.to_tokens(orthogonal_token, prepend_bos=False))
-                self.corrupted_prompts[idx] = self.corrupted_prompts[idx].replace(data[idx]["target_new"], orthogonal_token)
-        self.obj_pos = [d["obj_pos"] for d in data]
-        target1 = [self.model.to_tokens(d["target_true"], prepend_bos=False) for d in data]
-        if not orthogonality:
-            target2 = [self.model.to_tokens(d["target_new"], prepend_bos=False) for d in data]
-
-        tensor_1 = torch.stack(target1, dim=0)
-        tensor_2 = torch.stack(target2, dim=0) 
-        
-        # stack the tensors
-        self.target = torch.stack([tensor_1, tensor_2], dim=1).squeeze()
-        if len(self.target.shape) < 2:
-            self.target = self.target.unsqueeze(0)
-        assert len(self.target.shape) == 2, "The target should be a tensor of shape (batch_size, 2)"
-        assert self.target.shape[1] == 2, "The target should be a tensor of shape (batch_size, 2)"
-        
-    def filter_from_idx_all(self, index:List[int]):
-        self.data = [self.data[i] for i in range(len(self.data)) if i in index]
-        self.data_per_len = self.split_per_len()
-        
-    def filter_from_idx(self, index:List[int], exclude:bool=False, save_filtered:bool=False):
-        if exclude:
-            self.target = [self.target[i] for i in range(len(self.target)) if i not in index]
-            # self.clean_prompts = [self.clean_prompts[i] for i in range(len(self.clean_prompts)) if i not in index]
-            self.corrupted_prompts = [self.corrupted_prompts[i] for i in range(len(self.corrupted_prompts)) if i not in index]
-            self.obj_pos = [self.obj_pos[i] for i in range(len(self.obj_pos)) if i not in index]
-            self.data = [self.data[i] for i in range(len(self.data)) if i not in index]
-        else:
-            self.target = [self.target[i] for i in index]
-            self.clean_prompts = [self.clean_prompts[i] for i in index]
-            self.corrupted_prompts = [self.corrupted_prompts[i] for i in index]
-            self.obj_pos = [self.obj_pos[i] for i in index]
-            self.data = [self.data[i] for i in index]
-            
-        if save_filtered:
-            self.save_filtered()
-    
-    def slice(self, end:int, start:int=0):
-        assert end <= len(self.corrupted_prompts), "End index is greater than the dataset size"
-        self.target = self.target[start:end]
-        self.corrupted_prompts = self.corrupted_prompts[start:end]
-        self.obj_pos = self.obj_pos[start:end]
-        
-    def get_lengths(self):
-        return list(self.data_per_len.keys())
-    
-    def slice_to_fit_batch(self, batch_size:int):
-        maxdatadize = (len(self.corrupted_prompts)//batch_size)*batch_size
-        self.slice(maxdatadize)
-        
-    def save_filtered(self):
-        self.data_per_len[self.length] = self.data
-
-@dataclass
-class HFDatasetConfig:
-    premise: str = "Redefine"
-    alpha: float = 1.0
-    interval: tuple[float, float] = (0, 0.2)
-
-class HFDataset(Dataset):
-    def __init__(self, path:str, tokenizer, config:HFDatasetConfig = HFDatasetConfig(), slice=None):
-        with open(path, 'r') as file:
-            self.full_data = json.load(file)
-        
+class BaseDataset(Dataset):
+    def __init__(
+        self,
+        path: str,
+        slice: Optional[int] = None,
+        premise: str = "Redefine:",
+        similarity: Tuple[bool, int, str] = (False, 0, "input"),
+    ):
+        self.full_data = json.load(open(path))
         if slice is not None:
             self.full_data = self.full_data[:slice]
-        # Initialize variables to avoid AttributeError before calling set_len
+        self.premise = premise
+        self.similarity = similarity
+
+        self.lengths = self._get_lenghts_and_tokenize()
+
         self.prompts = []
-        self.target = []
+        self.tokenized_prompts = []
+        self.targets = []
         self.obj_pos = []
-        self.tokenizer = tokenizer
-        # self.premise = premise
-        self.config = config
-        self.lenghts = self.get_lengths()
-        
+
     def __len__(self):
-        return len(self.data) 
-    
+        if len(self.prompts) == 0:
+            raise ValueError("Dataset is empty: please call set_len() first")
+        return len(self.prompts)
+
     def __getitem__(self, idx):
-        if not self.prompts:
-            raise ValueError("Set length using set_len before fetching items.")
+        if len(self.prompts) == 0:
+            raise ValueError("Dataset is empty: please call set_len() first")
         return {
             "prompt": self.prompts[idx],
-            "input_ids": self.input_ids[idx],
-            "target": self.target[idx],
+            "input_ids": self.tokenized_prompts[idx],
+            "target": self.targets[idx],
             "obj_pos": self.obj_pos[idx],
         }
 
-    def compute_orthogonal(self, string_token:str, model):
-        token = self.tokenizer.encode(string_token, return_tensors="pt", add_special_tokens=True)
-        if token.shape[1] > 1:
-            token = token[0,1]
-        else:
-            token = token[0,0]
-            
-        token = token.to(model.device)
-        with torch.no_grad():
-            embeddings = model.get_input_embeddings()
-            embeddings = embeddings.cuda()
-            token_embedding = embeddings(token)
-            
-        cosine_similarity = torch.nn.functional.cosine_similarity(embeddings.weight, token_embedding.unsqueeze(0), dim=1)
-        
-        #sorted by similarity
-        cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
-        
-        #remove the first element, which is the token itself
-        sorted_indices = sorted_indices[1:]
-        cosine_similarity = cosine_similarity[1:]
-        
-        # divide in 4 groups based on the similarity
-        group1 = sorted_indices[cosine_similarity < torch.quantile(cosine_similarity, 0.25)]
-        group2 = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.25)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))]
-        group3 = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.5)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))]
-        group4 = sorted_indices[cosine_similarity >= torch.quantile(cosine_similarity, 0.75)]
-        
-        #pick a random token from each group
-        if self.config.interval[1] == 0.25:
-            random_token = torch.randint(0, len(group1), (1,)).item()
-            return self.tokenizer.decode([group1[random_token]])
+    def get_lengths(self):
+        return self.lengths
     
-        if self.config.interval[1] == 0.5:
-            random_token = torch.randint(0, len(group2), (1,)).item()
-            return self.tokenizer.decode([group2[random_token]])
+    def slice_to_fit_batch(self, batch_size: int):
+        max_data_size = (len(self.data) // batch_size) * batch_size
+        self.slice(max_data_size)
         
-        if self.config.interval[1] == 0.75:
-            random_token = torch.randint(0, len(group3), (1,)).item()
-            return self.tokenizer.decode([group3[random_token]])
-        
-        if self.config.interval[1] == 1.0:
-            random_token = torch.randint(0, len(group4), (1,)).item()
-            return self.tokenizer.decode([group4[random_token]])
-        
+    def slice(self, slice: int):
+        raise NotImplementedError
 
-    def set_len(self, length:int, orthogonal:bool=False, model:Optional[AutoModelForCausalLM]=None):
-        self.data = [d for d in self.full_data if d["length"] == length]
-        self.original_index = [i for i, d in enumerate(self.full_data) if d["length"] == length]
-     
-        
-        if orthogonal:
-            assert model is not None, "You must pass a model to compute the orthogonal prompt."
-            compute_orthogonal = partial(self.compute_orthogonal, model=model)
-            orthogonal_target_new = [compute_orthogonal(string_token=d["target_true"]) for d in tqdm(self.data, desc="Orthogonalize length")]
-            target_new = orthogonal_target_new
-            token_false = []
-            for tn in target_new:
-                token = self.tokenizer.encode(tn, return_tensors="pt", add_special_tokens=True)
-                if token.shape[1] > 1:
-                    token = token[0,1]
-                else:
-                    token = token[0,0]
-                token_false.append(token)
-        else:
-            target_new = [d["target_new"] for d in self.data]
-            token_false = [d["token_false"] for d in self.data]
-        self.prompts = []
-        for d, tn in zip(self.data, target_new):
-            self.prompts.append(d["template"].format(self.config.premise, tn))
-        #     self.prompts.append(d["template"].format("Redefine", d["target_new"]))
-        self.obj_pos = [d["position"] for d in self.data]
-        self.input_ids = [torch.tensor(d["input_ids"]) for d in self.data]
-        if orthogonal:
-            for idx, _ in enumerate(self.input_ids):                    
-                self.input_ids[idx][self.obj_pos[idx]] = token_false[idx]
+    def _get_lenghts_and_tokenize(self):
+        lenghts = []
+        for d in self.full_data:
+            prompt = d["template"].format(self.premise, d["target_new"])
+            d["prompt"] = prompt
+            d["tokenized_prompt"] = self._tokenize_prompt(prompt, True)  # ( L)
+            target_new_token = self._tokenize_prompt(d["target_new"], False)  # (1)
+            d["target_new_token"] = target_new_token
+            target_true_token = self._tokenize_prompt(d["target_true"], False)  # (1)
+            d["target_true_token"] = target_true_token
+            d["targets"] = torch.cat(
+                [target_true_token, target_new_token], dim=0
+            )  # (2)
+            obj_pos_indices = (d["tokenized_prompt"] == target_new_token).nonzero(as_tuple=True)[0]
+            if obj_pos_indices.size(0) > 0:
+                d["obj_pos"] = obj_pos_indices[0].item()
+            else:
+                raise ValueError("Target not found in prompt")
+            d["length"] = d["tokenized_prompt"].shape[0]
+            if d["length"] not in lenghts:
+                lenghts.append(d["length"])
                 
+        if self.similarity[0] is True:
+            self.apply_similarity()
+            
+        self._clear_cache()    
         
-        target1 = torch.tensor([d["token_true"] for d in self.data])
-        target2 = torch.tensor(token_false)
-        
-        # target1 = [torch.tensor(model.to_tokens(d["true"], prepend_bos=False)) for d in self.data]
-        # target2 = [torch.tensor(model.to_tokens(d["false"], prepend_bos=False)) for d in self.data]
-        # target1, target2 = [torch.zeros(10)], [torch.zeros(10)]
-        self.target = torch.stack([target1, target2], dim=1)
-
-        assert self.check_duplicate() == True, "Duplicate prompts"
-        assert self.check_index_mapping() == True, "Index mapping is wrong"
-        assert len(self.data) == len(set(d['prompt'] for d in self.data)), "There are duplicate prompts after filtering."
-        
-        # check if the index mapping is unique
-        assert len(self.original_index) == len(set(self.original_index)), "Original indices are not unique."
-        assert all(self.full_data[idx]["prompt"] == self.data[i]["prompt"] for i, idx in enumerate(self.original_index)), "Index mapping mismatch."
-
-        
-    def check_index_mapping(self):
-        # check if the index mapping is correct
-        for i, d in enumerate(self.data):
-            if d["prompt"] != self.full_data[self.original_index[i]]["prompt"]:
-                return False
-        return True
+        return lenghts
     
+    def _clear_cache(self):
+        self.model = None
+        self.tokenizer = None
+        torch.cuda.empty_cache()
+
+    def cuda(self):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device == "cpu":
+            logging.warning("Warning: CUDA not available, using CPU")
+        self.targets = [t.to(device) for t in self.targets]
+        self.tokenized_prompts = [t.to(device) for t in self.tokenized_prompts]
+        self.obj_pos = [t.to(device) for t in self.obj_pos]
+        
+    def get_len(self):
+        return self.len
+
+    def set_len(self, length: int):
+        self.len = length
+        self.prompts = []
+        self.tokenized_prompts = []
+        self.targets = []
+        self.obj_pos = []
+        self.data = []
+
+        self.data = [d for d in self.full_data if d["length"] == length]
+        # filter data by length
+        self.prompts = [d["prompt"] for d in self.data]
+        self.tokenized_prompts = [ d["tokenized_prompt"] for d in self.data]
+        self.targets = [d["targets"] for d in self.data]
+        self.obj_pos = [d["obj_pos"] for d in self.data]
+        self.original_index = [
+            i for i, d in enumerate(self.full_data) if d["length"] == length
+        ]
+
+        # if self.similarity[0] is True:
+        #     self.apply_similarity()
+
+        assert self.check_duplicate()
+
+    def apply_similarity(self):
+        # similarity level
+        similarity_level = self.similarity[1]
+        similarity_type = self.similarity[2]
+
+        for d in self.full_data:
+            similar_token_str, similar_token = self.get_similar_token(
+                d, similarity_level, similarity_type
+            )
+            d["prompt"] = d["prompt"].replace(d["target_new"], similar_token_str)
+            d["tokenized_prompt"][0, d["obj_pos"]] = similar_token[0, 0]
+            d["targets"][0, 1] = similar_token[0, 0]
+            d["target_new"] = similar_token_str
+            d["target_new_token"] = similar_token
+            
+
+        # for idx in range(self.__len__()):
+        #     similar_token_str, similar_token = self.get_similar_token(
+        #         idx, similarity_level, similarity_type
+        #     )
+        #     self.prompts[idx] = self.prompts[idx].replace(self.data[idx]["target_new"], similar_token_str)
+        #     self.tokenized_prompts[idx][0, self.data[idx]["obj_pos"]] = similar_token[0, 0]
+        #     self.targets[idx][0, 1] = similar_token[0, 0]
+        #     self.data[idx]["target_new"] = similar_token_str
+        #     self.data[idx]["target_new_token"] = similar_token
+            
+
     def check_duplicate(self):
-        # check if full_data has duplicate prompts
-        #find duplicate in two lists
         seen = set()
-        for i,d in enumerate(self.full_data):
+        for i, d in enumerate(self.full_data):
             if d["prompt"] in seen:
-                #check the other fields
-                for j,d2 in enumerate(self.full_data):
+                for j, d2 in enumerate(self.full_data):
                     if j == i:
                         continue
                     if d["prompt"] == d2["prompt"]:
-                        if d["true"] != d2["true"] or d["false"] != d2["false"]:
-                            continue
-                        else:
-                            return False
+                        if d["target_new"] == d2["target_new"]:
+                            if d["target_true"] == d2["target_true"]:
+                                return False
             seen.add(d["prompt"])
         return True
-        
-    def slice(self, end:int, start:int=0):
-        self.data   = self.data[start:end]
-        self.target = self.target[start:end]
-        self.prompts = self.prompts[start:end]
-        self.obj_pos = self.obj_pos[start:end]
-        self.input_ids = self.input_ids[start:end]
-        self.original_index = self.original_index[start:end]
-        
-    def get_lengths(self):
-        # return all the possible lengths in the dataset
-        for d in tqdm(self.full_data, desc="Tokenizing prompts"):
-            prompt = d["template"].format(self.config.premise, d["target_new"])
-            tokenized_prompt = self.tokenizer([prompt, d["target_true"], d["target_new"]], return_length=True)
-            d["length"] = tokenized_prompt["length"][0]
-            d["input_ids"] = tokenized_prompt["input_ids"][0]
-            # find the position of d["false"] in the tokenized prompt
 
-            assert len(tokenized_prompt["input_ids"][2]) < 3, "False token is too long"
-            
-            if len(tokenized_prompt["input_ids"][2]) == 2:
-                token_position = 1
-            if len(tokenized_prompt["input_ids"][2]) == 1:
-                token_position = 0
-                
-            d["position"] = tokenized_prompt["input_ids"][0].index(tokenized_prompt["input_ids"][2][token_position])
-            d["token_true"] = tokenized_prompt["input_ids"][1][token_position] 
-            d["token_false"] = tokenized_prompt["input_ids"][2][token_position]
-        return list(set([d["length"] for d in self.full_data]))
+
+    def get_similar_token(self, data_point: dict, similarity_level: int, similarity_type: str) -> Tuple[str, torch.Tensor]:
+        token_to_be_similar_str = data_point["target_true"]
+        token_to_be_similar = data_point["target_true_token"]
+        
+        return self._get_similar_token(token_to_be_similar_str, token_to_be_similar, similarity_level, similarity_type)
+
+    @abstractmethod
+    def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
+        pass
     
-    def slice_to_fit_batch(self, batch_size):
-        maxdatadize = (len(self.data)//batch_size)*batch_size
-        self.slice(maxdatadize)
+    @abstractmethod
+    def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str) -> Tuple[str, torch.Tensor]:
+        pass
+    
+    
+class TlensDataset(BaseDataset):
+    def __init__(
+        self,
+        path: str,
+        model: Union[WrapHookedTransformer, str, HookedTransformer],
+        slice: Optional[int] = None,
+        premise: str = "Redefine:",
+        similarity: Tuple[bool, int, str] = (False, 0, "input"),
+    ):
+        if isinstance(model, str):
+            self.model = WrapHookedTransformer.from_pretrained(model)
+        else:
+            self.model = model
+        self.model.eval()
+        super().__init__(path, slice, premise, similarity)
         
-    def save_filtered(self):
-        self.data_per_len[self.length] = self.data
+    def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
+        tokens = self.model.to_tokens(prompt, prepend_bos).squeeze(0)
+        assert len(tokens.shape) == 1
+        return tokens
+        
+    def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str) -> Tuple[str, torch.Tensor]:
+        with torch.no_grad():
+            token_embedding = self.model.W_E[token_to_be_similar].squeeze(0)
+            embeddings = self.model.W_E
+        
+        cosine_similarity = torch.nn.functional.cosine_similarity(embeddings, token_embedding, dim=-1)
+        cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
+        
+        sorted_indices = sorted_indices[1:]
+        cosine_similarity = cosine_similarity[1:]
+        
+        group = {}
+        group[1] = sorted_indices[cosine_similarity < torch.quantile(cosine_similarity, 0.25)]
+        group[2]= sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.25)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))]
+        group[3] = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.5)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))]
+        group[4] = sorted_indices[cosine_similarity >= torch.quantile(cosine_similarity, 0.75)]
+        
+        sampled_token_idx = torch.randint(0, len(group[similarity_level]), (1,)).item()
+        sampled_token = group[similarity_level][sampled_token_idx]
+        sampled_token_str = self.model.to_string(sampled_token.item())
+        assert sampled_token_str != token_to_be_similar_str, "sampled_token_str is the same as token_to_be_similar_str"
+        assert sampled_token.shape[0] == 1, "sampled_token is not a 1D tensor"
+        assert len(sampled_token.shape) == 2, "sampled_token is not a 2D tensor"
+        assert isinstance(sampled_token_str, str), "sampled_token_str is not a string"
+        return sampled_token_str, sampled_token.unsqueeze(0).unsqueeze(0)
 
-       
+class HFDataset(BaseDataset):
+    def __init__(
+        self,
+        model: Union[AutoModelForCausalLM, str],
+        tokenizer,
+        path: str,
+        slice: Optional[int] = None,
+        premise: str = "Redefine:",
+        similarity: Tuple[bool, int, str] = (False, 0, "input"),
+    ):
+        if isinstance(model, str):
+            self.model = AutoModelForCausalLM.from_pretrained(model)
+        else:
+            self.model = model
+        self.tokenizer = tokenizer
+        super().__init__(path, slice, premise, similarity)
+        
+    def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
+        tokens = self.tokenizer.encode(prompt, return_tensors="pt", add_special_tokens=True).squeeze(0)
+        assert len(tokens.shape) == 1
+        return tokens
+    
+    def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str) -> Tuple[str, torch.Tensor]:
+        if token_to_be_similar.shape[1] > 1:
+            token_to_be_similar = token_to_be_similar[0, 0].unsqueeze(0)
+        else:
+            token_to_be_similar = token_to_be_similar[0,0].unsqueeze(0)
+    
+        with torch.no_grad():
+            embeddings = self.model.get_input_embeddings().cuda() # type: ignore
+            token_to_be_similar_emb = embeddings(token_to_be_similar)
+            
+        cosine_similarity = torch.nn.functional.cosine_similarity(embeddings.weight, token_to_be_similar_emb.unsqueeze(0), dim=-1)
+            
+        cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
+        
+        sorted_indices = sorted_indices[1:]
+        cosine_similarity = cosine_similarity[1:]
+        
+        group = {}
+        group[1] = sorted_indices[cosine_similarity < torch.quantile(cosine_similarity, 0.25)]
+        group[2]= sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.25)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))]
+        group[3] = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.5)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))]
+        group[4] = sorted_indices[cosine_similarity >= torch.quantile(cosine_similarity, 0.75)]
+        
+        sampled_token_idx = torch.randint(0, len(group[similarity_level]), (1,)).item()
+        sampled_token = group[similarity_level][sampled_token_idx]
+        sampled_token_str = self.tokenizer.decode(sampled_token.item())
+        sampled_token = sampled_token.unsqueeze(0).unsqueeze(0)
+        assert sampled_token_str != token_to_be_similar_str, "sampled_token_str is the same as token_to_be_similar_str"
+        assert sampled_token.shape[0] == 1, "sampled_token is not a 1D tensor"
+        assert len(sampled_token.shape) == 2, "sampled_token is not a 2D tensor"
+        assert isinstance(sampled_token_str, str), "sampled_token_str is not a string"
+        return sampled_token_str, sampled_token
+
+
+
+
 class SampleDataset:
     def __init__(self, path:str, model, save_path:str, tokenizer:Optional[object]):
         self.data = json.load(open(path))
@@ -406,9 +334,9 @@ class SampleDataset:
             for i,d in enumerate(self.data):
                 empty_prompt = d["base_prompt"]
                 #encode the prompt
-                input_ids = self.tokenizer.encode(empty_prompt, return_tensors="pt")
-                input_ids = input_ids.to(self.model.device)
-                target_true = self.tokenizer.encode(d["target_true"], return_tensors="pt", add_special_tokens=False)
+                input_ids = self.tokenizer.encode(empty_prompt, return_tensors="pt") #type: ignore
+                input_ids = input_ids.to(self.model.device) #type: ignore
+                target_true = self.tokenizer.encode(d["target_true"], return_tensors="pt", add_special_tokens=False) #type: ignore
                 #predict the next token
                 logits = self.model(input_ids)["logits"][0, -1, :].cpu()
                 #get the index of the predicted token
@@ -424,7 +352,6 @@ class SampleDataset:
     
     def save(self):
         json.dump(self.data, open(self.save_path, "w"), indent=2)
-    
     
     
     
@@ -451,11 +378,10 @@ class DatasetGenerator():
                     continue
                 try:
                     obj_pos = model.to_str_tokens(template.format(model.tokenizer.pad_token)).index(".") - 1
-                except:
+                except:  # noqa: E722
                     continue
                 if target_true in template:
                     continue
-                position = template.find("{}")
                 prediction = model.predict(template.format(model.tokenizer.pad_token))[1][0]
                 copy_prediction = model.predict(template.format(target_new))[1][0]
                 if prediction == target_true and copy_prediction == target_new:
@@ -478,11 +404,10 @@ class DatasetGenerator():
                     continue
                 try:
                     obj_pos = model.to_str_tokens(template.format(model.tokenizer.pad_token)).index(".") - 1
-                except:
+                except: # noqa: E722
                     continue
                 if target_true in template:
                     continue
-                position = template.find("{}")
                 prediction = model.predict(template.format(model.tokenizer.pad_token))[1][0]
                 copy_prediction = model.predict(template.format(target_new))[1][0]
                 if prediction == target_true and copy_prediction == target_new:

@@ -1,17 +1,13 @@
 # Standard library imports
-from dataclasses import dataclass, field
-from math import exp, log
+from dataclasses import dataclass
 import os
-import subprocess
 import sys
-import threading
-import time
+import io
+import subprocess
 from typing import Optional, Literal
 
 # Third-party library imports
 from rich.console import Console
-from rich.live import Live
-from rich.progress import track
 import argparse
 import logging
 
@@ -22,7 +18,7 @@ sys.path.append(os.path.abspath(os.path.join("../data")))
 from src.dataset import TlensDataset  # noqa: E402
 from src.experiment import LogitAttribution, LogitLens, OV, Ablate  # noqa: E402
 from src.model import WrapHookedTransformer  # noqa: E402
-from src.utils import display_config, display_experiments, update_live, update_status  # noqa: E402
+from src.utils import display_config, display_experiments, check_dataset_and_sample  # noqa: E402
 
 console = Console()
 # set logging level to suppress warnings
@@ -208,8 +204,6 @@ def ablate(model, dataset, config, args):
                 f"{config.std_dev}",
             ]
         )
-import sys
-import io
 
 class CustomOutputStream(io.StringIO):
     def __init__(self, live, index, status, experiments):
@@ -229,6 +223,7 @@ def main(args):
     config = Config().from_args(args)
     console.print(display_config(config))
     model = WrapHookedTransformer.from_pretrained(config.model_name)
+    check_dataset_and_sample(config.dataset_path, config.model_name)
     dataset = TlensDataset(config.dataset_path, model, slice=config.dataset_slice)
 
     experiments = []

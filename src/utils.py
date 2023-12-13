@@ -1,22 +1,38 @@
 import torch
-from transformer_lens import HookedTransformer
-
-# from src.model import WrapHookedTransformer
-import transformer_lens.patching as patching
-
-from typing import List
 import warnings
-import einops
 from rich.panel import Panel
 from rich.columns import Columns
 from rich.text import Text
-from queue import Queue
 from rich.table import Table
-from rich.panel import Panel
-from rich.live import Live
-from contextlib import redirect_stdout, redirect_stderr
-from io import StringIO
 import time
+import os
+import torch.nn.functional as F
+
+
+def check_dataset_and_sample(dataset_path, model_name):
+    if os.path.exists(dataset_path):
+        return 
+    else:
+        from transformers import AutoModelForCausalLM
+        from transformers import AutoTokenizer
+        print("Dataset not found, creating it:")
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model.eval()
+        from src.dataset import SampleDataset
+        sampler = SampleDataset(
+            "../data/full_data.json",
+            model=model,
+            save_path=dataset_path,
+            tokenizer=tokenizer,
+        )
+        sampler.sample()
+        sampler.save()
+        del model
+        del sampler
+        torch.cuda.empty_cache()
+        return 
+
 
 def display_experiments(experiments, status):
     table = Table(show_header=True, header_style="bold magenta", expand=True)
@@ -98,8 +114,8 @@ def suppress_warnings(fn):
 
 
 def embs_to_tokens_ids(noisy_embs, model):
-    input_embedding_norm = torch.functional.F.normalize(noisy_embs, p=2, dim=2)
-    embedding_matrix_norm = torch.functional.F.normalize(model.W_E, p=2, dim=1)
+    input_embedding_norm = F.normalize(noisy_embs, p=2, dim=2)
+    embedding_matrix_norm = F.normalize(model.W_E, p=2, dim=1)
     similarity = torch.matmul(input_embedding_norm, embedding_matrix_norm.T)
     corrupted_tokens = torch.argmax(similarity, dim=2)
     return corrupted_tokens

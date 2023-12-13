@@ -14,7 +14,6 @@ if (length(args) == 0) {
 folder_name <- args[1]
 
 data <- read.csv(paste(folder_name, "ov_difference_data.csv", sep = "/"))
-data <- read.csv("ov_difference_data.csv")
 # Select 8 layer heads
 selected_combinations <- data.frame(layer = c(10, 11, 10, 10, 9, 9, 11, 11),
                                     head = c(0, 10, 7, 1, 10, 6, 9, 1))
