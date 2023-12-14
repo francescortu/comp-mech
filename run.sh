@@ -1,4 +1,4 @@
-##!/bin/bash
+#!/bin/bash
 #SBATCH -n10
 #SBATCH --job-name=train
 #SBATCH -N1
@@ -11,4 +11,4 @@
 
 conda activate torch
 cd script
-python run.py --all --no-plot --batch 100
+python run_all.py --all --no-plot --batch 100
