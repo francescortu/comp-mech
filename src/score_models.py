@@ -1,24 +1,23 @@
-import sys
 
-from matplotlib.transforms import interval_contains
-from responses import target
+import sys
+import os # noqa: F401
+import json # noqa:  F811
+
+import torch # noqa: F401
+from torch.utils.data import  DataLoader # noqa: F401
+from transformers import AutoTokenizer, AutoModelForCausalLM # noqa: E402
+from tqdm import tqdm # noqa: F401
+from typing import Optional, Tuple # noqa: F401
+from dataclasses import dataclass # noqa: F401
+
 
 sys.path.append("..")
 sys.path.append("../src")
 sys.path.append("../data")
+from src.dataset import HFDataset # noqa: E402
 
-import json
-from tqdm import tqdm
-import os
-from typing import Optional
 
-import json
-import torch
-from torch.utils.data import Dataset, DataLoader
-import einops
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from src.dataset import HFDataset
-from dataclasses import dataclass
+
 
 
 class EvaluateMechanism:
@@ -28,9 +27,8 @@ class EvaluateMechanism:
         dataset: HFDataset,
         device="cpu",
         batch_size=100,
-        orthogonalize=False,
+        similarity:Tuple[bool, int, str] = (True, 3, "input"),
         premise="Redefine",
-        interval=None,
         family_name: Optional[str] = None,
         num_samples=1,
     ):
@@ -41,13 +39,12 @@ class EvaluateMechanism:
         self.model = self.model.to(device)
         self.model_name = model_name
         self.dataset = dataset
-        self.lenghts = self.dataset.lenghts
+        self.lenghts = self.dataset.get_lengths()
         self.device = device
         self.batch_size = batch_size
-        self.orthogonalize = orthogonalize
+        self.similarity = similarity
         self.premise = premise
         self.family_name = family_name
-        self.interval = interval
         self.n_samples = num_samples
         print("Model device", self.model.device)
 
@@ -74,7 +71,7 @@ class EvaluateMechanism:
         return target_true_indices, target_false_indices, other_indices
 
     def evaluate(self, length):
-        self.dataset.set_len(length, orthogonal=self.orthogonalize, model=self.model)
+        self.dataset.set_len(length)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)
@@ -165,8 +162,8 @@ class EvaluateMechanism:
             save_name = self.model_name.split("/")[1]
         else:
             save_name = self.model_name
-        if self.orthogonalize:
-            save_name += "orth"
+        if self.similarity[0]:
+            save_name += "similarity"
         # save results
 
         filename = f"results/{self.family_name}_evaluate_mechanism.csv"
@@ -184,10 +181,9 @@ class EvaluateMechanism:
             # Check if a line with the same model_name and orthogonalize exists
             line_exists = any(
                 line.split(",")[0] == self.model_name
-                and line.split(",")[1] == str(self.orthogonalize)
+                and line.split(",")[1] == str(self.similarity[0])
                 and line.split(",")[2] == self.premise
-                and line.split(",")[3] == self.interval[0]
-                and line.split(",")[4] == self.interval[1]
+                and line.split(",")[3] == self.similarity[1]
                 for line in lines
             )
 
@@ -200,10 +196,9 @@ class EvaluateMechanism:
                         line.split(",")[0] == self.model_name
                         and line.split(",")[1]
                         == str(
-                            self.orthogonalize
+                            self.similarity[0]
                             and line.split(",")[2] == self.premise
-                            and line.split(",")[3] == self.interval[0]
-                            and line.split(",")[4] == self.interval[1]
+                            and line.split(",")[3] == self.similarity[1]
                         )
                     )
                 ]
@@ -213,7 +208,7 @@ class EvaluateMechanism:
                 file.truncate()  # Truncate the file (i.e., remove all content)
                 file.writelines(lines)  # Write the updated lines back to the file
             file.write(
-                f"{self.model_name},{self.orthogonalize},{self.premise},{self.interval},{target_true},{target_false},{other},{target_true_std},{target_false_std},{other_std}\n"
+                f"{self.model_name},{self.similarity[0]},{self.premise},{self.similarity[1]},{target_true},{target_false},{other},{target_true_std},{target_false_std},{other_std}\n"
             )
 
         # save indices
@@ -227,9 +222,9 @@ class EvaluateMechanism:
         ) as file:
             json.dump(
                 {
-                    "target_true": all_true_indices,
-                    "target_false": all_false_indices,
-                    "other": all_other_indices,
+                    "target_true": all_true_indices, # type: ignore
+                    "target_false": all_false_indices, # type: ignore
+                    "other": all_other_indices, # type: ignore
                 },
                 file,
             )

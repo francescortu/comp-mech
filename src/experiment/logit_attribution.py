@@ -4,8 +4,8 @@ import einops
 from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
-from src.base_experiment import BaseExperiment, to_logit_token
-from typing import Optional, List, Tuple, Union, Dict, Any, Literal
+from src.base_experiment import BaseExperiment
+from typing import Tuple,  Literal
 from src.utils import aggregate_result
 import pandas as pd
 
@@ -98,11 +98,10 @@ class LogitAttribution(BaseExperiment):
     ):
         self.set_len(length, slice_to_fit_batch=False)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
-        num_batches = len(dataloader)
         # Create a storage object to store the logits
         for batch in dataloader:
             # print cuda memory
-            logits, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            logits, cache = self.model.run_with_cache(batch["prompt"])
             if normalize_logit != "none":
                 raise NotImplementedError
             stack_of_resid, resid_labels = cache.decompose_resid(

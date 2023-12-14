@@ -5,7 +5,7 @@ from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment, to_logit_token
-from typing import Optional, List, Tuple, Union, Dict, Any, Literal
+from typing import Optional,  Tuple, Literal
 from src.utils import aggregate_result
 
 
@@ -212,7 +212,7 @@ class LogitLens(BaseExperiment):
                 )
 
         for batch in dataloader:
-            _, cache = self.model.run_with_cache(batch["corrupted_prompts"])
+            _, cache = self.model.run_with_cache(batch["prompt"])
             for layer in range(self.model.cfg.n_layers):
                 if component in self.valid_blocks:
                     cached_component = cache[component, layer]
@@ -231,7 +231,7 @@ class LogitLens(BaseExperiment):
                     for head in range(self.model.cfg.n_heads):
                         output_head = einops.einsum(
                             cached_component[:, :, head, :],
-                            self.model.blocks[layer].attn.W_O[head, :, :], # type: ignore
+                            self.model.blocks[layer].attn.W_O[head, :, :],  # type: ignore
                             "batch pos d_head, d_head d_model -> batch pos d_model",
                         )  # type: ignore
                         for position, logit in enumerate(
@@ -285,7 +285,7 @@ class LogitLens(BaseExperiment):
 
     def compute_mean_over_layers(self, result: Tuple[torch.Tensor, ...]):
         # for each layer, compute the mean over the lengths
-        mean_result = tuple(
+        mean_result = tuple( # type: ignore
             [result[idx_tuple].mean(dim=-1) for idx_tuple in range(len(result))]
         )
 

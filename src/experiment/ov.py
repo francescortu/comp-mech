@@ -1,14 +1,11 @@
 import torch
 from torch.utils.data import DataLoader
 import einops
-from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment, to_logit_token
-from typing import Optional, List, Tuple, Union, Dict, Any, Literal
-from src.utils import aggregate_result
+from typing import  Literal
 import pandas as pd
-from transformer_lens import FactoredMatrix
 
 
 
@@ -40,8 +37,8 @@ class OV(BaseExperiment):
 
     def compute_logit_diff_(self, target:torch.Tensor, layer:int, head:int, normalize_logit:Literal["none", "softmax", "log_softmax"] = "none"):
         token_embedding = self.model.W_E[target] # (batch_size, 2, d_model)
-        token_embedding = self.model.blocks[0].mlp(token_embedding) # (batch_size, 2, d_model)
-        logits = einops.einsum((self.model.W_U.T @ self.model.OV[layer, head, :,:]).AB, token_embedding, "d_vocab d_model, batch n_target d_model -> batch n_target d_vocab")
+        token_embedding = self.model.blocks[0].mlp(token_embedding) # type: ignore (batch_size, 2, d_model)
+        logits = einops.einsum((self.model.W_U.T @ self.model.OV[layer, head, :,:]).AB, token_embedding, "d_vocab d_model, batch n_target d_model -> batch n_target d_vocab") # type: ignore
         
         logit_mem_mem_input, logit_cp_mem_input, _, _ = to_logit_token(logits[:,0,:], target, normalize=normalize_logit)
         logit_mem_cp_input, logit_cp_cp_input, _, _ = to_logit_token(logits[:,1,:], target, normalize=normalize_logit)
@@ -80,7 +77,6 @@ class OV(BaseExperiment):
     def compute_logit_dif_single_len(self, length:int, storage:OV_storage, **kwargs):
         self.set_len(length, slice_to_fit_batch=False)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
-        num_batches = len(dataloader)
         
         for batch in dataloader:
             for layer in range(self.model.cfg.n_layers):

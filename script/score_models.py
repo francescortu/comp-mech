@@ -1,8 +1,6 @@
 import sys
 import os
 
-from pydantic import conint
-
 
 # Get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13,14 +11,15 @@ sys.path.append(os.path.join(script_dir, ".."))
 # Optionally, add the 'src' directory directly
 sys.path.append(os.path.join(script_dir, "..", "src"))
 
-from src.score_models import EvaluateMechanism
-from src.dataset import SampleDataset, HFDataset, HFDatasetConfig
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
-import os
-from argparse import ArgumentParser
-from dataclasses import dataclass, field
-from typing import List, Tuple
+from src.score_models import EvaluateMechanism # noqa: E402
+from src.dataset import  HFDataset # noqa: E402
+from transformers import AutoTokenizer  # noqa: E402
+import torch # noqa: E402
+import os # noqa: E402
+from argparse import ArgumentParser # noqa: E402
+from dataclasses import dataclass, field # noqa: E402
+from typing import List # noqa: E402
+from src.utils import check_dataset_and_sample # noqa: E402
 
 NUM_SAMPLES = 10
 FAMILY_NAME = "gpt2"
@@ -34,19 +33,16 @@ class Options:
     premise: List[str] = field(
         default_factory=lambda: ["Redefine", "Assume", "Suppose", "Context"]
     )
-    orthogonalize: List[bool] = field(default_factory=lambda: [True, False])
-    alpha: List[float] = field(default_factory=lambda: [1, 0.75, 0.5, 0.25])
-    interval: List[Tuple[float, float]] = field(default_factory=lambda: [(0, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1)])
-    # alpha: List[float] = field(default_factory=lambda: [1])
-    # interval: List[Tuple[float, float]] = field(default_factory=lambda: [(0, 0.25)])
+    similarity: List[bool] = field(default_factory=lambda: [True, False])
+    interval: List[int] = field(default_factory=lambda: [3, 2, 1, 0])
+    
 
 
 @dataclass
 class LaunchConfig:
     model_name: str
-    orthogonalize: bool
-    alpha: float
-    interval: tuple[float, float]
+    similarity: bool
+    interval:int
     family_name: str
     premise: str = "Redefine"
     num_samples:int = 1
@@ -60,111 +56,112 @@ def launch_evaluation(config: LaunchConfig):
     tokenizer = AutoTokenizer.from_pretrained(
         config.model_name,
     )
-
     if len(config.model_name.split("/")) > 1:
         save_name = config.model_name.split("/")[1]
-
     else:
         save_name = config.model_name
     dataset_path = f"data/full_data_sampled_{save_name}.json"
-    if os.path.exists(dataset_path) == False:
-        print("Creating sampled data")
-        model = AutoModelForCausalLM.from_pretrained(config.model_name)
-        model = model.to(DEVICE)
-        model.eval()
-        sampler = SampleDataset(
-            "../data/full_data.json",
-            model=model,
-            save_path=dataset_path,
-            tokenizer=tokenizer,
-        )
-        sampler.sample()
-        sampler.save()
-        del model
-        del sampler
-        torch.cuda.empty_cache()
+    check_dataset_and_sample(dataset_path, config.model_name)
     dataset = HFDataset(
-        dataset_path,
+        model = config.model_name,
         tokenizer=tokenizer,
-        config=HFDatasetConfig(
-            premise=config.premise, alpha=config.alpha, interval=config.interval
-        ),
-        slice=10000,
+        path = dataset_path,
+        slice = 10000,
+        premise = config.premise,
+        similarity= (config.similarity, config.interval, "input"),
     )
-
+        
     evaluator = EvaluateMechanism(
         model_name=config.model_name,
         dataset=dataset,
         device=DEVICE,
         batch_size=config.batch_size,
-        orthogonalize=config.orthogonalize,
+        similarity=(config.similarity, config.interval, "input"),
         premise=config.premise,
-        interval=config.interval,
         family_name=config.family_name,
         num_samples=config.num_samples,
     )
     evaluator.evaluate_all()
 
 
-def main():
-    parser = ArgumentParser()
-    parser.add_argument("--all", action="store_true")
-    parser.add_argument("--similarity", action="store_true")
-    parser.add_argument("--input-variation", action="store_true")
-    args = parser.parse_args()
 
-    options = Options()
+def evaluate_size(options: Options):
+    for model_name in options.models_name:
+        launch_config = LaunchConfig(
+            model_name=model_name,
+            similarity=False,
+            interval=0,
+            family_name=FAMILY_NAME,
+            num_samples=NUM_SAMPLES,
+        )
+        launch_evaluation(launch_config)
+        
 
-    if args.all:
-        for model_name in options.models_name:
-                for orthogonalize in options.orthogonalize:
-                    if orthogonalize is False:
-                        for premise in options.premise:
-                            config = LaunchConfig(
-                                model_name,
-                                orthogonalize,
-                                1,
-                                (0, 0.25),
-                                FAMILY_NAME,
-                                premise,
-                            )
-                    elif orthogonalize is True:
-                        for idx in range(len(options.alpha)):
-                            config = LaunchConfig(
-                                model_name,
-                                orthogonalize,
-                                options.alpha[idx],
-                                options.interval[idx],
-                                FAMILY_NAME,
-                                num_samples=NUM_SAMPLES
-                            )
-                            launch_evaluation(config)
+def evaluate_premise(options: Options):
+    for model_name in options.models_name:
+        for premise in options.premise:
+            launch_config = LaunchConfig(
+                model_name=model_name,
+                similarity=False,
+                interval=0,
+                family_name=FAMILY_NAME,
+                premise=premise,
+                num_samples=NUM_SAMPLES,
+            )
+            launch_evaluation(launch_config)
+            
+    
+def evaluate_similarity_default_premise(options: Options):
+    for model_name in options.models_name:
+        for interval in options.interval:
+            launch_config = LaunchConfig(
+                model_name=model_name,
+                similarity=True,
+                interval=interval,
+                family_name=FAMILY_NAME,
+                num_samples=NUM_SAMPLES,
+            )
+            launch_evaluation(launch_config)
 
-    if args.similarity:
-        for model_name in options.models_name:
-            for orthogonalize in options.orthogonalize:
-                if orthogonalize is False:
-                    config = LaunchConfig(
-                        model_name, orthogonalize, 1, (0, 0.25), FAMILY_NAME
-                    )  # premise default
-                elif orthogonalize is True:
-                    for idx in range(len(options.alpha)):
-                        config = LaunchConfig(
-                            model_name,
-                            orthogonalize,
-                            options.alpha[idx],
-                            options.interval[idx],
-                            FAMILY_NAME,
-                        )
-                        launch_evaluation(config)
-
-    if args.input_variation:
-        for model_name in options.models_name:
-            for premise in options.premise:
-                config = LaunchConfig(
-                    model_name, False, 1, (0, 0.25), FAMILY_NAME, premise
+def evaluate_similarity_all_premise(options: Options):
+    for model_name in options.models_name:
+        for premise in options.premise:
+            for interval in options.interval:
+                launch_config = LaunchConfig(
+                    model_name=model_name,
+                    similarity=True,
+                    interval=interval,
+                    family_name=FAMILY_NAME,
+                    premise=premise,
+                    num_samples=NUM_SAMPLES,
                 )
-
+                launch_evaluation(launch_config)
+                
+                
+def main(args):
+    experiments = []
+    if args.size:
+        experiments.append(evaluate_size)
+    if args.premise and args.similarity:
+        experiments.append(evaluate_similarity_all_premise)
+    if args.premise and not args.similarity:
+        experiments.append(evaluate_premise)
+    if args.similarity and not args.premise:
+        experiments.append(evaluate_similarity_default_premise)
+    if args.all:
+        experiments = [evaluate_size, evaluate_premise, evaluate_similarity_all_premise]
+        
+    options = Options()
+    for experiment in experiments:
+        print("Running experiment", experiment.__name__)
+        experiment(options)
 
 if __name__ == "__main__":
-    main()
+    parser = ArgumentParser()
+    parser.add_argument("--size", action="store_true")
+    parser.add_argument("--premise", action="store_true")
+    parser.add_argument("--similarity", action="store_true")
+    parser.add_argument("--num-samples", type=int, default=NUM_SAMPLES)
+    parser.add_argument("--all", action="store_true  ")
+    args = parser.parse_args()
+    main(args)

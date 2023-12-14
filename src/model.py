@@ -1,8 +1,6 @@
 import torch
 from transformer_lens import HookedTransformer
-from typing import List
 from functools import partial
-import einops
 
 
 from .utils import  get_predictions

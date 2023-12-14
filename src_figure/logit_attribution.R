@@ -121,7 +121,7 @@ if (std_dev == 1) {
     gather(key = "attribute", value = "value", diff_mean, diff_std)
   
   # Creating the heatmap with facet_wrap
-  p <- create_heatmap(long_data, "position", "layer", "value", "MLP Out Attribution") +
+  p <- create_heatmap(long_data, "position", "layer", "value", "Attn Out Attribution") +
     facet_wrap(~ attribute, ncol = 1)
 }
 # save the plot
