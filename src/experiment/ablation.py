@@ -131,6 +131,7 @@ class Ablate(BaseExperiment):
         length: int,
         component: str,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
+        total_effect: bool = False,
     ):
         """
         Ablate the dataset with a specific length and component
@@ -156,11 +157,15 @@ class Ablate(BaseExperiment):
 
         for batch in dataloader:
             _, cache = self.model.run_with_cache(batch["prompt"])
-            freezed_attn = (
-                self._get_freezed_attn_pattern(cache)
-                if component == "mlp_out"
-                else self._get_freezed_attn(cache)
-            )
+            if component == "mlp_out" or component == "attn_out":
+                freezed_attn = self._get_freezed_attn_pattern(cache)
+            elif component == "head":
+                freezed_attn = self._get_freezed_attn(cache)
+            if total_effect is True:
+                freezed_attn = {}
+            else:
+                raise ValueError(f"component {component} not supported")
+
             for layer in range(self.model.cfg.n_layers):
                 if component in self.position_component:
                     for position in range(length):
@@ -178,10 +183,11 @@ class Ablate(BaseExperiment):
                         self._process_model_run(
                             layer, None, head, component, batch, freezed_attn, storage
                         )
-
-                freezed_attn.pop(
-                    f"L{layer}"
-                )  # to speed up the process (no need to freeze the previous layer)
+                        
+                if f"L{layer}" in freezed_attn:
+                    freezed_attn.pop(
+                        f"L{layer}"
+                    )  # to speed up the process (no need to freeze the previous layer)
 
         if component in self.position_component:
             return storage.get_aggregate_logit(object_position=self.dataset.obj_pos[0])
@@ -193,6 +199,7 @@ class Ablate(BaseExperiment):
         self,
         component: str,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
+        **kwargs
     ):
         """
         Ablate the model by ablating each position in the sequence
@@ -202,7 +209,7 @@ class Ablate(BaseExperiment):
             lengths.remove(11)
         result = {}
         for length in tqdm(lengths, desc=f"Ablating {component}", total=len(lengths)):
-            result[length] = self.ablate_single_len(length, component, normalize_logit)
+            result[length] = self.ablate_single_len(length, component, normalize_logit, **kwargs)
 
         tuple_shape = len(result[lengths[0]])
         aggregated_result = [
@@ -216,12 +223,13 @@ class Ablate(BaseExperiment):
         self,
         component: str,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
+        total_effect: bool = False,
     ):
         """
         Run ablation for a specific component
         """
 
-        result = self.ablate(component, normalize_logit)
+        result = self.ablate(component, normalize_logit, total_effect=total_effect)
 
         base_logit_mem, base_logit_cp = self.get_basic_logit(
             normalize_logit=normalize_logit
@@ -305,7 +313,7 @@ class Ablate(BaseExperiment):
         return pd.DataFrame(data)
 
     def run_all(
-        self, normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
+        self, normalize_logit: Literal["none", "softmax", "log_softmax"] = "none", **kwargs
     ):
         """
         Run ablation for all components
@@ -313,5 +321,5 @@ class Ablate(BaseExperiment):
         dataframe_list = []
         for component in self.position_component + self.head_component:
             print(f"Running ablation for {component}")
-            dataframe_list.append(self.run(component, normalize_logit))
+            dataframe_list.append(self.run(component, normalize_logit, **kwargs))
         return pd.concat(dataframe_list)

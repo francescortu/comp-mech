@@ -53,6 +53,7 @@ def display_config(config):
         Text.assemble(("Produce Plots: ", "bold"), str(config.produce_plots)),
         Text.assemble(("Normalize Logit: ", "bold"), str(config.normalize_logit)),
         Text.assemble(("Std Dev: ", "bold"), str(config.std_dev)),
+        Text.assemble(("Total Effect: ", "bold"), str(config.total_effect)),
     ]
 
     columns = Columns(config_items, equal=True, expand=True)

@@ -60,6 +60,10 @@ class BaseDataset(Dataset):
         raise NotImplementedError
 
     def _get_lenghts_and_tokenize(self):
+        """
+        Tokenize the prompts and apply the similarity if needed along with the premise.
+        Return the lenghts of the dataset
+        """
         lenghts = []
         for d in self.full_data:
             prompt = d["template"].format(self.premise, d["target_new"])
@@ -82,13 +86,16 @@ class BaseDataset(Dataset):
                 lenghts.append(d["length"])
                 
         if self.similarity[0] is True:
-            self.apply_similarity()
+            self.apply_similarity() #TODO test this and make sure it works 
             
-        self._clear_cache()    
+        self._clear_cache()     # free up memory, we don't need the model anymore
         
         return lenghts
     
     def _clear_cache(self):
+        """
+        Remove model and tokenizer from memory to free up space
+        """
         self.model = None
         self.tokenizer = None
         torch.cuda.empty_cache()
@@ -105,6 +112,9 @@ class BaseDataset(Dataset):
         return self.len
 
     def set_len(self, length: int):
+        """
+        Set the length of the dataset to the given length, and filter the data accordingly
+        """
         self.len = length
         self.prompts = []
         self.tokenized_prompts = []
@@ -128,6 +138,9 @@ class BaseDataset(Dataset):
         assert self.check_duplicate()
 
     def apply_similarity(self):
+        """
+        Apply the similarity to the dataset
+        """
         # similarity level
         similarity_level = self.similarity[1]
         similarity_type = self.similarity[2]

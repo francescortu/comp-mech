@@ -37,6 +37,7 @@ class Config:
     produce_plots: bool = True
     normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
     std_dev: int = 0  # 0 False, 1 True
+    total_effect: bool = False
 
     @classmethod
     def from_args(cls, args):
@@ -47,6 +48,7 @@ class Config:
             dataset_slice=args.slice,
             produce_plots=args.produce_plots,
             std_dev=0 if not args.std_dev else 1,
+            total_effect=args.total_effect if args.total_effect else False,
         )
 
 
@@ -176,6 +178,7 @@ def ov_difference(model, dataset, config, args):
 
 def ablate(model, dataset, config, args):
     data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
+    data_slice_name = f"{data_slice_name}_total_effect" if config.total_effect else data_slice_name
     if args.only_plot:
         subprocess.run(
             [
@@ -187,7 +190,7 @@ def ablate(model, dataset, config, args):
         )
         return
     ablator = Ablate(dataset, model, config.batch_size)
-    dataframe = ablator.run_all(normalize_logit=config.normalize_logit)
+    dataframe = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect)
     save_dataframe(
         f"../results/ablation/{config.model_name}_{data_slice_name}",
         "ablation_data",
@@ -266,6 +269,7 @@ if __name__ == "__main__":
     parser.add_argument("--logit_lens", action="store_true")
     parser.add_argument("--ov-diff", action="store_true")
     parser.add_argument("--ablate", action="store_true")
+    parser.add_argument("--total-effect", action="store_true")
     parser.add_argument("--all", action="store_true")
     
     args = parser.parse_args()
