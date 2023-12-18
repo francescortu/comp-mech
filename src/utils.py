@@ -9,15 +9,15 @@ import os
 import torch.nn.functional as F
 
 
-def check_dataset_and_sample(dataset_path, model_name):
+def check_dataset_and_sample(dataset_path, model_name, hf_model_name):
     if os.path.exists(dataset_path):
         return 
     else:
         from transformers import AutoModelForCausalLM
         from transformers import AutoTokenizer
         print("Dataset not found, creating it:")
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(hf_model_name)
+        tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
         model.eval()
         from src.dataset import SampleDataset
         sampler = SampleDataset(

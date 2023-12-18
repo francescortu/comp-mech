@@ -12,3 +12,4 @@
 /dataSources.local.xml
 /src/experiment/__pycache__
 /.idea/
+/src/config.py
