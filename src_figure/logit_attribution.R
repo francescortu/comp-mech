@@ -56,13 +56,13 @@ for (pos in 0:12) {
   data_head_$head <- factor(data_head_$head, levels = c(0:max_head))
   
   # Your existing ggplot code
-  p <- create_heatmap(data_head_, "head", "layer", "diff_mean", "Head Attribution for Position 12")
+  p <- create_heatmap(data_head_, "head", "layer", "diff_mean", paste("Head Attribution for Position", pos, sep=" "))
   if (std_dev == 1) {
     long_data <- data_head_ %>% 
       gather(key = "attribute", value = "value", diff_mean, diff_std)
   
     # Creating the heatmap with facet_wrap
-    p <- create_heatmap(long_data, "head", "layer", "value", "Head Attribution for Position 12") +
+    p <- create_heatmap(long_data, "head", "layer", "value",  paste("Head Attribution for Position", pos, sep=" ")) +
       facet_wrap(~ attribute, ncol = 1)
   }
   # save the plot

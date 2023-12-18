@@ -83,6 +83,33 @@ if (std_dev == 1) {
   ggsave(paste(folder_name, "attn_out_ablation.pdf", sep = "/"), p, width = 10, height = 10, units = "in", dpi = 300)
 }
 
+########################### resid_pre ########################################
+data_resid_pre <- data %>% filter(grepl("resid_pre", component))
+max_layer <- max(as.numeric(data_resid_pre$layer))
+max_position <- max(as.numeric(data_resid_pre$position))
+data_resid_pre$layer <- factor(data_resid_pre$layer, levels = c(0:max_layer))
+data_resid_pre$position <- factor(data_resid_pre$position, levels = c(0:max_position))
+data_resid_pre$position <- factor(data_resid_pre$position, levels = c(0:max_position))
+
+####### mem
+p_mem <- create_heatmap(data_resid_pre, "position", "layer", "mem", "Resid pre ablation - mem")
+p_cp <- create_heatmap(data_resid_pre, "position", "layer", "cp", "Resid pre ablation - cp")
+p_diff <- create_heatmap(data_resid_pre, "position", "layer", "diff", "Resid pre ablation - diff")
+
+if (std_dev == 1) {
+  p_mem_std <- create_heatmap(data_resid_pre, "position", "layer", "mem_std", "Resid pre ablation - mem std")
+  p_cp_std <- create_heatmap(data_resid_pre, "position", "layer", "cp_std", "Resid pre ablation - cp std")
+  p_diff_std <- create_heatmap(data_resid_pre, "position", "layer", "diff_std", "Resid pre ablation - diff std")
+  # arrange all plots in 3 x 2 grid
+  p <- ggarrange(p_mem, p_cp, p_diff, p_mem_std, p_cp_std, p_diff_std, nrow = 3, ncol = 2)
+  ggsave(paste(folder_name, "resid_pre_ablation.pdf", sep = "/"), p, width = 15, height = 10, units = "in", dpi = 300)
+} else {
+  p <- ggarrange(p_mem, p_cp, p_diff, nrow = 3)
+  ggsave(paste(folder_name, "resid_pre_ablation.pdf", sep = "/"), p, width = 10, height = 10, units = "in", dpi = 300)
+}
+
+
+
 ############################## HEAD ##########################################
 data_head <- data %>% filter(grepl("head", component))
 max_layer <- max(as.numeric(data_head$layer))

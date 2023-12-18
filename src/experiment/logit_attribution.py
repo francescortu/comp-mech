@@ -1,3 +1,4 @@
+from typing import Callable, List, Optional
 import torch
 from torch.utils.data import DataLoader
 import einops
@@ -95,13 +96,20 @@ class LogitAttribution(BaseExperiment):
         component: str,
         apply_ln: bool = False,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
+        hooks: Optional[List[Tuple[str, Callable]]] = None,
     ):
         self.set_len(length, slice_to_fit_batch=False)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         # Create a storage object to store the logits
         for batch in dataloader:
             # print cuda memory
+            # if hooks is not None:
+            #     logits, cache = self.model.run_with_hooks(
+            #         batch["prompt"], hooks=hooks, return_cache=True
+            #     )
+            # else:
             logits, cache = self.model.run_with_cache(batch["prompt"])
+                
             if normalize_logit != "none":
                 raise NotImplementedError
             stack_of_resid, resid_labels = cache.decompose_resid(
@@ -151,12 +159,13 @@ class LogitAttribution(BaseExperiment):
         self,
         apply_ln: bool = False,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
+        **kwargs,
     ):
         """
         Run the logit attribution and return a dataframe
         """
         (mem, cp, diff), labels = self.attribute(
-            apply_ln=apply_ln, normalize_logit=normalize_logit
+            apply_ln=apply_ln, normalize_logit=normalize_logit, **kwargs
         )
 
         data = []
@@ -175,3 +184,4 @@ class LogitAttribution(BaseExperiment):
                     }
                 )
         return pd.DataFrame(data)
+

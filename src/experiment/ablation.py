@@ -16,7 +16,7 @@ class Ablate(BaseExperiment):
         self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int
     ):
         super().__init__(dataset, model, batch_size)
-        self.position_component = ["mlp_out", "attn_out"]
+        self.position_component = ["mlp_out", "attn_out", "resid_pre"]
         self.head_component = ["head"]
 
     def _get_freezed_attn(self, cache) -> Dict[str, Tuple[torch.Tensor, Any]]:
@@ -161,7 +161,7 @@ class Ablate(BaseExperiment):
                 freezed_attn = self._get_freezed_attn_pattern(cache)
             elif component == "head":
                 freezed_attn = self._get_freezed_attn(cache)
-            if total_effect is True:
+            elif total_effect is True:
                 freezed_attn = {}
             else:
                 raise ValueError(f"component {component} not supported")

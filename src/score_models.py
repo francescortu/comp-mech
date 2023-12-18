@@ -166,7 +166,7 @@ class EvaluateMechanism:
             save_name += "similarity"
         # save results
 
-        filename = f"results/{self.family_name}_evaluate_mechanism.csv"
+        filename = f"../results/{self.family_name}_evaluate_mechanism.csv"
         # if file not exists, create it and write the header
         if not os.path.isfile(filename):
             with open(filename, "w") as file:
@@ -212,12 +212,12 @@ class EvaluateMechanism:
             )
 
         # save indices
-        if not os.path.isdir(f"results/{self.family_name}_evaluate_mechs_indices"):
+        if not os.path.isdir(f"../results/{self.family_name}_evaluate_mechs_indices"):
             # if the directory does not exist, create it
-            os.makedirs(f"results/{self.family_name}_evaluate_mechs_indices")
+            os.makedirs(f"../results/{self.family_name}_evaluate_mechs_indices")
 
         with open(
-            f"results/{self.family_name}_evaluate_mechs_indices/{save_name}_evaluate_mechanism_indices.json",
+            f"../results/{self.family_name}_evaluate_mechs_indices/{save_name}_evaluate_mechanism_indices.json",
             "w",
         ) as file:
             json.dump(
