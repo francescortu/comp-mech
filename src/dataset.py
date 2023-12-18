@@ -145,13 +145,13 @@ class BaseDataset(Dataset):
         similarity_level = self.similarity[1]
         similarity_type = self.similarity[2]
 
-        for d in self.full_data:
+        for d in tqdm(self.full_data, desc="Applying similarity", total=len(self.full_data)):
             similar_token_str, similar_token = self.get_similar_token(
                 d, similarity_level, similarity_type
             )
             d["prompt"] = d["prompt"].replace(d["target_new"], similar_token_str)
-            d["tokenized_prompt"][0, d["obj_pos"]] = similar_token[0, 0]
-            d["targets"][0, 1] = similar_token[0, 0]
+            d["tokenized_prompt"][d["obj_pos"]] = similar_token[0, 0]
+            d["targets"][1] = similar_token[0, 0]
             d["target_new"] = similar_token_str
             d["target_new_token"] = similar_token
             
@@ -185,15 +185,15 @@ class BaseDataset(Dataset):
     def get_similar_token(self, data_point: dict, similarity_level: int, similarity_type: str) -> Tuple[str, torch.Tensor]:
         token_to_be_similar_str = data_point["target_true"]
         token_to_be_similar = data_point["target_true_token"]
-        
-        return self._get_similar_token(token_to_be_similar_str, token_to_be_similar, similarity_level, similarity_type)
+        base_prompt = data_point["base_prompt"]
+        return self._get_similar_token(token_to_be_similar_str, token_to_be_similar, similarity_level, similarity_type, base_prompt)
 
     @abstractmethod
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
         pass
     
     @abstractmethod
-    def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str) -> Tuple[str, torch.Tensor]:
+    def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str, base_prompt:str) -> Tuple[str, torch.Tensor]:
         pass
     
     
@@ -218,31 +218,36 @@ class TlensDataset(BaseDataset):
         assert len(tokens.shape) == 1
         return tokens
         
-    def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str) -> Tuple[str, torch.Tensor]:
-        with torch.no_grad():
-            token_embedding = self.model.W_E[token_to_be_similar].squeeze(0)
-            embeddings = self.model.W_E
-        
-        cosine_similarity = torch.nn.functional.cosine_similarity(embeddings, token_embedding, dim=-1)
-        cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
-        
-        sorted_indices = sorted_indices[1:]
-        cosine_similarity = cosine_similarity[1:]
-        
-        group = {}
-        group[1] = sorted_indices[cosine_similarity < torch.quantile(cosine_similarity, 0.25)]
-        group[2]= sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.25)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))]
-        group[3] = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.5)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))]
-        group[4] = sorted_indices[cosine_similarity >= torch.quantile(cosine_similarity, 0.75)]
-        
-        sampled_token_idx = torch.randint(0, len(group[similarity_level]), (1,)).item()
-        sampled_token = group[similarity_level][sampled_token_idx]
-        sampled_token_str = self.model.to_string(sampled_token.item())
-        assert sampled_token_str != token_to_be_similar_str, "sampled_token_str is the same as token_to_be_similar_str"
-        assert sampled_token.shape[0] == 1, "sampled_token is not a 1D tensor"
-        assert len(sampled_token.shape) == 2, "sampled_token is not a 2D tensor"
-        assert isinstance(sampled_token_str, str), "sampled_token_str is not a string"
-        return sampled_token_str, sampled_token.unsqueeze(0).unsqueeze(0)
+    def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str, base_prompt:str) -> Tuple[str, torch.Tensor]:
+        if similarity_type == "input":
+            with torch.no_grad():
+                token_embedding = self.model.W_E[token_to_be_similar].squeeze(0)
+                embeddings = self.model.W_E
+            
+            cosine_similarity = torch.nn.functional.cosine_similarity(embeddings, token_embedding, dim=-1)
+            cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
+            
+            sorted_indices = sorted_indices[1:]
+            cosine_similarity = cosine_similarity[1:]
+            
+            group = {}
+            group[1] = sorted_indices[cosine_similarity < torch.quantile(cosine_similarity, 0.25)]
+            group[2]= sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.25)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))]
+            group[3] = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.5)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))]
+            group[4] = sorted_indices[cosine_similarity >= torch.quantile(cosine_similarity, 0.75)]
+            
+            sampled_token_idx = torch.randint(0, len(group[similarity_level]), (1,)).item()
+            sampled_token = group[similarity_level][sampled_token_idx]
+            sampled_token_str = self.model.to_string(sampled_token.item())
+            assert sampled_token_str != token_to_be_similar_str, "sampled_token_str is the same as token_to_be_similar_str"
+            assert sampled_token.shape[0] == 1, "sampled_token is not a 1D tensor"
+            assert len(sampled_token.shape) == 2, "sampled_token is not a 2D tensor"
+            assert isinstance(sampled_token_str, str), "sampled_token_str is not a string"
+            return sampled_token_str, sampled_token.unsqueeze(0).unsqueeze(0)
+        elif similarity_type == "output":
+            raise NotImplementedError
+        else:
+            raise ValueError("similarity_type must be either 'input' or 'output'")
 
 class HFDataset(BaseDataset):
     def __init__(
@@ -266,40 +271,109 @@ class HFDataset(BaseDataset):
         assert len(tokens.shape) == 1
         return tokens
     
-    def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str) -> Tuple[str, torch.Tensor]:
-        if token_to_be_similar.shape[1] > 1:
-            token_to_be_similar = token_to_be_similar[0, 0].unsqueeze(0)
+    def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str, base_prompt:str) -> Tuple[str, torch.Tensor]:
+        if similarity_type == "input":
+            if token_to_be_similar.ndim == 1:
+                token_to_be_similar = token_to_be_similar.cuda()
+            elif token_to_be_similar.ndim > 1:
+                token_to_be_similar = token_to_be_similar[0, 0].unsqueeze(0).cuda()
+            else:
+                token_to_be_similar = token_to_be_similar[0,0].unsqueeze(0).cuda()
+        
+            with torch.no_grad():
+                embeddings = self.model.get_input_embeddings().cuda() # type: ignore
+                token_to_be_similar_emb = embeddings(token_to_be_similar)
+                
+            cosine_similarity = torch.nn.functional.cosine_similarity(embeddings.weight, token_to_be_similar_emb.unsqueeze(0), dim=-1).squeeze()
+                
+            cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
+            
+            sorted_indices = sorted_indices[1:]
+            cosine_similarity = cosine_similarity[1:]
+            print("Cosine similarity shape", cosine_similarity.shape)
+            group = {}
+            group[1] = sorted_indices[cosine_similarity < torch.quantile(cosine_similarity, 0.25)]
+            group[2]= sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.25)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))]
+            group[3] = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.5)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))]
+            group[4] = sorted_indices[cosine_similarity >= torch.quantile(cosine_similarity, 0.75)]
+            
+            sampled_token_idx = torch.randint(0, len(group[similarity_level]), (1,)).item()
+            sampled_token = group[similarity_level][sampled_token_idx]
+            sampled_token_str = self.tokenizer.decode(sampled_token.item())
+            sampled_token = sampled_token.unsqueeze(0).unsqueeze(0)
+            assert sampled_token_str != token_to_be_similar_str, "sampled_token_str is the same as token_to_be_similar_str"
+            assert sampled_token.shape[0] == 1, "sampled_token is not a 1D tensor"
+            assert len(sampled_token.shape) == 2, "sampled_token is not a 2D tensor"
+            assert isinstance(sampled_token_str, str), "sampled_token_str is not a string"
+            print("Original token:", token_to_be_similar_str, "Similar token:", sampled_token_str)
+            return sampled_token_str, sampled_token
+        
+        elif similarity_type == "output":
+            hidden_state = self.model(token_to_be_similar, output_hidden_states=True)["hidden_states"][-1] # type: ignore
+            print("HIDDEN STATE SHAPE", hidden_state.shape)
+            if hidden_state.ndim == 2:
+                hidden_state = hidden_state[-1, :]
+            if hidden_state.ndim == 3:
+                hidden_state = hidden_state[-1, -1, :]
+            
+            #rotate the vector
+            factors = [1, 0.5, 0.25, 0.0]  # Adjust these values as needed
+
+            # Sampling new vectors
+            similar_vectors = []
+            similarity_values = []
+            for factor in factors:
+                random_vector = torch.randn_like(hidden_state)
+                random_vector = random_vector / random_vector.norm()
+                hidden_state = hidden_state / hidden_state.norm()
+
+                # Interpolate between the original and a random vector
+                new_vector = factor * hidden_state + (1 - factor) * random_vector
+                new_vector = new_vector / new_vector.norm()  # Re-normalize the vector
+                similarity_values.append(torch.nn.functional.cosine_similarity(hidden_state, new_vector, dim=-1))
+                similar_vectors.append(new_vector)
+
+            
+            group = {}
+            group[1] = similar_vectors[0]
+            group[2] = similar_vectors[1]
+            group[3] = similar_vectors[2]
+            group[4] = similar_vectors[3]
+
+            
+            group_token = {}
+            for i, similar_vector in enumerate(similar_vectors):
+                with torch.no_grad():
+                    logit = self.model.get_output_embeddings()(similar_vector) # type: ignore
+                    # select the token with the highest logit
+                    token = logit.argmax()
+                    token_str = self.tokenizer.decode(token.item())
+                    group_token[i+1] = (token_str, token)
+            
+            print("Original token:", token_to_be_similar_str)
+            print("Similar tokens:", group_token[1][0], group_token[2][0], group_token[3][0], group_token[4][0])       
+            print("Similarity values:", similarity_values[0].item(), similarity_values[1].item(), similarity_values[2].item(), similarity_values[3].item())     
+            return group_token[similarity_level][0], group_token[similarity_level][1].unsqueeze(0).unsqueeze(0) 
+        elif similarity_type == "output2":
+            raise NotImplementedError
+            hidden_state = self.model(token_to_be_similar, output_hidden_states=True)["hidden_states"][-1] # type: ignore
+            print("HIDDEN STATE SHAPE", hidden_state.shape)
+            if hidden_state.ndim == 2:
+                hidden_state = hidden_state[-1, :]
+            if hidden_state.ndim == 3:
+                hidden_state = hidden_state[-1, -1, :]
+                
+            vocab = self.tokenizer.get_vocab()
+            similar_tokens = []
+            
+            for word, idx in vocab.items():
+                with torch.no_grad():
+                    word_embedding = self.model(self.tokenizer.encode(word, return_tensors="pt", add_special_tokens=False).to(self.model.device), output_hidden_states=True)["hidden_states"][-1][-1,:]
+                    cosine_similarity = torch.nn.functional.cosine_similarity(hidden_state, word_embedding, dim=-1)
+                    print("word", word, "cosine_similarity", cosine_similarity)
+            return "test", torch.tensor([[0]])
         else:
-            token_to_be_similar = token_to_be_similar[0,0].unsqueeze(0)
-    
-        with torch.no_grad():
-            embeddings = self.model.get_input_embeddings().cuda() # type: ignore
-            token_to_be_similar_emb = embeddings(token_to_be_similar)
-            
-        cosine_similarity = torch.nn.functional.cosine_similarity(embeddings.weight, token_to_be_similar_emb.unsqueeze(0), dim=-1)
-            
-        cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
-        
-        sorted_indices = sorted_indices[1:]
-        cosine_similarity = cosine_similarity[1:]
-        
-        group = {}
-        group[1] = sorted_indices[cosine_similarity < torch.quantile(cosine_similarity, 0.25)]
-        group[2]= sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.25)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))]
-        group[3] = sorted_indices[(cosine_similarity >= torch.quantile(cosine_similarity, 0.5)) & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))]
-        group[4] = sorted_indices[cosine_similarity >= torch.quantile(cosine_similarity, 0.75)]
-        
-        sampled_token_idx = torch.randint(0, len(group[similarity_level]), (1,)).item()
-        sampled_token = group[similarity_level][sampled_token_idx]
-        sampled_token_str = self.tokenizer.decode(sampled_token.item())
-        sampled_token = sampled_token.unsqueeze(0).unsqueeze(0)
-        assert sampled_token_str != token_to_be_similar_str, "sampled_token_str is the same as token_to_be_similar_str"
-        assert sampled_token.shape[0] == 1, "sampled_token is not a 1D tensor"
-        assert len(sampled_token.shape) == 2, "sampled_token is not a 2D tensor"
-        assert isinstance(sampled_token_str, str), "sampled_token_str is not a string"
-        return sampled_token_str, sampled_token
-
-
+            raise ValueError("similarity_type must be either 'input' or 'output'")
 
 
 class SampleDataset:

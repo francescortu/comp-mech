@@ -16,7 +16,7 @@ sys.path.append(os.path.abspath(os.path.join("..")))
 sys.path.append(os.path.abspath(os.path.join("../src")))
 sys.path.append(os.path.abspath(os.path.join("../data")))
 from src.dataset import TlensDataset  # noqa: E402
-from src.experiment import LogitAttribution, LogitLens, OV, Ablate  # noqa: E402
+from src.experiment import LogitAttribution, LogitLens, OV, Ablate, HeadPattern  # noqa: E402
 from src.model import WrapHookedTransformer  # noqa: E402
 from src.utils import display_config, display_experiments, check_dataset_and_sample  # noqa: E402
 
@@ -207,6 +207,36 @@ def ablate(model, dataset, config, args):
                 f"{config.std_dev}",
             ]
         )
+        
+def pattern(model, dataset, config, args):
+    data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
+    if args.only_plot:
+        subprocess.run(
+            [
+                "Rscript",
+                "../src_figure/head_pattern.R",
+                f"../results/head_pattern/{config.model_name}_{data_slice_name}",
+            ]
+        )
+        return
+    print("Running head pattern")
+    pattern = HeadPattern(dataset, model, config.batch_size)
+    dataframe = pattern.run()
+    save_dataframe(
+        f"../results/head_pattern/{config.model_name}_{data_slice_name}",
+        "head_pattern_data",
+        dataframe,
+    )
+
+    if config.produce_plots:
+        # run the R script
+        subprocess.run(
+            [
+                "Rscript",
+                "../src_figure/head_pattern.R",
+                f"../results/head_pattern/{config.model_name}_{data_slice_name}",
+            ]
+        )
 
 class CustomOutputStream(io.StringIO):
     def __init__(self, live, index, status, experiments):
@@ -238,8 +268,10 @@ def main(args):
         experiments.append(ov_difference)
     if args.ablate:
         experiments.append(ablate)
+    if args.pattern:
+        experiments.append(pattern)
     if args.all:
-        experiments = [logit_attribution, logit_lens, ov_difference, ablate]
+        experiments = [logit_attribution, logit_lens, ov_difference, ablate, pattern]
 
     status = ["Pending" for _ in experiments]
 
@@ -270,6 +302,7 @@ if __name__ == "__main__":
     parser.add_argument("--ov-diff", action="store_true")
     parser.add_argument("--ablate", action="store_true")
     parser.add_argument("--total-effect", action="store_true")
+    parser.add_argument("--pattern", action="store_true")
     parser.add_argument("--all", action="store_true")
     
     args = parser.parse_args()

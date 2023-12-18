@@ -11,15 +11,15 @@ sys.path.append(os.path.join(script_dir, ".."))
 # Optionally, add the 'src' directory directly
 sys.path.append(os.path.join(script_dir, "..", "src"))
 
-from src.score_models import EvaluateMechanism # noqa: E402
-from src.dataset import  HFDataset # noqa: E402
+from src.score_models import EvaluateMechanism  # noqa: E402
+from src.dataset import HFDataset  # noqa: E402
 from transformers import AutoTokenizer  # noqa: E402
-import torch # noqa: E402
-import os # noqa: E402
-from argparse import ArgumentParser # noqa: E402
-from dataclasses import dataclass, field # noqa: E402
-from typing import List # noqa: E402
-from src.utils import check_dataset_and_sample # noqa: E402
+import torch  # noqa: E402
+import os  # noqa: E402
+from argparse import ArgumentParser  # noqa: E402
+from dataclasses import dataclass, field  # noqa: E402
+from typing import List  # noqa: E402
+from src.utils import check_dataset_and_sample  # noqa: E402
 
 NUM_SAMPLES = 10
 FAMILY_NAME = "gpt2"
@@ -34,18 +34,17 @@ class Options:
         default_factory=lambda: ["Redefine", "Assume", "Suppose", "Context"]
     )
     similarity: List[bool] = field(default_factory=lambda: [True, False])
-    interval: List[int] = field(default_factory=lambda: [3, 2, 1, 0])
-    
+    interval: List[int] = field(default_factory=lambda: [4, 3, 2, 1])
 
 
 @dataclass
 class LaunchConfig:
     model_name: str
     similarity: bool
-    interval:int
+    interval: int
     family_name: str
     premise: str = "Redefine"
-    num_samples:int = 1
+    num_samples: int = 1
     batch_size: int = 50
 
 
@@ -60,17 +59,17 @@ def launch_evaluation(config: LaunchConfig):
         save_name = config.model_name.split("/")[1]
     else:
         save_name = config.model_name
-    dataset_path = f"data/full_data_sampled_{save_name}.json"
+    dataset_path = f"../data/full_data_sampled_{save_name}.json"
     check_dataset_and_sample(dataset_path, config.model_name)
     dataset = HFDataset(
-        model = config.model_name,
+        model=config.model_name,
         tokenizer=tokenizer,
-        path = dataset_path,
-        slice = 10000,
-        premise = config.premise,
-        similarity= (config.similarity, config.interval, "input"),
+        path=dataset_path,
+        slice=10000,
+        premise=config.premise,
+        similarity=(config.similarity, config.interval, "input"),
     )
-        
+    print("Dataset loaded")
     evaluator = EvaluateMechanism(
         model_name=config.model_name,
         dataset=dataset,
@@ -84,7 +83,6 @@ def launch_evaluation(config: LaunchConfig):
     evaluator.evaluate_all()
 
 
-
 def evaluate_size(options: Options):
     for model_name in options.models_name:
         launch_config = LaunchConfig(
@@ -95,7 +93,8 @@ def evaluate_size(options: Options):
             num_samples=NUM_SAMPLES,
         )
         launch_evaluation(launch_config)
-        
+    
+
 
 def evaluate_premise(options: Options):
     for model_name in options.models_name:
@@ -109,8 +108,8 @@ def evaluate_premise(options: Options):
                 num_samples=NUM_SAMPLES,
             )
             launch_evaluation(launch_config)
-            
-    
+
+
 def evaluate_similarity_default_premise(options: Options):
     for model_name in options.models_name:
         for interval in options.interval:
@@ -122,6 +121,7 @@ def evaluate_similarity_default_premise(options: Options):
                 num_samples=NUM_SAMPLES,
             )
             launch_evaluation(launch_config)
+
 
 def evaluate_similarity_all_premise(options: Options):
     for model_name in options.models_name:
@@ -136,8 +136,8 @@ def evaluate_similarity_all_premise(options: Options):
                     num_samples=NUM_SAMPLES,
                 )
                 launch_evaluation(launch_config)
-                
-                
+
+
 def main(args):
     experiments = []
     if args.size:
@@ -150,11 +150,12 @@ def main(args):
         experiments.append(evaluate_similarity_default_premise)
     if args.all:
         experiments = [evaluate_size, evaluate_premise, evaluate_similarity_all_premise]
-        
+
     options = Options()
     for experiment in experiments:
         print("Running experiment", experiment.__name__)
         experiment(options)
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -162,6 +163,6 @@ if __name__ == "__main__":
     parser.add_argument("--premise", action="store_true")
     parser.add_argument("--similarity", action="store_true")
     parser.add_argument("--num-samples", type=int, default=NUM_SAMPLES)
-    parser.add_argument("--all", action="store_true  ")
+    parser.add_argument("--all", action="store_true")
     args = parser.parse_args()
     main(args)
