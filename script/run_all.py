@@ -251,10 +251,19 @@ class CustomOutputStream(io.StringIO):
         self.status[self.index] = text
         self.live.update(display_experiments(self.experiments, self.status))
 
+def load_model(model_name):
+    if model_name == "Llama-2-7b":
+        from transformers import AutoModelForCausalLM
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        model = WrapHookedTransformer.from_pretrained(model_name, hf_model=model)
+        return model
+    model = WrapHookedTransformer.from_pretrained(model_name)
+    return model
 
 def main(args):
     config = Config().from_args(args)
     console.print(display_config(config))
+    model = load_model(config.model_name)
     model = WrapHookedTransformer.from_pretrained(config.model_name)
     check_dataset_and_sample(config.dataset_path, config.model_name)
     dataset = TlensDataset(config.dataset_path, model, slice=config.dataset_slice)

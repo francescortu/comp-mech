@@ -145,13 +145,13 @@ class EvaluateMechanism:
 
         # average the results over the number of samples
 
-        target_true = torch.mean(torch.tensor(target_true))
-        target_false = torch.mean(torch.tensor(target_false))
-        other = torch.mean(torch.tensor(other))
+        target_true = torch.mean(torch.tensor(target_true).float())
+        target_false = torch.mean(torch.tensor(target_false).float())
+        other = torch.mean(torch.tensor(other).float())
 
-        target_true_std = torch.std(torch.tensor(target_true))
-        target_false_std = torch.std(torch.tensor(target_false))
-        other_std = torch.std(torch.tensor(other))
+        target_true_std = torch.std(torch.tensor(target_true).float())
+        target_false_std = torch.std(torch.tensor(target_false).float())
+        other_std = torch.std(torch.tensor(other).float())
 
         print(
             f"Total: Target True: {target_true}, Target False: {target_false}, Other: {other}"
