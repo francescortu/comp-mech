@@ -27,16 +27,22 @@ logging.basicConfig(level=logging.ERROR)
 
 
 
+def get_hf_model_name(model_name):
+    if model_name == "Llama-2-7b-hf":
+        return "meta-llama/Llama-2-7b-hf"
+    return model_name
+
 
 @dataclass
 class Config:
     model_name: str = "gpt2"
+    hf_model_name: str = "gpt2"
     batch_size: int = 10
     dataset_path: str = f"../data/full_data_sampled_{model_name}.json"
     dataset_slice: Optional[int] = None
     produce_plots: bool = True
     normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
-    std_dev: int = 0  # 0 False, 1 True
+    std_dev: int = 1  # 0 False, 1 True
     total_effect: bool = False
 
     @classmethod
@@ -47,8 +53,9 @@ class Config:
             dataset_path=f"../data/full_data_sampled_{args.model_name}.json",
             dataset_slice=args.slice,
             produce_plots=args.produce_plots,
-            std_dev=0 if not args.std_dev else 1,
+            std_dev=1 if not args.std_dev else 0,
             total_effect=args.total_effect if args.total_effect else False,
+            hf_model_name= get_hf_model_name(args.model_name)
         )
 
 
@@ -251,11 +258,15 @@ class CustomOutputStream(io.StringIO):
         self.status[self.index] = text
         self.live.update(display_experiments(self.experiments, self.status))
 
-def load_model(model_name):
-    if model_name == "Llama-2-7b":
-        from transformers import AutoModelForCausalLM
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-        model = WrapHookedTransformer.from_pretrained(model_name, hf_model=model)
+def load_model(config):
+    if config.model_name == "Llama-2-7b-hf":
+        from transformers import AutoModelForCausalLM, LlamaForCausalLM, LlamaTokenizer
+        import torch
+        from src.config import *
+        #tokenizer = LlamaTokenizer.from_pretrained(config.hf_model_name)
+        model = LlamaForCausalLM.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token, low_cpu_mem_usage=True)
+        model = WrapHookedTransformer.from_pretrained(config.hf_model_name, fold_ln=False, hf_model=model, device="cpu")
+        model = model.to("cuda")
         return model
     model = WrapHookedTransformer.from_pretrained(model_name)
     return model
@@ -263,9 +274,8 @@ def load_model(model_name):
 def main(args):
     config = Config().from_args(args)
     console.print(display_config(config))
-    model = load_model(config.model_name)
-    model = WrapHookedTransformer.from_pretrained(config.model_name)
-    check_dataset_and_sample(config.dataset_path, config.model_name)
+    check_dataset_and_sample(config.dataset_path, config.model_name, config.hf_model_name)
+    model = load_model(config)
     dataset = TlensDataset(config.dataset_path, model, slice=config.dataset_slice)
 
     experiments = []
