@@ -1,3 +1,4 @@
+from regex import F
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -157,9 +158,9 @@ class Ablate(BaseExperiment):
 
         for batch in dataloader:
             _, cache = self.model.run_with_cache(batch["prompt"])
-            if component == "mlp_out" or component == "attn_out":
+            if component == "mlp_out" or component == "attn_out" and total_effect is False:
                 freezed_attn = self._get_freezed_attn_pattern(cache)
-            elif component == "head":
+            elif component == "head" and total_effect is False:
                 freezed_attn = self._get_freezed_attn(cache)
             elif total_effect is True:
                 freezed_attn = {}

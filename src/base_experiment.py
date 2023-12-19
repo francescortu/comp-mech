@@ -57,6 +57,8 @@ class BaseExperiment:
         self.model.eval()
         self.batch_size = batch_size
         self.filter_outliers = filter_outliers
+        #requires grad to false
+        torch.set_grad_enabled(False)
         # if self.model.cfg.model_name != self.dataset.model.cfg.model_name:
         #     raise ValueError("Model and dataset should have the same model_name, found {} and {}".format(
         #         self.model.cfg.model_name, self.dataset.model.cfg.model_name))

@@ -1,6 +1,8 @@
 # Standard library imports
 from dataclasses import dataclass
 import os
+from src.config import hf_access_token, hf_model_cache_dir # noqa: E402
+os.environ["HF_HOME"] = hf_model_cache_dir
 from re import A
 import sys
 import io
@@ -23,7 +25,6 @@ from src.dataset import TlensDataset  # noqa: E402
 from src.experiment import LogitAttribution, LogitLens, OV, Ablate, HeadPattern  # noqa: E402
 from src.model import WrapHookedTransformer  # noqa: E402
 from src.utils import display_config, display_experiments, check_dataset_and_sample  # noqa: E402
-from src.config import hf_access_token # noqa: E402
 console = Console()
 # set logging level to suppress warnings
 logging.basicConfig(level=logging.ERROR)
