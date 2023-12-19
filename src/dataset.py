@@ -11,6 +11,7 @@ from src.model import WrapHookedTransformer
 from transformers import AutoModelForCausalLM
 from transformer_lens import HookedTransformer
 import logging
+import os
 
 
 class BaseDataset(Dataset):
@@ -381,6 +382,7 @@ class SampleDataset:
         self.data = json.load(open(path))
         self.model = model
         self.save_path = save_path
+        self.checkpoint_size = 500
         if type(model) == WrapHookedTransformer:
             self.model_type = "WrapHookedTransformer"
             self.tokenizer = model.tokenizer  
@@ -399,11 +401,17 @@ class SampleDataset:
     
     def sample_dataset_tlens(self, size:int):
         random.seed(42)
+        new_data, index = self.load_from_checkpoint()
+        
+        random.shuffle(self.data)
+        self.data = self.data[index:]
+        size = size - len(new_data)
         new_data = []
         random.shuffle(self.data)
         with tqdm(total=size) as pbar:
             for i,d in enumerate(self.data):
-
+                if i % self.checkpoint_size == 0:
+                    self.checkpoint(i, new_data)
                 # empty_prompt = d["template"].format("Redefine", self.model.tokenizer.pad_token)
                 empty_prompt = d["base_prompt"]
                 if self.model.predict(empty_prompt)[1][0] == d["target_true"]:
@@ -415,10 +423,17 @@ class SampleDataset:
             
     def sample_dataset_hf(self, size:int):
         random.seed(42)
-        new_data = []
+        new_data, index = self.load_from_checkpoint()
+        
         random.shuffle(self.data)
+        self.data = self.data[index:]
+        print(len(self.data), index)
+        
         with tqdm(total=size) as pbar:
+            pbar.update(len(new_data))
             for i,d in enumerate(self.data):
+                if i % self.checkpoint_size == 0:
+                    self.checkpoint(i, new_data)
                 empty_prompt = d["base_prompt"]
                 #encode the prompt
                 input_ids = self.tokenizer.encode(empty_prompt, return_tensors="pt") #type: ignore
@@ -440,6 +455,26 @@ class SampleDataset:
     def save(self):
         json.dump(self.data, open(self.save_path, "w"), indent=2)
     
+    def checkpoint(self, size:int, data:list):
+        #create checkpoint folder
+
+        if not os.path.isdir("../data/checkpoints"):
+            os.mkdir("../data/checkpoints")
+        #save the data
+        #split save path 
+        save_path = self.save_path.split("/")[2]
+        json.dump(data, open(f"../data/checkpoints/{save_path}", "w"), indent=2)
+        
+    def load_from_checkpoint(self):
+        save_path = self.save_path.split("/")[2]
+        # check if the checkpoint exists
+        if not os.path.isfile(f"../data/checkpoints/{save_path}"):
+            return [], 0
+        print("Starting from checkpoint")
+        data = json.load(open(f"../data/checkpoints/{save_path}"))
+        # get index of the last data point
+        index = len(data) - 1
+        return data, index
     
     
 class DatasetGenerator():

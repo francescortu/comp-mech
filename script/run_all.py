@@ -28,8 +28,12 @@ logging.basicConfig(level=logging.ERROR)
 
 
 def get_hf_model_name(model_name):
-    if model_name == "Llama-2-7b-hf":
-        return "meta-llama/Llama-2-7b-hf"
+    if "Llama" in model_name:
+        return "meta-llama/" + model_name
+    elif "opt" in model_name:
+        return "facebook/" + model_name
+    else:
+        print("No HF model name found for model name: ", model_name)
     return model_name
 
 
@@ -258,17 +262,17 @@ class CustomOutputStream(io.StringIO):
         self.status[self.index] = text
         self.live.update(display_experiments(self.experiments, self.status))
 
-def load_model(config):
+def load_model(config) -> WrapHookedTransformer:
     if config.model_name == "Llama-2-7b-hf":
         from transformers import AutoModelForCausalLM, LlamaForCausalLM, LlamaTokenizer
         import torch
-        from src.config import *
+        from src.config import hf_access_token
         #tokenizer = LlamaTokenizer.from_pretrained(config.hf_model_name)
         model = LlamaForCausalLM.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token, low_cpu_mem_usage=True)
         model = WrapHookedTransformer.from_pretrained(config.hf_model_name, fold_ln=False, hf_model=model, device="cpu")
         model = model.to("cuda")
         return model
-    model = WrapHookedTransformer.from_pretrained(model_name)
+    model = WrapHookedTransformer.from_pretrained(config.model_name)
     return model
 
 def main(args):
