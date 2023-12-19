@@ -6,7 +6,7 @@ import sys
 import io
 import subprocess
 from typing import Optional, Literal, Union
-from configobj import UnknownType
+
 
 # Third-party library imports
 from rich.console import Console
