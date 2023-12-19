@@ -104,7 +104,7 @@ class BaseExperiment:
             for batch in dataloader:
                 logit, _ = self.model.run_with_cache(batch["prompt"])
                 logit = logit[:, -1, :]  # type: ignore
-                logit_mem, logit_cp, _, _ = to_logit_token(logit, batch["target"])
+                logit_mem, logit_cp, _, _ = to_logit_token(logit, batch["target"], normalize=normalize_logit)
                 logit_mem_list.append(logit_mem)
                 logit_cp_list.append(logit_cp)
 

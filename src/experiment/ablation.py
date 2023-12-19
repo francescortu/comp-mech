@@ -111,7 +111,7 @@ class Ablate(BaseExperiment):
         return logit[:, -1, :]  # type: ignore
 
     def _process_model_run(
-        self, layer, position, head, component, batch, freezed_attn, storage
+        self, layer, position, head, component, batch, freezed_attn, storage, normalize_logit
     ):
         """
         run the model with the given hooks and store the logit in the storage
@@ -120,7 +120,7 @@ class Ablate(BaseExperiment):
             layer, component, freezed_attn, head=head, position=position
         )
         logit = self._run_with_hooks(batch, hooks)
-        logit_token = to_logit_token(logit, batch["target"])
+        logit_token = to_logit_token(logit, batch["target"], normalize=normalize_logit)
         if component in self.position_component:
             storage.store(layer=layer, position=position, logit=logit_token)
         if component in self.head_component:
@@ -177,11 +177,12 @@ class Ablate(BaseExperiment):
                             batch,
                             freezed_attn,
                             storage,
+                            normalize_logit,
                         )
                 if component in self.head_component:
                     for head in range(self.model.cfg.n_heads):
                         self._process_model_run(
-                            layer, None, head, component, batch, freezed_attn, storage
+                            layer, None, head, component, batch, freezed_attn, storage, normalize_logit
                         )
                         
                 if f"L{layer}" in freezed_attn:

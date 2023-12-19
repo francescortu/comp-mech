@@ -1,15 +1,19 @@
 # Standard library imports
 from dataclasses import dataclass
 import os
+from re import A
 import sys
 import io
 import subprocess
-from typing import Optional, Literal
+from typing import Optional, Literal, Union
+from configobj import UnknownType
 
 # Third-party library imports
 from rich.console import Console
 import argparse
 import logging
+from transformer_lens import HookedTransformer
+from transformers import AutoModelForCausalLM, LlamaForCausalLM, LlamaTokenizer
 
 # Local application/library specific imports
 sys.path.append(os.path.abspath(os.path.join("..")))
@@ -19,7 +23,7 @@ from src.dataset import TlensDataset  # noqa: E402
 from src.experiment import LogitAttribution, LogitLens, OV, Ablate, HeadPattern  # noqa: E402
 from src.model import WrapHookedTransformer  # noqa: E402
 from src.utils import display_config, display_experiments, check_dataset_and_sample  # noqa: E402
-
+from src.config import hf_access_token # noqa: E402
 console = Console()
 # set logging level to suppress warnings
 logging.basicConfig(level=logging.ERROR)
@@ -48,6 +52,7 @@ class Config:
     normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
     std_dev: int = 1  # 0 False, 1 True
     total_effect: bool = False
+    up_to_layer: Union[int, str] = "all"
 
     @classmethod
     def from_args(cls, args):
@@ -83,9 +88,14 @@ def save_dataframe(folder_path, file_name, dataframe):
 
 
 def logit_attribution(model, dataset, config, args):
+
     dataset_slice_name = (
         "full" if config.dataset_slice is None else config.dataset_slice
     )
+    dataset_slice_name = (
+        dataset_slice_name if config.up_to_layer == "all" else f"{dataset_slice_name}_layer_{config.up_to_layer}"
+    )
+
     if args.only_plot:
         subprocess.run(
             [
@@ -99,7 +109,7 @@ def logit_attribution(model, dataset, config, args):
 
     print("Running logit attribution")
     attributor = LogitAttribution(dataset, model, config.batch_size // 5)
-    dataframe = attributor.run(normalize_logit=config.normalize_logit)
+    dataframe = attributor.run(normalize_logit=config.normalize_logit, up_to_layer=config.up_to_layer)
     save_dataframe(
         f"../results/logit_attribution/{config.model_name}_{dataset_slice_name}",
         "logit_attribution_data",
@@ -262,16 +272,13 @@ class CustomOutputStream(io.StringIO):
         self.status[self.index] = text
         self.live.update(display_experiments(self.experiments, self.status))
 
-def load_model(config) -> WrapHookedTransformer:
+def load_model(config) -> Union[WrapHookedTransformer, HookedTransformer]:
     if config.model_name == "Llama-2-7b-hf":
-        from transformers import AutoModelForCausalLM, LlamaForCausalLM, LlamaTokenizer
-        import torch
-        from src.config import hf_access_token
         #tokenizer = LlamaTokenizer.from_pretrained(config.hf_model_name)
         model = LlamaForCausalLM.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token, low_cpu_mem_usage=True)
         model = WrapHookedTransformer.from_pretrained(config.hf_model_name, fold_ln=False, hf_model=model, device="cpu")
         model = model.to("cuda")
-        return model
+        return model # type: ignore
     model = WrapHookedTransformer.from_pretrained(config.model_name)
     return model
 

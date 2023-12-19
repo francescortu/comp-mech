@@ -54,6 +54,7 @@ def display_config(config):
         Text.assemble(("Normalize Logit: ", "bold"), str(config.normalize_logit)),
         Text.assemble(("Std Dev: ", "bold"), str(config.std_dev)),
         Text.assemble(("Total Effect: ", "bold"), str(config.total_effect)),
+        Text.assemble(("Up-to-layer: ", "bold"), str(config.up_to_layer)),
     ]
 
     columns = Columns(config_items, equal=True, expand=True)

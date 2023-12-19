@@ -1,4 +1,5 @@
-from typing import Callable, List, Optional
+from turtle import up
+from typing import Callable, List, Optional, Union
 import torch
 from torch.utils.data import DataLoader
 import einops
@@ -94,12 +95,24 @@ class LogitAttribution(BaseExperiment):
         length: int,
         storage: AttributeStorage,
         component: str,
+        up_to_layer: Union[int, str] = "all",
         apply_ln: bool = False,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
         hooks: Optional[List[Tuple[str, Callable]]] = None,
     ):
+        if up_to_layer == "all":
+            up_to_layer = self.model.cfg.n_layers
+        elif isinstance(up_to_layer, str):
+            raise ValueError("up_to_layer must be an integer or 'all'")
+        elif up_to_layer > self.model.cfg.n_layers:
+            raise ValueError(
+                f"up_to_layer must be smaller than the number of layers: {self.model.cfg.n_layers}"
+            )
+            
         self.set_len(length, slice_to_fit_batch=False)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        
+        
         # Create a storage object to store the logits
         for batch in dataloader:
             # print cuda memory
@@ -113,10 +126,10 @@ class LogitAttribution(BaseExperiment):
             if normalize_logit != "none":
                 raise NotImplementedError
             stack_of_resid, resid_labels = cache.decompose_resid(
-                apply_ln=apply_ln, return_labels=True, mode="attn"
+                apply_ln=apply_ln, return_labels=True, mode="attn", layer=up_to_layer
             )
             stack_of_component, labels = cache.get_full_resid_decomposition(
-                expand_neurons=False, apply_ln=apply_ln, return_labels=True
+                expand_neurons=False, apply_ln=apply_ln, return_labels=True, layer=up_to_layer
             )  # return a tensor of shape (component_size, batch_size, seq_len, hidden_size)
             target_mem, target_cp = self.slice_target(batch["target"], length=length)
 
