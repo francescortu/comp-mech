@@ -277,7 +277,7 @@ class CustomOutputStream(io.StringIO):
 def load_model(config) -> Union[WrapHookedTransformer, HookedTransformer]:
     if config.model_name == "Llama-2-7b-hf":
         tokenizer = LlamaTokenizer.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token,)
-        model = LlamaForCausalLM.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token, low_cpu_mem_usage=True)
+        model = LlamaForCausalLM.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token, device_map="auto", type="auto")
         model = WrapHookedTransformer.from_pretrained(config.hf_model_name, tokenizer=tokenizer, fold_ln=False, hf_model=model, device="cpu")
         model = model.to("cuda")
         return model # type: ignore
