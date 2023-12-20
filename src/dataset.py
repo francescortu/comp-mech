@@ -72,9 +72,9 @@ class BaseDataset(Dataset):
             prompt = d["template"].format(self.premise, d["target_new"])
             d["prompt"] = prompt
             d["tokenized_prompt"] = self._tokenize_prompt(prompt, True)  # ( L)
-            target_new_token = self._tokenize_target(d["target_new"], False)  # (1)
+            target_new_token = self._tokenize_target(d["target_new"], False).cuda()  # (1)
             d["target_new_token"] = target_new_token
-            target_true_token = self._tokenize_target(d["target_true"], False)  # (1)
+            target_true_token = self._tokenize_target(d["target_true"], False).cuda()  # (1)
             d["target_true_token"] = target_true_token
             d["targets"] = torch.cat(
                 [target_true_token, target_new_token], dim=0
@@ -226,11 +226,10 @@ class TlensDataset(BaseDataset):
         return tokens
     
     def _tokenize_target(self, target: str, prepend_bos: bool) -> Tensor:
-        if self.model.cfg.predict_with_space is False:
+        if self.model.predict_with_space is False:
             #remove the first space
             target = target[1:]
-        tokens = self.model.to_tokens(target, prepend_bos).squeeze(0)
-        assert len(tokens.shape) == 1
+        tokens = torch.tensor([self.model.to_tokens(target, prepend_bos).squeeze(0)[0]])
         assert tokens.shape[0] == 1, "tokens is not a 1D tensor with one element (the target)"
         return tokens
         
