@@ -17,6 +17,7 @@ from typing import Optional, Literal, Union
 from rich.console import Console
 import argparse
 import logging
+import torch
 from transformer_lens import HookedTransformer
 from transformers import AutoModelForCausalLM, LlamaForCausalLM, LlamaTokenizer
 
@@ -277,7 +278,7 @@ class CustomOutputStream(io.StringIO):
 def load_model(config) -> Union[WrapHookedTransformer, HookedTransformer]:
     if config.model_name == "Llama-2-7b-hf":
         tokenizer = LlamaTokenizer.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token,)
-        model = LlamaForCausalLM.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token, device_map="auto", type="auto")
+        model = LlamaForCausalLM.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token, device_map="auto", torch_dtype="auto")
         model = WrapHookedTransformer.from_pretrained(config.hf_model_name, tokenizer=tokenizer, fold_ln=False, hf_model=model, device="cpu")
         model = model.to("cuda")
         return model # type: ignore
