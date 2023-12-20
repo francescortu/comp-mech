@@ -1,10 +1,13 @@
 # Standard library imports
-from dataclasses import dataclass
+import sys
 import os
+sys.path.append(os.path.abspath(os.path.join("..")))
+sys.path.append(os.path.abspath(os.path.join("../src")))
+sys.path.append(os.path.abspath(os.path.join("../data")))
+from dataclasses import dataclass
 from src.config import hf_access_token, hf_model_cache_dir # noqa: E402
 os.environ["HF_HOME"] = hf_model_cache_dir
 from re import A
-import sys
 import io
 import subprocess
 from typing import Optional, Literal, Union
@@ -18,9 +21,7 @@ from transformer_lens import HookedTransformer
 from transformers import AutoModelForCausalLM, LlamaForCausalLM, LlamaTokenizer
 
 # Local application/library specific imports
-sys.path.append(os.path.abspath(os.path.join("..")))
-sys.path.append(os.path.abspath(os.path.join("../src")))
-sys.path.append(os.path.abspath(os.path.join("../data")))
+
 from src.dataset import TlensDataset  # noqa: E402
 from src.experiment import LogitAttribution, LogitLens, OV, Ablate, HeadPattern  # noqa: E402
 from src.model import WrapHookedTransformer  # noqa: E402
@@ -275,9 +276,9 @@ class CustomOutputStream(io.StringIO):
 
 def load_model(config) -> Union[WrapHookedTransformer, HookedTransformer]:
     if config.model_name == "Llama-2-7b-hf":
-        #tokenizer = LlamaTokenizer.from_pretrained(config.hf_model_name)
+        tokenizer = LlamaTokenizer.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token,)
         model = LlamaForCausalLM.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token, low_cpu_mem_usage=True)
-        model = WrapHookedTransformer.from_pretrained(config.hf_model_name, fold_ln=False, hf_model=model, device="cpu")
+        model = WrapHookedTransformer.from_pretrained(config.hf_model_name, tokenizer=tokenizer, fold_ln=False, hf_model=model, device="cpu")
         model = model.to("cuda")
         return model # type: ignore
     model = WrapHookedTransformer.from_pretrained(config.model_name)

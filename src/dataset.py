@@ -77,6 +77,8 @@ class BaseDataset(Dataset):
             d["targets"] = torch.cat(
                 [target_true_token, target_new_token], dim=0
             )  # (2)
+            
+            print(d["tokenized_prompt"].shape, target_new_token.shape, d["tokenized_prompt"], target_new_token)
             obj_pos_indices = (d["tokenized_prompt"] == target_new_token).nonzero(as_tuple=True)[0]
             if obj_pos_indices.size(0) > 0:
                 d["obj_pos"] = obj_pos_indices[0].item()
@@ -215,7 +217,12 @@ class TlensDataset(BaseDataset):
         super().__init__(path, slice, premise, similarity)
         
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
+        print("prepend_bos", prepend_bos)
+        print("prompt", prompt)
         tokens = self.model.to_tokens(prompt, prepend_bos).squeeze(0)
+        print("tokens", tokens)
+        print("29871", self.model.to_string(torch.tensor(29871)))
+        print("ciao", self.model.to_tokens("ciao", prepend_bos))
         assert len(tokens.shape) == 1
         return tokens
         
