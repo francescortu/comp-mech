@@ -14,6 +14,13 @@ class WrapHookedTransformer(HookedTransformer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device = self.cfg.device
+        if self.cfg.model_name in ['Llama-2-7b-hf']:
+            self.predict_with_space = False
+        elif self.cfg.model_name in ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl']:
+            self.predict_with_space = True
+        else:
+            raise NotImplementedError(f"Model {self.cfg.model_name} does not have a predict_with_space attribute: pleas check the model behavior and add it manually")
+        
     def predict(self, prompt: str, k: int = 1, return_type: str = "logits"):
         logits = self(prompt)
         return get_predictions(self, logits, k, return_type)

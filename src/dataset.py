@@ -1,7 +1,9 @@
 from abc import abstractmethod
 from cgitb import Hook
+import re
 
 import torch
+from torch._tensor import Tensor
 from torch.utils.data import Dataset
 import json
 from tqdm import tqdm
@@ -70,15 +72,13 @@ class BaseDataset(Dataset):
             prompt = d["template"].format(self.premise, d["target_new"])
             d["prompt"] = prompt
             d["tokenized_prompt"] = self._tokenize_prompt(prompt, True)  # ( L)
-            target_new_token = self._tokenize_prompt(d["target_new"], False)  # (1)
+            target_new_token = self._tokenize_target(d["target_new"], False)  # (1)
             d["target_new_token"] = target_new_token
-            target_true_token = self._tokenize_prompt(d["target_true"], False)  # (1)
+            target_true_token = self._tokenize_target(d["target_true"], False)  # (1)
             d["target_true_token"] = target_true_token
             d["targets"] = torch.cat(
                 [target_true_token, target_new_token], dim=0
             )  # (2)
-            
-            print(d["tokenized_prompt"].shape, target_new_token.shape, d["tokenized_prompt"], target_new_token)
             obj_pos_indices = (d["tokenized_prompt"] == target_new_token).nonzero(as_tuple=True)[0]
             if obj_pos_indices.size(0) > 0:
                 d["obj_pos"] = obj_pos_indices[0].item()
@@ -196,6 +196,10 @@ class BaseDataset(Dataset):
         pass
     
     @abstractmethod
+    def _tokenize_target(self, target:str, prepend_bos:bool) -> torch.Tensor:
+        pass
+    
+    @abstractmethod
     def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str, base_prompt:str) -> Tuple[str, torch.Tensor]:
         pass
     
@@ -217,13 +221,17 @@ class TlensDataset(BaseDataset):
         super().__init__(path, slice, premise, similarity)
         
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
-        print("prepend_bos", prepend_bos)
-        print("prompt", prompt)
         tokens = self.model.to_tokens(prompt, prepend_bos).squeeze(0)
-        print("tokens", tokens)
-        print("29871", self.model.to_string(torch.tensor(29871)))
-        print("ciao", self.model.to_tokens("ciao", prepend_bos))
         assert len(tokens.shape) == 1
+        return tokens
+    
+    def _tokenize_target(self, target: str, prepend_bos: bool) -> Tensor:
+        if self.model.cfg.predict_with_space is False:
+            #remove the first space
+            target = target[1:]
+        tokens = self.model.to_tokens(target, prepend_bos).squeeze(0)
+        assert len(tokens.shape) == 1
+        assert tokens.shape[0] == 1, "tokens is not a 1D tensor with one element (the target)"
         return tokens
         
     def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str, base_prompt:str) -> Tuple[str, torch.Tensor]:
@@ -276,6 +284,11 @@ class HFDataset(BaseDataset):
         
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
         tokens = self.tokenizer.encode(prompt, return_tensors="pt", add_special_tokens=True).squeeze(0)
+        assert len(tokens.shape) == 1
+        return tokens
+    
+    def _tokenize_target(self, target: str, prepend_bos: bool) -> torch.Tensor:
+        tokens = self.tokenizer.encode(target, return_tensors="pt", add_special_tokens=False).squeeze(0)
         assert len(tokens.shape) == 1
         return tokens
     
