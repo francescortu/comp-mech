@@ -73,7 +73,9 @@ class LogitStorage:
         ],
         head: int = 0,
     ):
+        
         mem_logit, cp_logit, _, _ = logit
+        mem_logit, cp_logit = mem_logit.to("cpu"), cp_logit.to("cpu")
         index = self._get_index(layer, position, head)
         self.logits["mem_logit"][index].append(mem_logit)
         self.logits["cp_logit"][index].append(cp_logit)
@@ -113,11 +115,12 @@ class IndexLogitStorage(LogitStorage):
         layer: int,
         position: int,
         logit: Tuple[
-            torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]
+            torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
         ],
         head: int = 0,
     ):
         mem_logit, cp_logit, mem_logit_idx, cp_logit_idx = logit
+        mem_logit, cp_logit, mem_logit_idx, cp_logit_idx = mem_logit.to("cpu"), cp_logit.to("cpu"), mem_logit_idx.to("cpu"), cp_logit_idx.to("cpu")
         index = self._get_index(layer, position, head)
         self.logits["mem_logit"][index].append(mem_logit)
         self.logits["cp_logit"][index].append(cp_logit)
@@ -225,7 +228,7 @@ class LogitLens(BaseExperiment):
                             normalize=normalize_logit,
                             return_index=return_index,
                         )
-                        storer.store(layer=layer, position=position, logit=logit_token)
+                        storer.store(layer=layer, position=position, logit=logit_token) # type: ignore
                 elif component in self.valid_heads:
                     cached_component = cache[f"blocks.{layer}.attn.hook_z"]
                     for head in range(self.model.cfg.n_heads):
@@ -247,7 +250,7 @@ class LogitLens(BaseExperiment):
                                 layer=layer,
                                 position=position,
                                 head=head,
-                                logit=logit_token,
+                                logit=logit_token, # type: ignore
                             )
                 else:
                     raise ValueError(
