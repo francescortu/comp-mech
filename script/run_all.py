@@ -39,8 +39,10 @@ def get_hf_model_name(model_name):
         return "meta-llama/" + model_name
     elif "opt" in model_name:
         return "facebook/" + model_name
+    elif "pythia" in model_name:
+    	return "EleutherAI/" + model_name
     else:
-        print("No HF model name found for model name: ", model_name)
+        raise ValueError("No HF model name found for model name: ", model_name)
     return model_name
 
 
