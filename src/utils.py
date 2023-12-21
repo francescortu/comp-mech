@@ -11,6 +11,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, GPTNeoXForCausalLM
 
 def check_dataset_and_sample(dataset_path, model_name, hf_model_name):
     if os.path.exists(dataset_path):
+        print("Dataset found!")
         return
     else:
         

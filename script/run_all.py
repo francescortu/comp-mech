@@ -284,7 +284,8 @@ def load_model(config) -> Union[WrapHookedTransformer, HookedTransformer]:
         model = WrapHookedTransformer.from_pretrained(config.hf_model_name, tokenizer=tokenizer, fold_ln=False, hf_model=model, device="cuda")
         # model = model.to("cuda")
         return model # type: ignore
-    model = WrapHookedTransformer.from_pretrained(config.model_name)
+    model = WrapHookedTransformer.from_pretrained(config.model_name, device="cpu")
+    model = model.to("cuda")
     return model
 
 def main(args):

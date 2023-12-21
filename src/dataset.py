@@ -230,6 +230,7 @@ class TlensDataset(BaseDataset):
             #remove the first space
             target = target[1:]
         tokens = torch.tensor([self.model.to_tokens(target, prepend_bos).squeeze(0)[0]])
+        print(self.model.to_str_tokens(target,prepend_bos))
         assert tokens.shape[0] == 1, "tokens is not a 1D tensor with one element (the target)"
         return tokens
         
@@ -493,6 +494,8 @@ class SampleDataset:
         data = json.load(open(f"../data/checkpoints/{save_path}"))
         # get index of the last data point
         index = len(data) - 1
+        if index < 0:
+            return [], 0
         return data, index
     
     
