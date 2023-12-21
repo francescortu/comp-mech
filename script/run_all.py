@@ -280,7 +280,7 @@ def load_model(config) -> Union[WrapHookedTransformer, HookedTransformer]:
         tokenizer = LlamaTokenizer.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token,)
         model = LlamaForCausalLM.from_pretrained(config.hf_model_name, use_auth_token = hf_access_token, low_cpu_mem_usage=True)
         model = WrapHookedTransformer.from_pretrained(config.hf_model_name, tokenizer=tokenizer, fold_ln=False, hf_model=model, device="cuda")
-        #model = model.to("cuda")
+        # model = model.to("cuda")
         return model # type: ignore
     model = WrapHookedTransformer.from_pretrained(config.model_name)
     return model
