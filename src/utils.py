@@ -7,19 +7,21 @@ from rich.table import Table
 import time
 import os
 import torch.nn.functional as F
-
+from transformers import AutoModelForCausalLM, AutoTokenizer, GPTNeoXForCausalLM
 
 def check_dataset_and_sample(dataset_path, model_name, hf_model_name):
     if os.path.exists(dataset_path):
-        return 
+        return
     else:
-        from transformers import AutoModelForCausalLM
-        from transformers import AutoTokenizer
+        
+
         print("Dataset not found, creating it:")
-        model = AutoModelForCausalLM.from_pretrained(hf_model_name)
+        model = AutoModelForCausalLM.from_pretrained(hf_model_name, device_map="auto", torch_dtype="auto")
         tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
         model.eval()
+        model = model.to("cuda")
         from src.dataset import SampleDataset
+
         sampler = SampleDataset(
             "../data/full_data.json",
             model=model,
@@ -31,7 +33,7 @@ def check_dataset_and_sample(dataset_path, model_name, hf_model_name):
         del model
         del sampler
         torch.cuda.empty_cache()
-        return 
+        return
 
 
 def display_experiments(experiments, status):
@@ -40,7 +42,9 @@ def display_experiments(experiments, status):
     table.add_column("Status", width=1)
     table.add_column("Live Output")  # New column for future live output
     for experiment, stat in zip(experiments, status):
-        table.add_row(experiment.__name__, stat, "")  # Empty string for future live output
+        table.add_row(
+            experiment.__name__, stat, ""
+        )  # Empty string for future live output
     return table
 
 
@@ -61,6 +65,7 @@ def display_config(config):
     panel = Panel(columns, title="Configuration", border_style="green")
     return panel
 
+
 def update_status(i, status):
     try:
         dots = "."
@@ -71,12 +76,11 @@ def update_status(i, status):
     except Exception as e:
         raise e
 
+
 def update_live(live, experiments, status):
     while True:
         live.update(display_experiments(experiments, status))
         time.sleep(0.1)
-
-
 
 
 def get_predictions(model, logits, k, return_type):
@@ -123,13 +127,10 @@ def embs_to_tokens_ids(noisy_embs, model):
     return corrupted_tokens
 
 
-
-
-
 def list_of_dicts_to_dict_of_lists(list_of_dicts):
     # Initialize an empty dictionary to store the result
     dict_of_lists = {}
-    
+
     # Iterate over each dictionary in the list
     for d in list_of_dicts:
         # Iterate over each key-value pair in the dictionary
@@ -139,8 +140,9 @@ def list_of_dicts_to_dict_of_lists(list_of_dicts):
                 dict_of_lists[key] = []
             # Append the value to the list corresponding to the key in the result dictionary
             dict_of_lists[key].append(value)
-    
+
     return dict_of_lists
+
 
 def dict_of_lists_to_dict_of_tensors(dict_of_lists):
     dict_of_tensors = {}
@@ -148,7 +150,10 @@ def dict_of_lists_to_dict_of_tensors(dict_of_lists):
         dict_of_tensors[key] = torch.stack(tensor_list)
     return dict_of_tensors
 
-def aggregate_result(pattern:torch.Tensor, object_positions:int, length:int) -> torch.Tensor:
+
+def aggregate_result(
+    pattern: torch.Tensor, object_positions: int, length: int
+) -> torch.Tensor:
     subject_1_1 = 5
     subject_1_2 = 6 if length > 15 else 5
     subject_1_3 = 7 if length > 17 else subject_1_2
@@ -161,21 +166,24 @@ def aggregate_result(pattern:torch.Tensor, object_positions:int, length:int) -> 
     object_positions_pre = object_positions - 1
     object_positions_next = object_positions + 1
     *leading_dims, pen_len, last_len = pattern.shape
-    
 
     intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 13))
-    #aggregate for pre-last dimension
+    # aggregate for pre-last dimension
     intermediate_aggregate[..., 0] = pattern[..., :subject_1_1].mean(dim=-1)
     intermediate_aggregate[..., 1] = pattern[..., subject_1_1]
     intermediate_aggregate[..., 2] = pattern[..., subject_1_2]
     intermediate_aggregate[..., 3] = pattern[..., subject_1_3]
-    intermediate_aggregate[..., 4] = pattern[..., subject_1_3 + 1:object_positions_pre].mean(dim=-1)
+    intermediate_aggregate[..., 4] = pattern[
+        ..., subject_1_3 + 1 : object_positions_pre
+    ].mean(dim=-1)
     intermediate_aggregate[..., 5] = pattern[..., object_positions_pre]
     intermediate_aggregate[..., 6] = pattern[..., object_positions]
     intermediate_aggregate[..., 7] = pattern[..., object_positions_next]
     intermediate_aggregate[..., 8] = pattern[..., subject_2_1]
     intermediate_aggregate[..., 9] = pattern[..., subject_2_2]
     intermediate_aggregate[..., 10] = pattern[..., subject_2_3]
-    intermediate_aggregate[..., 11] = pattern[..., subject_2_3 + 1:last_position].mean(dim=-1)
+    intermediate_aggregate[..., 11] = pattern[
+        ..., subject_2_3 + 1 : last_position
+    ].mean(dim=-1)
     intermediate_aggregate[..., 12] = pattern[..., last_position]
     return intermediate_aggregate
