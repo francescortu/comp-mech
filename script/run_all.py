@@ -291,6 +291,8 @@ def main(args):
     config = Config().from_args(args)
     console.print(display_config(config))
     check_dataset_and_sample(config.dataset_path, config.model_name, config.hf_model_name)
+    if args.dataset:
+        return
     model = load_model(config)
     dataset = TlensDataset(config.dataset_path, model, slice=config.dataset_slice)
 
@@ -339,6 +341,7 @@ if __name__ == "__main__":
     parser.add_argument("--total-effect", action="store_true")
     parser.add_argument("--pattern", action="store_true")
     parser.add_argument("--all", action="store_true")
+    parser.add_argument("--dataset", action="store_true", default=False)
     
     args = parser.parse_args()
     main(args)
