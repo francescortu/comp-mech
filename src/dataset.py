@@ -230,7 +230,7 @@ class TlensDataset(BaseDataset):
             #remove the first space
             target = target[1:]
         tokens = torch.tensor([self.model.to_tokens(target, prepend_bos).squeeze(0)[0]])
-        print(self.model.to_str_tokens(target,prepend_bos))
+        # print(self.model.to_str_tokens(target,prepend_bos))
         assert tokens.shape[0] == 1, "tokens is not a 1D tensor with one element (the target)"
         return tokens
         
@@ -395,6 +395,11 @@ class HFDataset(BaseDataset):
             return "test", torch.tensor([[0]])
         else:
             raise ValueError("similarity_type must be either 'input' or 'output'")
+
+
+    
+    
+
 
 
 class SampleDataset:
@@ -574,3 +579,6 @@ class DatasetGenerator():
         
     def save(self, path):
         json.dump(self.my_data, open(path, "w"), indent=2)
+
+
+
