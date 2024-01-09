@@ -70,6 +70,7 @@ class Config:
             std_dev=1 if not args.std_dev else 0,
             total_effect=args.total_effect if args.total_effect else False,
             hf_model_name= get_hf_model_name(args.model_name)
+            ablate_component=args.ablate_component,
         )
 
 
@@ -216,12 +217,20 @@ def ablate(model, dataset, config, args):
         )
         return
     ablator = Ablate(dataset, model, config.batch_size)
-    dataframe = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect)
-    save_dataframe(
-        f"../results/ablation/{config.model_name}_{data_slice_name}",
-        "ablation_data",
-        dataframe,
-    )
+    if args.ablate_component == "all":
+        dataframe = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect)
+        save_dataframe(
+            f"../results/ablation/{config.model_name}_{data_slice_name}",
+            "ablation_data",
+            dataframe,
+        )
+    else:
+        dataframe = ablator.run(args.ablate_component, normalize_logit=config.normalize_logit, total_effect=args.total_effect)
+        save_dataframe(
+            f"../results/ablation/{config.model_name}_{data_slice_name}",
+            f"ablation_data_{args.ablate_component}",
+            dataframe,
+        )
 
     if config.produce_plots:
         # run the R script
@@ -343,6 +352,7 @@ if __name__ == "__main__":
     parser.add_argument("--pattern", action="store_true")
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--dataset", action="store_true", default=False)
+    parser.add_argument("--ablate-component", type=str, default="all")
     
     args = parser.parse_args()
     main(args)
