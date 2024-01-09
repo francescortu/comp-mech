@@ -11,4 +11,4 @@
 
 conda activate torch
 cd script
-python run_all.py --ablate --ablate-component attn_out --all --no-plot --batch 5 --model pythia-6.9b --total-effect
+python run_all.py --ablate --ablate-component attn_out --no-plot --batch 5 --model pythia-6.9b --total-effect

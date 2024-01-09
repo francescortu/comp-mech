@@ -58,6 +58,7 @@ class Config:
     std_dev: int = 1  # 0 False, 1 True
     total_effect: bool = False
     up_to_layer: Union[int, str] = "all"
+    ablate_component:str = "all"
 
     @classmethod
     def from_args(cls, args):
@@ -69,7 +70,7 @@ class Config:
             produce_plots=args.produce_plots,
             std_dev=1 if not args.std_dev else 0,
             total_effect=args.total_effect if args.total_effect else False,
-            hf_model_name= get_hf_model_name(args.model_name)
+            hf_model_name= get_hf_model_name(args.model_name),
             ablate_component=args.ablate_component,
         )
 
