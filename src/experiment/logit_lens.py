@@ -5,7 +5,7 @@ from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment, to_logit_token
-from typing import Optional,  Tuple, Literal
+from typing import Optional, Tuple, Literal
 from src.utils import aggregate_result
 
 
@@ -73,7 +73,6 @@ class LogitStorage:
         ],
         head: int = 0,
     ):
-        
         mem_logit, cp_logit, _, _ = logit
         mem_logit, cp_logit = mem_logit.to("cpu"), cp_logit.to("cpu")
         index = self._get_index(layer, position, head)
@@ -114,13 +113,15 @@ class IndexLogitStorage(LogitStorage):
         self,
         layer: int,
         position: int,
-        logit: Tuple[
-            torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor
-        ],
+        logit: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
         head: int = 0,
     ):
         mem_logit, cp_logit, mem_logit_idx, cp_logit_idx = logit
-        mem_logit, cp_logit, mem_logit_idx, cp_logit_idx = mem_logit.to("cpu"), cp_logit.to("cpu"), mem_logit_idx.to("cpu"), cp_logit_idx.to("cpu")
+        if mem_logit_idx is not None:
+            mem_logit_idx = mem_logit_idx.to("cpu")
+        if cp_logit_idx is not None:
+            cp_logit_idx = cp_logit_idx.to("cpu")
+        mem_logit, cp_logit = mem_logit.to("cpu"), cp_logit.to("cpu")
         index = self._get_index(layer, position, head)
         self.logits["mem_logit"][index].append(mem_logit)
         self.logits["cp_logit"][index].append(cp_logit)
@@ -228,7 +229,7 @@ class LogitLens(BaseExperiment):
                             normalize=normalize_logit,
                             return_index=return_index,
                         )
-                        storer.store(layer=layer, position=position, logit=logit_token) # type: ignore
+                        storer.store(layer=layer, position=position, logit=logit_token)  # type: ignore
                 elif component in self.valid_heads:
                     cached_component = cache[f"blocks.{layer}.attn.hook_z"]
                     for head in range(self.model.cfg.n_heads):
@@ -250,7 +251,7 @@ class LogitLens(BaseExperiment):
                                 layer=layer,
                                 position=position,
                                 head=head,
-                                logit=logit_token, # type: ignore
+                                logit=logit_token,  # type: ignore
                             )
                 else:
                     raise ValueError(
@@ -288,7 +289,7 @@ class LogitLens(BaseExperiment):
 
     def compute_mean_over_layers(self, result: Tuple[torch.Tensor, ...]):
         # for each layer, compute the mean over the lengths
-        mean_result = tuple( # type: ignore
+        mean_result = tuple(  # type: ignore
             [result[idx_tuple].mean(dim=-1) for idx_tuple in range(len(result))]
         )
 
