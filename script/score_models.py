@@ -15,7 +15,6 @@ from src.score_models import EvaluateMechanism  # noqa: E402
 from src.dataset import HFDataset  # noqa: E402
 from transformers import AutoTokenizer  # noqa: E402
 import torch  # noqa: E402
-torch.backends.cuda.matmul.allow_tf32 = True
 import os  # noqa: E402
 from argparse import ArgumentParser  # noqa: E402
 from dataclasses import dataclass, field  # noqa: E402
