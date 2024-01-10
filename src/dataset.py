@@ -257,8 +257,9 @@ class BaseDataset(Dataset):
         # token_to_be_similar = data_point["target_true_token"]
         # base_prompt = data_point["base_prompt"]
         # return self._get_similar_token(token_to_be_similar_str, token_to_be_similar, similarity_level, similarity_type, base_prompt)
+        num_possible_choices = len(data_point[f"similar_tokens_{similarity_level}"])
         string_token = data_point[f"similar_tokens_{similarity_level}"][
-            random.randint(0, 9)
+            random.randint(0, num_possible_choices - 1)
         ]
         return string_token
 
@@ -414,7 +415,7 @@ class HFDataset(BaseDataset):
         ),
     ):
         if isinstance(model, str):
-            self.model = AutoModelForCausalLM.from_pretrained(model)
+            self.model = AutoModelForCausalLM.from_pretrained(model, torch_dtype=torch.float16,)
             self.model = self.model.cuda()
         else:
             self.model = model
