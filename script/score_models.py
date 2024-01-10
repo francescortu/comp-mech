@@ -40,6 +40,7 @@ class Options:
 @dataclass
 class LaunchConfig:
     model_name: str
+    hf_model_name: str
     similarity: bool
     interval: int
     family_name: str
@@ -60,14 +61,14 @@ def launch_evaluation(config: LaunchConfig):
     else:
         save_name = config.model_name
     dataset_path = f"../data/full_data_sampled_{save_name}.json"
-    check_dataset_and_sample(dataset_path, config.model_name)
+    check_dataset_and_sample(dataset_path, config.model_name, config.hf_model_name)
     dataset = HFDataset(
         model=config.model_name,
         tokenizer=tokenizer,
         path=dataset_path,
         slice=10000,
         premise=config.premise,
-        similarity=(config.similarity, config.interval, "input"),
+        similarity=(config.similarity, config.interval, "logit"),
     )
     print("Dataset loaded")
     evaluator = EvaluateMechanism(
@@ -75,7 +76,7 @@ def launch_evaluation(config: LaunchConfig):
         dataset=dataset,
         device=DEVICE,
         batch_size=config.batch_size,
-        similarity=(config.similarity, config.interval, "input"),
+        similarity=(config.similarity, config.interval, "logit"),
         premise=config.premise,
         family_name=config.family_name,
         num_samples=config.num_samples,
@@ -87,13 +88,13 @@ def evaluate_size(options: Options):
     for model_name in options.models_name:
         launch_config = LaunchConfig(
             model_name=model_name,
+            hf_model_name=model_name,
             similarity=False,
             interval=0,
             family_name=FAMILY_NAME,
             num_samples=NUM_SAMPLES,
         )
         launch_evaluation(launch_config)
-    
 
 
 def evaluate_premise(options: Options):
@@ -101,6 +102,7 @@ def evaluate_premise(options: Options):
         for premise in options.premise:
             launch_config = LaunchConfig(
                 model_name=model_name,
+                hf_model_name=model_name,
                 similarity=False,
                 interval=0,
                 family_name=FAMILY_NAME,
@@ -115,6 +117,7 @@ def evaluate_similarity_default_premise(options: Options):
         for interval in options.interval:
             launch_config = LaunchConfig(
                 model_name=model_name,
+                hf_model_name=model_name,
                 similarity=True,
                 interval=interval,
                 family_name=FAMILY_NAME,
@@ -129,6 +132,7 @@ def evaluate_similarity_all_premise(options: Options):
             for interval in options.interval:
                 launch_config = LaunchConfig(
                     model_name=model_name,
+                    hf_model_name=model_name,
                     similarity=True,
                     interval=interval,
                     family_name=FAMILY_NAME,

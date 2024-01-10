@@ -40,7 +40,7 @@ def get_hf_model_name(model_name):
     elif "opt" in model_name:
         return "facebook/" + model_name
     elif "pythia" in model_name:
-    	return "EleutherAI/" + model_name
+        return "EleutherAI/" + model_name
     else:
         raise ValueError("No HF model name found for model name: ", model_name)
     return model_name
@@ -296,7 +296,7 @@ def load_model(config) -> Union[WrapHookedTransformer, HookedTransformer]:
         return model # type: ignore
     model = WrapHookedTransformer.from_pretrained(config.model_name, device="cpu")
     model = model.to("cuda")
-    return model
+    return model # type: ignore
 
 def main(args):
     config = Config().from_args(args)

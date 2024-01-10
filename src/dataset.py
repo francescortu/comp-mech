@@ -1,8 +1,4 @@
 from abc import abstractmethod
-from cgitb import Hook
-from functools import cache
-from gc import disable
-import re
 
 import torch
 from torch._tensor import Tensor
@@ -10,7 +6,7 @@ from torch.utils.data import Dataset
 import json
 from tqdm import tqdm
 import random
-from typing import Optional, Tuple, Union, List
+from typing import Literal, Optional, Tuple, Union, List, Dict
 from src.model import WrapHookedTransformer
 from transformers import AutoModelForCausalLM
 from transformer_lens import HookedTransformer
@@ -24,7 +20,7 @@ class BaseDataset(Dataset):
         path: str,
         slice: Optional[int] = None,
         premise: str = "Redefine:",
-        similarity: Tuple[bool, int, str] = (False, 0, "input"),
+        similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = (False, 0, "logit"),
     ):
         self.full_data = json.load(open(path))
         if slice is not None:
@@ -33,13 +29,13 @@ class BaseDataset(Dataset):
         self.similarity = similarity
 
         if similarity[0] is True:
-            similarity_path = path.split(".")[0] + "_similarity.json"
+            similarity_path = path.split(".json")[0] + "_similarity.json" if slice is None else path.split(".json")[0] + f"_similarity_{slice}.json"
             if os.path.isfile(similarity_path):
                 logging.info("Similarity file found, loading it")
                 self.full_data = json.load(open(similarity_path))
             else:
                 logging.info("Similarity file not found, generating it")
-                self.generate_similarity_dataset()
+                self.full_data = self.generate_similarity_dataset(similarity[2])
                 json.dump(self.full_data, open(similarity_path, "w"), indent=2)
 
         self.lengths = self._get_lenghts_and_tokenize()
@@ -81,17 +77,22 @@ class BaseDataset(Dataset):
         """
         lenghts = []
         for d in self.full_data:
-            prompt = d["template"].format(self.premise, d["target_new"])
+            if self.similarity[0] is True:
+                target_new = self.get_similar_token(d, self.similarity[1])
+            else:
+                target_new = d["target_new"]
+            
+            prompt = d["template"].format(self.premise, target_new)
             d["prompt"] = prompt
             d["tokenized_prompt"] = self._tokenize_prompt(prompt, True)  # ( L)
-            target_new_token = self._tokenize_target(d["target_new"], False).cuda()  # (1)
+            target_new_token = self._tokenize_target(target_new, False).cuda()  # (1)
             d["target_new_token"] = target_new_token
             target_true_token = self._tokenize_target(d["target_true"], False).cuda()  # (1)
             d["target_true_token"] = target_true_token
             d["targets"] = torch.cat(
                 [target_true_token, target_new_token], dim=0
             )  # (2)
-            obj_pos_indices = (d["tokenized_prompt"] == target_new_token).nonzero(as_tuple=True)[0]
+            obj_pos_indices = (d["tokenized_prompt"] == target_new_token.cpu()).nonzero(as_tuple=True)[0]
             if obj_pos_indices.size(0) > 0:
                 d["obj_pos"] = obj_pos_indices[0].item()
             else:
@@ -100,54 +101,44 @@ class BaseDataset(Dataset):
             if d["length"] not in lenghts:
                 lenghts.append(d["length"])
                 
-        if self.similarity[0] is True:
-            self.apply_similarity() #TODO test this and make sure it works 
+            print(d)
             
         self._clear_cache()     # free up memory, we don't need the model anymore
         
         return lenghts
     
-    def generate_similarity_dataset(self):
-        BATCH_SIZE = 200
-        vocab_size = self._get_vocab_size()
-        for d in tqdm(self.full_data, desc="Generating similarity dataset", total=len(self.full_data), disable=True):
-            base_prompt = d["prompt"].format("", d["target_new"])
-            score_tensor = torch.zeros((vocab_size, 1))
-            for token_id in tqdm(range(vocab_size//BATCH_SIZE), desc="vocab", total=vocab_size//BATCH_SIZE):
-                # token to string in batch
-                token_strs = self._to_string_token([j for j in range(token_id*BATCH_SIZE, (token_id+1)*BATCH_SIZE)])
-                aux_prompts = [d["prompt"].format("", token_str) for token_str in token_strs]
-                score_tensor[token_id*BATCH_SIZE:(token_id+1)*BATCH_SIZE] = self._get_similarity_score(base_prompt, aux_prompts).unsqueeze(1)
-
-            score_tensor, sorted_indices = score_tensor.sort(descending=True)
-            #remove the first element (the target)
-            sorted_indices = sorted_indices[1:]
-            score_tensor = score_tensor[1:]
-            
-            group = {}
-            group[1] = sorted_indices[score_tensor < torch.quantile(score_tensor, 0.25)]
-            group[2]= sorted_indices[(score_tensor >= torch.quantile(score_tensor, 0.25)) & (score_tensor < torch.quantile(score_tensor, 0.5))]
-            group[3] = sorted_indices[(score_tensor >= torch.quantile(score_tensor, 0.5)) & (score_tensor < torch.quantile(score_tensor, 0.75))]
-            group[4] = sorted_indices[score_tensor >= torch.quantile(score_tensor, 0.75)]
-            
-            #sample 10 tokens from each group
-            group_tokens = {i+1:[] for i in range(4)}
-            for j in range(10):
-                for i in range(4):
-                    sampled_token_idx = torch.randint(0, len(group[i+1]), (1,)).item()
-                    sampled_token = group[i+1][sampled_token_idx]
-                    sampled_token_str = self._to_string_token(sampled_token.item())
-                    group_tokens[i+1].append((sampled_token_str, sampled_token))
-                    
-            #add the tokens to the dataset
-            d["similar_tokens_1"] = group_tokens[1]
-            d["similar_tokens_2"] = group_tokens[2]
-            d["similar_tokens_3"] = group_tokens[3]
-            d["similar_tokens_4"] = group_tokens[4]
-            
-        self.full_data = self.full_data
+    def generate_similarity_dataset(self, method:Literal["word2vec", "logit"]) -> List[dict]:
+        if method == "word2vec":
+            return self.generate_similarity_dataset_word2vec()
+        elif method == "logit":
+            return self.generate_similarity_dataset_logit()
+        else:
+            raise ValueError("method must be either 'word2vec' or 'logit'")
         
+    def generate_similarity_dataset_word2vec(self) -> List[dict]:
+        raise NotImplementedError
+    
+    def generate_similarity_dataset_logit(self) -> List[dict]:
+        """
+        Generate the similarity token from the top predictions of the model
+        """
+        for d in tqdm(self.full_data, desc="Generating similarity tokens", total=len(self.full_data)):
+            best_string_token_predictions = self.get_best_string_token_predictions(d["base_prompt"], 100)
+            token_per_similarity_level = self.get_token_per_similarity_level(d["base_prompt"], d["target_true"], best_string_token_predictions)
+            d["similar_tokens_1"] = token_per_similarity_level[1]
+            d["similar_tokens_2"] = token_per_similarity_level[2]
+            d["similar_tokens_3"] = token_per_similarity_level[3]
+            d["similar_tokens_4"] = token_per_similarity_level[4]
             
+        return self.full_data
+            
+    @abstractmethod
+    def get_best_string_token_predictions(self, prompt: str, n: int) -> List[str]:
+        pass
+    
+    @abstractmethod
+    def get_token_per_similarity_level(self, prompt: str, target:str, best_string_token_predictions: List[str]) -> Dict[int, List[str]]:
+        pass
     
     def _clear_cache(self):
         """
@@ -194,34 +185,34 @@ class BaseDataset(Dataset):
 
         assert self.check_duplicate()
 
-    def apply_similarity(self):
-        """
-        Apply the similarity to the dataset
-        """
-        # similarity level
-        similarity_level = self.similarity[1]
-        similarity_type = self.similarity[2]
+    # def apply_similarity(self):
+    #     """
+    #     Apply the similarity to the dataset
+    #     """
+    #     # similarity level
+    #     similarity_level = self.similarity[1]
+    #     similarity_type = self.similarity[2]
 
-        for d in tqdm(self.full_data, desc="Applying similarity", total=len(self.full_data)):
-            similar_token_str, similar_token = self.get_similar_token(
-                d, similarity_level, similarity_type
-            )
-            d["prompt"] = d["prompt"].replace(d["target_new"], similar_token_str)
-            d["tokenized_prompt"][d["obj_pos"]] = similar_token[0, 0]
-            d["targets"][1] = similar_token[0, 0]
-            d["target_new"] = similar_token_str
-            d["target_new_token"] = similar_token
-            
+    #     for d in tqdm(self.full_data, desc="Applying similarity", total=len(self.full_data)):
+    #         similar_token_str, similar_token = self.get_similar_token(
+    #             d, similarity_level, similarity_type
+    #         )
+    #         d["prompt"] = d["prompt"].replace(d["target_new"], similar_token_str)
+    #         d["tokenized_prompt"][d["obj_pos"]] = similar_token.item()
+    #         d["targets"][1] = similar_token_str
+    #         d["target_new"] = similar_token_str
+    #         d["target_new_token"] = similar_token
+    #         print(d)
 
-        # for idx in range(self.__len__()):
-        #     similar_token_str, similar_token = self.get_similar_token(
-        #         idx, similarity_level, similarity_type
-        #     )
-        #     self.prompts[idx] = self.prompts[idx].replace(self.data[idx]["target_new"], similar_token_str)
-        #     self.tokenized_prompts[idx][0, self.data[idx]["obj_pos"]] = similar_token[0, 0]
-        #     self.targets[idx][0, 1] = similar_token[0, 0]
-        #     self.data[idx]["target_new"] = similar_token_str
-        #     self.data[idx]["target_new_token"] = similar_token
+    #     # for idx in range(self.__len__()):
+    #     #     similar_token_str, similar_token = self.get_similar_token(
+    #     #         idx, similarity_level, similarity_type
+    #     #     )
+    #     #     self.prompts[idx] = self.prompts[idx].replace(self.data[idx]["target_new"], similar_token_str)
+    #     #     self.tokenized_prompts[idx][0, self.data[idx]["obj_pos"]] = similar_token[0, 0]
+    #     #     self.targets[idx][0, 1] = similar_token[0, 0]
+    #     #     self.data[idx]["target_new"] = similar_token_str
+    #     #     self.data[idx]["target_new_token"] = similar_token
             
 
     def check_duplicate(self):
@@ -239,15 +230,13 @@ class BaseDataset(Dataset):
         return True
 
 
-    def get_similar_token(self, data_point: dict, similarity_level: int, similarity_type: str) -> Tuple[str, torch.Tensor]:
+    def get_similar_token(self, data_point: dict, similarity_level: int) -> str:
         # token_to_be_similar_str = data_point["target_true"]
         # token_to_be_similar = data_point["target_true_token"]
         # base_prompt = data_point["base_prompt"]
         # return self._get_similar_token(token_to_be_similar_str, token_to_be_similar, similarity_level, similarity_type, base_prompt)
         string_token = data_point[f"similar_tokens_{similarity_level}"][random.randint(0,9)]
-        token = self._tokenize_target(string_token[0], False)
-        
-        return string_token, token
+        return string_token
 
     @abstractmethod
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
@@ -259,10 +248,6 @@ class BaseDataset(Dataset):
     
     @abstractmethod
     def _get_similar_token(self, token_to_be_similar_str: str, token_to_be_similar: torch.Tensor, similarity_level: int, similarity_type: str, base_prompt:str) -> Tuple[str, torch.Tensor]:
-        pass
-    
-    @abstractmethod
-    def _get_vocab_size(self) -> int:
         pass
     
     @ abstractmethod
@@ -280,7 +265,7 @@ class TlensDataset(BaseDataset):
         model: Union[WrapHookedTransformer, str, HookedTransformer],
         slice: Optional[int] = None,
         premise: str = "Redefine:",
-        similarity: Tuple[bool, int, str] = (False, 0, "input"),
+        similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = (False, 0, "logit"),
     ):
         if isinstance(model, str):
             self.model = WrapHookedTransformer.from_pretrained(model)
@@ -342,18 +327,12 @@ class TlensDataset(BaseDataset):
     def _to_string_token(self, token_id: int) -> str:
         return self.model.to_string(torch.tensor(token_id))
     
-    @abstractmethod
-    def _get_similarity_score(self, base_prompt: str, aux_prompt: str) -> torch.Tensor:
-        #get embeddings of the base prompt
-        with torch.no_grad():
-            _, cache_base = self.model.run_with_cache(base_prompt)
-            _, cache_aux = self.model.run_with_cache(aux_prompt)
-            #get the embeddings
-            embeddings_base = cache_base["resid_post", -1][0,-1,:] # 768
-            embeddings_aux = cache_aux["resid_post", -1][0,-1,:]
-            #get the similarity
-            similarity = torch.nn.functional.cosine_similarity(embeddings_base, embeddings_aux, dim=-1)
-        return similarity
+    def get_best_string_token_predictions(self, prompt: str, n: int) -> List[str]:
+        raise NotImplementedError
+    
+    def get_token_per_similarity_level(self, prompt: str, best_string_token_predictions: List[str]) -> Dict[int, List[str]]:
+        raise NotImplementedError
+
             
 
 class HFDataset(BaseDataset):
@@ -364,7 +343,7 @@ class HFDataset(BaseDataset):
         path: str,
         slice: Optional[int] = None,
         premise: str = "Redefine:",
-        similarity: Tuple[bool, int, str] = (False, 0, "input"),
+        similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = (False, 0, "logit"),
     ):
         if isinstance(model, str):
             self.model = AutoModelForCausalLM.from_pretrained(model)
@@ -486,37 +465,49 @@ class HFDataset(BaseDataset):
             return "test", torch.tensor([[0]])
         else:
             raise ValueError("similarity_type must be either 'input' or 'output'")
-        
-
-    def _get_vocab_size(self) -> int:
-        return self.model.config.vocab_size
-    
-    
+            
     def _to_string_token(self, token_id: List[int]) -> List[str]:
         list_of_strings = [self.tokenizer.decode(j) for j in token_id]
         return list_of_strings
+
+    def get_best_string_token_predictions(self, prompt: str, n: int = 1000) -> List[str]:
+        input_ids = self.tokenizer.encode(prompt, return_tensors="pt") 
+        input_ids = input_ids.to(self.model.device) #type: ignore
+        logits = self.model(input_ids)["logits"][0, -1, :].cpu() # type: ignore
+        sorted_indices = logits.argsort(descending=True)
+        sorted_indices = sorted_indices[:n]
+        best_string_token_predictions = self._to_string_token(sorted_indices)
+        return best_string_token_predictions
     
-    
-    def _get_similarity_score(self, base_embedding: str, aux_prompt: List[str]) -> torch.Tensor:
-        with torch.no_grad():
-            base_prompt = self.tokenizer.encode(base_prompt, return_tensors="pt", add_special_tokens=False).to(self.model.device)
-            for i, aux in enumerate(aux_prompt):
-                aux_prompt[i] = self.tokenizer.encode(aux, return_tensors="pt", add_special_tokens=False).to(self.model.device)
-            # stack in the same tensor
-            aux_prompt = torch.cat(aux_prompt, dim=0)
-            # add dimension to base prompt
+    def get_token_per_similarity_level(self, prompt: str, target:str, best_string_token_predictions: List[str]) -> Dict[int, List[str]]:
+        prompt_ids = self.tokenizer.encode(prompt, return_tensors="pt")
+        prompt_ids = prompt_ids.to(self.model.device) #type: ignore
+        prompt_embedding = self.model(prompt_ids, output_hidden_states=True).hidden_states[-1][0,-1,:] # type: ignore
+        similarity_scores = {}
+        for string_token in best_string_token_predictions:
+            new_prompt = prompt.replace(target, string_token)
+            new_prompt_ids = self.tokenizer.encode(new_prompt, return_tensors="pt")
+            new_prompt_ids = new_prompt_ids.to(self.model.device) #type: ignore
+            new_prompt_embedding = self.model(new_prompt_ids, output_hidden_states=True)["hidden_states"][-1][0,-1,:] # type: ignore
+            similarity_scores[string_token] = torch.nn.functional.cosine_similarity(prompt_embedding, new_prompt_embedding, dim=-1).item()
+        
+        # sort the tokens by similarity
+        sorted_tokens = sorted(similarity_scores.items(), key=lambda x: x[1], reverse=True)
+        sorted_tokens = [token for token, score in sorted_tokens]
+        
+        # get the lenght of the dataset and split it into 4 groups
+        length = len(sorted_tokens)
+
+        group = {}
+        group[1] = sorted_tokens[:length//4]
+        group[2] = sorted_tokens[length//4:length//2]
+        group[3] = sorted_tokens[length//2:3*length//4]
+        group[4] = sorted_tokens[3*length//4:]
+        
+        return group
+        
+        
             
-
-            #get the embeddings
-            base_prompt_embedding = self.model(base_prompt, output_hidden_states=True)["hidden_states"][-1][:,-1,:]
-            aux_prompt_embedding = self.model(aux_prompt, output_hidden_states=True)["hidden_states"][-1][:,-1,:]
-            #get the similarity
-            similarity = torch.nn.functional.cosine_similarity(base_prompt_embedding, aux_prompt_embedding, dim=-1)
-        return similarity
-    
-    
-
-
 
 class SampleDataset:
     def __init__(self, path:str, model, save_path:str, tokenizer:Optional[object]):
