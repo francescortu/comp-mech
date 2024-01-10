@@ -167,6 +167,8 @@ if __name__ == "__main__":
     parser.add_argument("--premise", action="store_true")
     parser.add_argument("--similarity", action="store_true")
     parser.add_argument("--num-samples", type=int, default=NUM_SAMPLES)
+    
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args()
+    NUM_SAMPLES = args.num_samples
     main(args)
