@@ -34,7 +34,7 @@ class BaseDataset(Dataset):
 
         if similarity[0] is True:
             similarity_path = (
-                path.split(".json")[0] + "_similarity.json"
+                path.split(".json")[0] + f"_similarity_{similarity[2]}.json"
                 if slice is None
                 else path.split(".json")[0] + f"_similarity_{slice}.json"
             )
@@ -305,7 +305,7 @@ class TlensDataset(BaseDataset):
         ),
     ):
         if isinstance(model, str):
-            self.model = WrapHookedTransformer.from_pretrained(model)
+            self.model = WrapHookedTransformer.from_pretrained(model, device="cuda")
         else:
             self.model = model
         self.model.eval()
@@ -415,8 +415,12 @@ class HFDataset(BaseDataset):
         ),
     ):
         if isinstance(model, str):
-            self.model = AutoModelForCausalLM.from_pretrained(model, device_map="auto", load_in_4bit=True)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model,
+                torch_dtype=torch.bfloat16,
+            )
             self.model = self.model.cuda()
+
         else:
             self.model = model
         self.tokenizer = tokenizer
