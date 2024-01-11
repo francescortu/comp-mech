@@ -415,7 +415,7 @@ class HFDataset(BaseDataset):
         ),
     ):
         if isinstance(model, str):
-            self.model = AutoModelForCausalLM.from_pretrained(model, device_map="auto", load_in_4bit=True)
+            self.model = AutoModelForCausalLM.from_pretrained(model, torch_dtype=torch.bfloat16,)
             self.model = self.model.cuda()
         else:
             self.model = model
