@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -n10
-#SBATCH --job-name=ablate_attn_out
+#SBATCH --job-name=similarity
 #SBATCH -N1
 #SBATCH -p DGX
 #SBATCH --gpus=1
@@ -11,4 +11,4 @@
 
 conda activate torch
 cd script
-python score_models.py --similarity --num-samples 1
+python score_models.py --similarity --num-samples 1 --similarity-type word2vec
