@@ -18,7 +18,7 @@ import torch  # noqa: E402
 import os  # noqa: E402
 from argparse import ArgumentParser  # noqa: E402
 from dataclasses import dataclass, field  # noqa: E402
-from typing import List  # noqa: E402
+from typing import List, Literal  # noqa: E402
 from src.utils import check_dataset_and_sample  # noqa: E402
 
 NUM_SAMPLES = 10
@@ -43,10 +43,12 @@ class LaunchConfig:
     hf_model_name: str
     similarity: bool
     interval: int
+    similarity_type: Literal["logit", "word2vec"] 
     family_name: str
     premise: str = "Redefine"
     num_samples: int = 1
     batch_size: int = 50
+    
 
 
 def launch_evaluation(config: LaunchConfig):
@@ -68,7 +70,7 @@ def launch_evaluation(config: LaunchConfig):
         path=dataset_path,
         slice=10000,
         premise=config.premise,
-        similarity=(config.similarity, config.interval, "logit"),
+        similarity=(config.similarity, config.interval, config.similarity_type),
     )
     print("Dataset loaded")
     evaluator = EvaluateMechanism(
@@ -76,7 +78,7 @@ def launch_evaluation(config: LaunchConfig):
         dataset=dataset,
         device=DEVICE,
         batch_size=config.batch_size,
-        similarity=(config.similarity, config.interval, "logit"),
+        similarity=(config.similarity, config.interval, config.similarity_type),
         premise=config.premise,
         family_name=config.family_name,
         num_samples=config.num_samples,
@@ -91,6 +93,7 @@ def evaluate_size(options: Options):
             hf_model_name=model_name,
             similarity=False,
             interval=0,
+            similarity_type=SIMILARITY_TYPE,
             family_name=FAMILY_NAME,
             num_samples=NUM_SAMPLES,
         )
@@ -105,6 +108,7 @@ def evaluate_premise(options: Options):
                 hf_model_name=model_name,
                 similarity=False,
                 interval=0,
+                similarity_type=SIMILARITY_TYPE,
                 family_name=FAMILY_NAME,
                 premise=premise,
                 num_samples=NUM_SAMPLES,
@@ -120,6 +124,7 @@ def evaluate_similarity_default_premise(options: Options):
                 hf_model_name=model_name,
                 similarity=True,
                 interval=interval,
+                similarity_type=SIMILARITY_TYPE,
                 family_name=FAMILY_NAME,
                 num_samples=NUM_SAMPLES,
             )
@@ -135,6 +140,7 @@ def evaluate_similarity_all_premise(options: Options):
                     hf_model_name=model_name,
                     similarity=True,
                     interval=interval,
+                    similarity_type=SIMILARITY_TYPE,
                     family_name=FAMILY_NAME,
                     premise=premise,
                     num_samples=NUM_SAMPLES,
@@ -166,9 +172,11 @@ if __name__ == "__main__":
     parser.add_argument("--size", action="store_true")
     parser.add_argument("--premise", action="store_true")
     parser.add_argument("--similarity", action="store_true")
+    parser.add_argument("--similarity-type", type=str, default="logit")
     parser.add_argument("--num-samples", type=int, default=NUM_SAMPLES)
     
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args()
     NUM_SAMPLES = args.num_samples
+    SIMILARITY_TYPE = args.similarity_type
     main(args)

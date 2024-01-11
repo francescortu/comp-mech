@@ -1,17 +1,20 @@
 from abc import abstractmethod
 
+from gensim.models import Word2Vec
+import gensim.downloader as api
 import torch
 from torch._tensor import Tensor
 from torch.utils.data import Dataset
 import json
 from tqdm import tqdm
 import random
-from typing import Literal, Optional, Tuple, Union, List, Dict
+from typing import Literal, Optional, Tuple, Union, List, Dict, Any
 from src.model import WrapHookedTransformer
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformer_lens import HookedTransformer
 import logging
 import os
+from line_profiler import profile
 
 
 class BaseDataset(Dataset):
@@ -36,7 +39,7 @@ class BaseDataset(Dataset):
             similarity_path = (
                 path.split(".json")[0] + f"_similarity_{similarity[2]}.json"
                 if slice is None
-                else path.split(".json")[0] + f"_similarity_{slice}.json"
+                else path.split(".json")[0] + f"_similarity_{similarity[2]}_{slice}.json"
             )
             if os.path.isfile(similarity_path):
                 logging.info("Similarity file found, loading it")
@@ -88,7 +91,6 @@ class BaseDataset(Dataset):
             while True:
                 if self.similarity[0] is True:
                     target_new = self.get_similar_token(d, self.similarity[1])
-            
                 else:
                     target_new = d["target_new"]
 
@@ -104,23 +106,31 @@ class BaseDataset(Dataset):
                 d["targets"] = torch.cat(
                     [target_true_token, target_new_token], dim=0
                 )  # (2)
-                obj_pos_indices = (d["tokenized_prompt"] == target_new_token.cpu()).nonzero(
-                    as_tuple=True
-                )[0]
-                if obj_pos_indices.size(0) > 0:
-                    d["obj_pos"] = obj_pos_indices[0].item()
-                else:
-                    #try again with the target_true_token
-                    continue
-                    # raise ValueError("Target not found in prompt")
-                d["length"] = d["tokenized_prompt"].shape[0]
-                if d["length"] not in lenghts:
-                    lenghts.append(d["length"])
-                break
+                try:
+                    obj_pos_indices = (d["tokenized_prompt"] == target_new_token.cpu()).nonzero(
+                        as_tuple=True
+                    )[0]
+                    if obj_pos_indices.size(0) > 0:
+                        d["obj_pos"] = obj_pos_indices[0].item()
+                    else:
+                        if self.similarity[0] is True:
+                            continue  # Resample if similarity is true
+                        else:
+                            raise ValueError("Target not found in prompt")  # Throw exception otherwise
+                    d["length"] = d["tokenized_prompt"].shape[0]
+                    if d["length"] not in lenghts:
+                        lenghts.append(d["length"])
+                    break
+                except RuntimeError:
+                    if self.similarity[0] is True:
+                        continue  # Resample if similarity is true
+                    else:
+                        raise  # Throw exception otherwise
 
         self._clear_cache()  # free up memory, we don't need the model anymore
 
         return lenghts
+
 
     def generate_similarity_dataset(
         self, method: Literal["word2vec", "logit"]
@@ -132,23 +142,64 @@ class BaseDataset(Dataset):
         else:
             raise ValueError("method must be either 'word2vec' or 'logit'")
 
+
     def generate_similarity_dataset_word2vec(self) -> List[dict]:
-        raise NotImplementedError
+        word2vec = api.load("word2vec-google-news-300")
+        for d in tqdm(
+            self.full_data,
+            desc="Generating similarity tokens (word2vec)",
+            total=len(self.full_data),
+        ):
+            base_target = d["target_true"]
+            all_token_with_similarity = self.compute_similarity_word2vec(base_target, word2vec)
+            #save the distribution of the similarity score
+            similarity_score = torch.tensor([score for token, score in all_token_with_similarity])
+            torch.save(similarity_score, f"../data/similarity_score/{base_target}.pt")
+            #
+            # divide the tokens into 4 groups based on the quantile 
+            quartile_1 = torch.quantile(similarity_score, 0.25)
+            quartile_2 = torch.quantile(similarity_score, 0.5)
+            quartile_3 = torch.quantile(similarity_score, 0.75)
+            group = {}
+            group[4] = [token for token, score in all_token_with_similarity if score <quartile_1]
+            group[3] = [token for token, score in all_token_with_similarity if (score >=quartile_1) & (score < quartile_2)]
+            group[2] = [token for token, score in all_token_with_similarity if (score >= quartile_2) & (score < quartile_3)]
+            group[1] = [token for token, score in all_token_with_similarity if score >= quartile_3]
+            
+
+            
+            d["similar_tokens_1"] = group[1]
+            d["similar_tokens_2"] = group[2]
+            d["similar_tokens_3"] = group[3]
+            d["similar_tokens_4"] = group[4]
+            
+        return self.full_data
+            
+
+    
+    @abstractmethod
+    def compute_similarity_word2vec(self, base_target: str, word2vec) -> List[Tuple[str, float]]:
+        pass
+        
 
     def generate_similarity_dataset_logit(self) -> List[dict]:
         """
         Generate the similarity token from the top predictions of the model
         """
+        model = AutoModelForCausalLM.from_pretrained("gpt2", torch_dtype=torch.bfloat16)
+        model = model.cuda()
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        
         for d in tqdm(
             self.full_data,
             desc="Generating similarity tokens",
             total=len(self.full_data),
         ):
             best_string_token_predictions = self.get_best_string_token_predictions(
-                d["base_prompt"], 100
+                d["base_prompt"], tokenizer, model, 100
             )
             token_per_similarity_level = self.get_token_per_similarity_level(
-                d["base_prompt"], d["target_true"], best_string_token_predictions
+                d["base_prompt"], d["target_true"], best_string_token_predictions, tokenizer, model
             )
             d["similar_tokens_1"] = token_per_similarity_level[1]
             d["similar_tokens_2"] = token_per_similarity_level[2]
@@ -156,16 +207,68 @@ class BaseDataset(Dataset):
             d["similar_tokens_4"] = token_per_similarity_level[4]
 
         return self.full_data
+    
+    def get_best_string_token_predictions(
+        self, prompt: str,  tokenizer, model, n: int = 1000,
+    ) -> List[str]:
+        input_ids = tokenizer.encode(prompt, return_tensors="pt")
+        input_ids = input_ids.to(model.device)  # type: ignore
+        logits = model(input_ids)["logits"][0, -1, :].cpu()  # type: ignore
+        sorted_indices = logits.argsort(descending=True)
+        sorted_indices = sorted_indices[:n]
+        best_string_token_predictions = self._to_string_token(sorted_indices, tokenizer)
+        return best_string_token_predictions
 
-    @abstractmethod
-    def get_best_string_token_predictions(self, prompt: str, n: int) -> List[str]:
-        pass
-
-    @abstractmethod
     def get_token_per_similarity_level(
-        self, prompt: str, target: str, best_string_token_predictions: List[str]
+        self, prompt: str, target: str, best_string_token_predictions: List[str], tokenizer, model
     ) -> Dict[int, List[str]]:
-        pass
+        prompt_ids = tokenizer.encode(prompt, return_tensors="pt")
+        prompt_ids = prompt_ids.to(model.device)  # type: ignore
+        prompt_embedding = model(
+            prompt_ids, output_hidden_states=True
+        ).hidden_states[-1][0, -1, :]  # type: ignore
+        similarity_scores = {}
+        for string_token in best_string_token_predictions:
+            new_prompt = prompt.replace(target, string_token)
+            new_prompt_ids = tokenizer.encode(new_prompt, return_tensors="pt")
+            new_prompt_ids = new_prompt_ids.to(model.device)  # type: ignore
+            new_prompt_embedding = model(
+                new_prompt_ids, output_hidden_states=True
+            )["hidden_states"][-1][0, -1, :]  # type: ignore
+            similarity_scores[string_token] = torch.nn.functional.cosine_similarity(
+                prompt_embedding, new_prompt_embedding, dim=-1
+            ).item()
+
+        # sort the tokens by similarity
+        sorted_tokens = sorted(
+            similarity_scores.items(), key=lambda x: x[1], reverse=True
+        )
+        sorted_tokens = [token for token, score in sorted_tokens]
+
+        # get the lenght of the dataset and split it into 4 groups
+        length = len(sorted_tokens)
+
+        group = {}
+        group[1] = sorted_tokens[: length // 4]
+        group[2] = sorted_tokens[length // 4 : length // 2]
+        group[3] = sorted_tokens[length // 2 : 3 * length // 4]
+        group[4] = sorted_tokens[3 * length // 4 :]
+
+        return group
+
+    def _to_string_token(self, token_id: List[int], tokenizer) -> List[str]:
+        list_of_strings = [tokenizer.decode(j) for j in token_id]
+        return list_of_strings
+
+    # @abstractmethod
+    # def get_best_string_token_predictions(self, prompt: str, n: int) -> List[str]:
+    #     pass
+
+    # @abstractmethod
+    # def get_token_per_similarity_level(
+    #     self, prompt: str, target: str, best_string_token_predictions: List[str]
+    # ) -> Dict[int, List[str]]:
+    #     pass
 
     def _clear_cache(self):
         """
@@ -285,9 +388,9 @@ class BaseDataset(Dataset):
     ) -> Tuple[str, torch.Tensor]:
         pass
 
-    @abstractmethod
-    def _to_string_token(self, token_id: List[int]) -> str:
-        pass
+    # @abstractmethod
+    # def _to_string_token(self, token_id: List[int]) -> str:
+    #     pass
 
     @abstractmethod
     def _get_similarity_score(self, base_prompt: str, aux_prompt: str) -> torch.Tensor:
@@ -401,8 +504,8 @@ class TlensDataset(BaseDataset):
         self, prompt: str, best_string_token_predictions: List[str]
     ) -> Dict[int, List[str]]:
         raise NotImplementedError
-
-
+    def compute_similarity_word2vec(self, base_target: str, word2vec) -> List[Tuple[str, float]]:
+        raise NotImplementedError
 class HFDataset(BaseDataset):
     def __init__(
         self,
@@ -443,219 +546,232 @@ class HFDataset(BaseDataset):
         assert len(tokens.shape) == 1
         return tokens
 
-    def _get_similar_token(
-        self,
-        token_to_be_similar_str: str,
-        token_to_be_similar: torch.Tensor,
-        similarity_level: int,
-        similarity_type: str,
-        base_prompt: str,
-    ) -> Tuple[str, torch.Tensor]:
-        if similarity_type == "input":
-            if token_to_be_similar.ndim == 1:
-                token_to_be_similar = token_to_be_similar.cuda()
-            elif token_to_be_similar.ndim > 1:
-                token_to_be_similar = token_to_be_similar[0, 0].unsqueeze(0).cuda()
-            else:
-                token_to_be_similar = token_to_be_similar[0, 0].unsqueeze(0).cuda()
+    # def _get_similar_token(
+    #     self,
+    #     token_to_be_similar_str: str,
+    #     token_to_be_similar: torch.Tensor,
+    #     similarity_level: int,
+    #     similarity_type: str,
+    #     base_prompt: str,
+    # ) -> Tuple[str, torch.Tensor]:
+    #     if similarity_type == "input":
+    #         if token_to_be_similar.ndim == 1:
+    #             token_to_be_similar = token_to_be_similar.cuda()
+    #         elif token_to_be_similar.ndim > 1:
+    #             token_to_be_similar = token_to_be_similar[0, 0].unsqueeze(0).cuda()
+    #         else:
+    #             token_to_be_similar = token_to_be_similar[0, 0].unsqueeze(0).cuda()
 
-            with torch.no_grad():
-                embeddings = self.model.get_input_embeddings().cuda()  # type: ignore
-                token_to_be_similar_emb = embeddings(token_to_be_similar)
+    #         with torch.no_grad():
+    #             embeddings = self.model.get_input_embeddings().cuda()  # type: ignore
+    #             token_to_be_similar_emb = embeddings(token_to_be_similar)
 
-            cosine_similarity = torch.nn.functional.cosine_similarity(
-                embeddings.weight, token_to_be_similar_emb.unsqueeze(0), dim=-1
-            ).squeeze()
+    #         cosine_similarity = torch.nn.functional.cosine_similarity(
+    #             embeddings.weight, token_to_be_similar_emb.unsqueeze(0), dim=-1
+    #         ).squeeze()
 
-            cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
+    #         cosine_similarity, sorted_indices = cosine_similarity.sort(descending=True)
 
-            sorted_indices = sorted_indices[1:]
-            cosine_similarity = cosine_similarity[1:]
-            print("Cosine similarity shape", cosine_similarity.shape)
-            group = {}
-            group[1] = sorted_indices[
-                cosine_similarity < torch.quantile(cosine_similarity, 0.25)
-            ]
-            group[2] = sorted_indices[
-                (cosine_similarity >= torch.quantile(cosine_similarity, 0.25))
-                & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))
-            ]
-            group[3] = sorted_indices[
-                (cosine_similarity >= torch.quantile(cosine_similarity, 0.5))
-                & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))
-            ]
-            group[4] = sorted_indices[
-                cosine_similarity >= torch.quantile(cosine_similarity, 0.75)
-            ]
+    #         sorted_indices = sorted_indices[1:]
+    #         cosine_similarity = cosine_similarity[1:]
+    #         print("Cosine similarity shape", cosine_similarity.shape)
+    #         group = {}
+    #         group[1] = sorted_indices[
+    #             cosine_similarity < torch.quantile(cosine_similarity, 0.25)
+    #         ]
+    #         group[2] = sorted_indices[
+    #             (cosine_similarity >= torch.quantile(cosine_similarity, 0.25))
+    #             & (cosine_similarity < torch.quantile(cosine_similarity, 0.5))
+    #         ]
+    #         group[3] = sorted_indices[
+    #             (cosine_similarity >= torch.quantile(cosine_similarity, 0.5))
+    #             & (cosine_similarity < torch.quantile(cosine_similarity, 0.75))
+    #         ]
+    #         group[4] = sorted_indices[
+    #             cosine_similarity >= torch.quantile(cosine_similarity, 0.75)
+    #         ]
 
-            sampled_token_idx = torch.randint(
-                0, len(group[similarity_level]), (1,)
-            ).item()
-            sampled_token = group[similarity_level][sampled_token_idx]
-            sampled_token_str = self.tokenizer.decode(sampled_token.item())
-            sampled_token = sampled_token.unsqueeze(0).unsqueeze(0)
-            assert (
-                sampled_token_str != token_to_be_similar_str
-            ), "sampled_token_str is the same as token_to_be_similar_str"
-            assert sampled_token.shape[0] == 1, "sampled_token is not a 1D tensor"
-            assert len(sampled_token.shape) == 2, "sampled_token is not a 2D tensor"
-            assert isinstance(
-                sampled_token_str, str
-            ), "sampled_token_str is not a string"
-            print(
-                "Original token:",
-                token_to_be_similar_str,
-                "Similar token:",
-                sampled_token_str,
-            )
-            return sampled_token_str, sampled_token
+    #         sampled_token_idx = torch.randint(
+    #             0, len(group[similarity_level]), (1,)
+    #         ).item()
+    #         sampled_token = group[similarity_level][sampled_token_idx]
+    #         sampled_token_str = self.tokenizer.decode(sampled_token.item())
+    #         sampled_token = sampled_token.unsqueeze(0).unsqueeze(0)
+    #         assert (
+    #             sampled_token_str != token_to_be_similar_str
+    #         ), "sampled_token_str is the same as token_to_be_similar_str"
+    #         assert sampled_token.shape[0] == 1, "sampled_token is not a 1D tensor"
+    #         assert len(sampled_token.shape) == 2, "sampled_token is not a 2D tensor"
+    #         assert isinstance(
+    #             sampled_token_str, str
+    #         ), "sampled_token_str is not a string"
+    #         print(
+    #             "Original token:",
+    #             token_to_be_similar_str,
+    #             "Similar token:",
+    #             sampled_token_str,
+    #         )
+    #         return sampled_token_str, sampled_token
 
-        elif similarity_type == "output":
-            hidden_state = self.model(token_to_be_similar, output_hidden_states=True)[
-                "hidden_states"
-            ][-1]  # type: ignore
-            print("HIDDEN STATE SHAPE", hidden_state.shape)
-            if hidden_state.ndim == 2:
-                hidden_state = hidden_state[-1, :]
-            if hidden_state.ndim == 3:
-                hidden_state = hidden_state[-1, -1, :]
+    #     elif similarity_type == "output":
+    #         hidden_state = self.model(token_to_be_similar, output_hidden_states=True)[
+    #             "hidden_states"
+    #         ][-1]  # type: ignore
+    #         print("HIDDEN STATE SHAPE", hidden_state.shape)
+    #         if hidden_state.ndim == 2:
+    #             hidden_state = hidden_state[-1, :]
+    #         if hidden_state.ndim == 3:
+    #             hidden_state = hidden_state[-1, -1, :]
 
-            # rotate the vector
-            factors = [1, 0.5, 0.25, 0.0]  # Adjust these values as needed
+    #         # rotate the vector
+    #         factors = [1, 0.5, 0.25, 0.0]  # Adjust these values as needed
 
-            # Sampling new vectors
-            similar_vectors = []
-            similarity_values = []
-            for factor in factors:
-                random_vector = torch.randn_like(hidden_state)
-                random_vector = random_vector / random_vector.norm()
-                hidden_state = hidden_state / hidden_state.norm()
+    #         # Sampling new vectors
+    #         similar_vectors = []
+    #         similarity_values = []
+    #         for factor in factors:
+    #             random_vector = torch.randn_like(hidden_state)
+    #             random_vector = random_vector / random_vector.norm()
+    #             hidden_state = hidden_state / hidden_state.norm()
 
-                # Interpolate between the original and a random vector
-                new_vector = factor * hidden_state + (1 - factor) * random_vector
-                new_vector = new_vector / new_vector.norm()  # Re-normalize the vector
-                similarity_values.append(
-                    torch.nn.functional.cosine_similarity(
-                        hidden_state, new_vector, dim=-1
-                    )
-                )
-                similar_vectors.append(new_vector)
+    #             # Interpolate between the original and a random vector
+    #             new_vector = factor * hidden_state + (1 - factor) * random_vector
+    #             new_vector = new_vector / new_vector.norm()  # Re-normalize the vector
+    #             similarity_values.append(
+    #                 torch.nn.functional.cosine_similarity(
+    #                     hidden_state, new_vector, dim=-1
+    #                 )
+    #             )
+    #             similar_vectors.append(new_vector)
 
-            group = {}
-            group[1] = similar_vectors[0]
-            group[2] = similar_vectors[1]
-            group[3] = similar_vectors[2]
-            group[4] = similar_vectors[3]
+    #         group = {}
+    #         group[1] = similar_vectors[0]
+    #         group[2] = similar_vectors[1]
+    #         group[3] = similar_vectors[2]
+    #         group[4] = similar_vectors[3]
 
-            group_token = {}
-            for i, similar_vector in enumerate(similar_vectors):
-                with torch.no_grad():
-                    logit = self.model.get_output_embeddings()(similar_vector)  # type: ignore
-                    # select the token with the highest logit
-                    token = logit.argmax()
-                    token_str = self.tokenizer.decode(token.item())
-                    group_token[i + 1] = (token_str, token)
+    #         group_token = {}
+    #         for i, similar_vector in enumerate(similar_vectors):
+    #             with torch.no_grad():
+    #                 logit = self.model.get_output_embeddings()(similar_vector)  # type: ignore
+    #                 # select the token with the highest logit
+    #                 token = logit.argmax()
+    #                 token_str = self.tokenizer.decode(token.item())
+    #                 group_token[i + 1] = (token_str, token)
 
-            print("Original token:", token_to_be_similar_str)
-            print(
-                "Similar tokens:",
-                group_token[1][0],
-                group_token[2][0],
-                group_token[3][0],
-                group_token[4][0],
-            )
-            print(
-                "Similarity values:",
-                similarity_values[0].item(),
-                similarity_values[1].item(),
-                similarity_values[2].item(),
-                similarity_values[3].item(),
-            )
-            return group_token[similarity_level][0], group_token[similarity_level][
-                1
-            ].unsqueeze(0).unsqueeze(0)
-        elif similarity_type == "output2":
-            raise NotImplementedError
-            hidden_state = self.model(token_to_be_similar, output_hidden_states=True)[
-                "hidden_states"
-            ][-1]  # type: ignore
-            print("HIDDEN STATE SHAPE", hidden_state.shape)
-            if hidden_state.ndim == 2:
-                hidden_state = hidden_state[-1, :]
-            if hidden_state.ndim == 3:
-                hidden_state = hidden_state[-1, -1, :]
+    #         print("Original token:", token_to_be_similar_str)
+    #         print(
+    #             "Similar tokens:",
+    #             group_token[1][0],
+    #             group_token[2][0],
+    #             group_token[3][0],
+    #             group_token[4][0],
+    #         )
+    #         print(
+    #             "Similarity values:",
+    #             similarity_values[0].item(),
+    #             similarity_values[1].item(),
+    #             similarity_values[2].item(),
+    #             similarity_values[3].item(),
+    #         )
+    #         return group_token[similarity_level][0], group_token[similarity_level][
+    #             1
+    #         ].unsqueeze(0).unsqueeze(0)
+    #     elif similarity_type == "output2":
+    #         raise NotImplementedError
+    #         hidden_state = self.model(token_to_be_similar, output_hidden_states=True)[
+    #             "hidden_states"
+    #         ][-1]  # type: ignore
+    #         print("HIDDEN STATE SHAPE", hidden_state.shape)
+    #         if hidden_state.ndim == 2:
+    #             hidden_state = hidden_state[-1, :]
+    #         if hidden_state.ndim == 3:
+    #             hidden_state = hidden_state[-1, -1, :]
 
-            vocab = self.tokenizer.get_vocab()
-            similar_tokens = []
+    #         vocab = self.tokenizer.get_vocab()
+    #         similar_tokens = []
 
-            for word, idx in vocab.items():
-                with torch.no_grad():
-                    word_embedding = self.model(
-                        self.tokenizer.encode(
-                            word, return_tensors="pt", add_special_tokens=False
-                        ).to(self.model.device),
-                        output_hidden_states=True,
-                    )["hidden_states"][-1][-1, :]
-                    cosine_similarity = torch.nn.functional.cosine_similarity(
-                        hidden_state, word_embedding, dim=-1
-                    )
-                    print("word", word, "cosine_similarity", cosine_similarity)
-            return "test", torch.tensor([[0]])
-        else:
-            raise ValueError("similarity_type must be either 'input' or 'output'")
+    #         for word, idx in vocab.items():
+    #             with torch.no_grad():
+    #                 word_embedding = self.model(
+    #                     self.tokenizer.encode(
+    #                         word, return_tensors="pt", add_special_tokens=False
+    #                     ).to(self.model.device),
+    #                     output_hidden_states=True,
+    #                 )["hidden_states"][-1][-1, :]
+    #                 cosine_similarity = torch.nn.functional.cosine_similarity(
+    #                     hidden_state, word_embedding, dim=-1
+    #                 )
+    #                 print("word", word, "cosine_similarity", cosine_similarity)
+    #         return "test", torch.tensor([[0]])
+    #     else:
+    #         raise ValueError("similarity_type must be either 'input' or 'output'")
 
-    def _to_string_token(self, token_id: List[int]) -> List[str]:
-        list_of_strings = [self.tokenizer.decode(j) for j in token_id]
-        return list_of_strings
+    # def _to_string_token(self, token_id: List[int]) -> List[str]:
+    #     list_of_strings = [self.tokenizer.decode(j) for j in token_id]
+    #     return list_of_strings
 
-    def get_best_string_token_predictions(
-        self, prompt: str, n: int = 1000
-    ) -> List[str]:
-        input_ids = self.tokenizer.encode(prompt, return_tensors="pt")
-        input_ids = input_ids.to(self.model.device)  # type: ignore
-        logits = self.model(input_ids)["logits"][0, -1, :].cpu()  # type: ignore
-        sorted_indices = logits.argsort(descending=True)
-        sorted_indices = sorted_indices[:n]
-        best_string_token_predictions = self._to_string_token(sorted_indices)
-        return best_string_token_predictions
+    # def get_best_string_token_predictions(
+    #     self, prompt: str, n: int = 1000
+    # ) -> List[str]:
+    #     input_ids = self.tokenizer.encode(prompt, return_tensors="pt")
+    #     input_ids = input_ids.to(self.model.device)  # type: ignore
+    #     logits = self.model(input_ids)["logits"][0, -1, :].cpu()  # type: ignore
+    #     sorted_indices = logits.argsort(descending=True)
+    #     sorted_indices = sorted_indices[:n]
+    #     best_string_token_predictions = self._to_string_token(sorted_indices)
+    #     return best_string_token_predictions
 
-    def get_token_per_similarity_level(
-        self, prompt: str, target: str, best_string_token_predictions: List[str]
-    ) -> Dict[int, List[str]]:
-        prompt_ids = self.tokenizer.encode(prompt, return_tensors="pt")
-        prompt_ids = prompt_ids.to(self.model.device)  # type: ignore
-        prompt_embedding = self.model(
-            prompt_ids, output_hidden_states=True
-        ).hidden_states[-1][0, -1, :]  # type: ignore
-        similarity_scores = {}
-        for string_token in best_string_token_predictions:
-            new_prompt = prompt.replace(target, string_token)
-            new_prompt_ids = self.tokenizer.encode(new_prompt, return_tensors="pt")
-            new_prompt_ids = new_prompt_ids.to(self.model.device)  # type: ignore
-            new_prompt_embedding = self.model(
-                new_prompt_ids, output_hidden_states=True
-            )["hidden_states"][-1][0, -1, :]  # type: ignore
-            similarity_scores[string_token] = torch.nn.functional.cosine_similarity(
-                prompt_embedding, new_prompt_embedding, dim=-1
-            ).item()
+    # def get_token_per_similarity_level(
+    #     self, prompt: str, target: str, best_string_token_predictions: List[str]
+    # ) -> Dict[int, List[str]]:
+    #     prompt_ids = self.tokenizer.encode(prompt, return_tensors="pt")
+    #     prompt_ids = prompt_ids.to(self.model.device)  # type: ignore
+    #     prompt_embedding = self.model(
+    #         prompt_ids, output_hidden_states=True
+    #     ).hidden_states[-1][0, -1, :]  # type: ignore
+    #     similarity_scores = {}
+    #     for string_token in best_string_token_predictions:
+    #         new_prompt = prompt.replace(target, string_token)
+    #         new_prompt_ids = self.tokenizer.encode(new_prompt, return_tensors="pt")
+    #         new_prompt_ids = new_prompt_ids.to(self.model.device)  # type: ignore
+    #         new_prompt_embedding = self.model(
+    #             new_prompt_ids, output_hidden_states=True
+    #         )["hidden_states"][-1][0, -1, :]  # type: ignore
+    #         similarity_scores[string_token] = torch.nn.functional.cosine_similarity(
+    #             prompt_embedding, new_prompt_embedding, dim=-1
+    #         ).item()
 
-        # sort the tokens by similarity
-        sorted_tokens = sorted(
-            similarity_scores.items(), key=lambda x: x[1], reverse=True
-        )
-        sorted_tokens = [token for token, score in sorted_tokens]
+    #     # sort the tokens by similarity
+    #     sorted_tokens = sorted(
+    #         similarity_scores.items(), key=lambda x: x[1], reverse=True
+    #     )
+    #     sorted_tokens = [token for token, score in sorted_tokens]
 
-        # get the lenght of the dataset and split it into 4 groups
-        length = len(sorted_tokens)
+    #     # get the lenght of the dataset and split it into 4 groups
+    #     length = len(sorted_tokens)
 
-        group = {}
-        group[1] = sorted_tokens[: length // 4]
-        group[2] = sorted_tokens[length // 4 : length // 2]
-        group[3] = sorted_tokens[length // 2 : 3 * length // 4]
-        group[4] = sorted_tokens[3 * length // 4 :]
+    #     group = {}
+    #     group[1] = sorted_tokens[: length // 4]
+    #     group[2] = sorted_tokens[length // 4 : length // 2]
+    #     group[3] = sorted_tokens[length // 2 : 3 * length // 4]
+    #     group[4] = sorted_tokens[3 * length // 4 :]
 
-        return group
+    #     return group
 
+    def compute_similarity_word2vec(self, base_target: str, word2vec) -> List[Tuple[str, float]]:
+        similarity = []
+        #remove the first space
+        base_target = base_target[1:]
+        for str_token in self.tokenizer.vocab.keys():
+            if str_token == base_target:
+                continue
+            try:
+                similarity.append((" " + str_token, word2vec.similarity(base_target, str_token)))
+            except KeyError:
+                continue
+        return similarity
+        
 
 class SampleDataset:
     def __init__(self, path: str, model, save_path: str, tokenizer: Optional[object]):

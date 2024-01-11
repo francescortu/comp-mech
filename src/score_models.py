@@ -171,7 +171,7 @@ class EvaluateMechanism:
         if not os.path.isfile(filename):
             with open(filename, "w") as file:
                 file.write(
-                    "model_name,orthogonalize,premise,interval,target_true,target_false,other,target_true_std,target_false_std,other_std\n"
+                    "model_name,orthogonalize,premise,interval,similarity_type,target_true,target_false,other,target_true_std,target_false_std,other_std\n"
                 )
 
         with open(filename, "a+") as file:
@@ -184,6 +184,7 @@ class EvaluateMechanism:
                 and line.split(",")[1] == str(self.similarity[0])
                 and line.split(",")[2] == self.premise
                 and line.split(",")[3] == self.similarity[1]
+                and line.split(",")[4] == self.similarity[2]
                 for line in lines
             )
 
@@ -199,6 +200,7 @@ class EvaluateMechanism:
                             self.similarity[0]
                             and line.split(",")[2] == self.premise
                             and line.split(",")[3] == self.similarity[1]
+                            and line.split(",")[4] == self.similarity[2]
                         )
                     )
                 ]
@@ -208,7 +210,7 @@ class EvaluateMechanism:
                 file.truncate()  # Truncate the file (i.e., remove all content)
                 file.writelines(lines)  # Write the updated lines back to the file
             file.write(
-                f"{self.model_name},{self.similarity[0]},{self.premise},{self.similarity[1]},{target_true},{target_false},{other},{target_true_std},{target_false_std},{other_std}\n"
+                f"{self.model_name},{self.similarity[0]},{self.premise},{self.similarity[1]},{self.similarity[2]} ,{target_true},{target_false},{other},{target_true_std},{target_false_std},{other_std}\n"
             )
 
         # save indices
