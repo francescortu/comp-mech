@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -n10
-#SBATCH --job-name=ablate_attn_out
+#SBATCH --job-name=score_models
 #SBATCH -N1
 #SBATCH -p DGX
 #SBATCH --gpus=1
