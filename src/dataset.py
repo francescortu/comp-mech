@@ -85,35 +85,38 @@ class BaseDataset(Dataset):
         """
         lenghts = []
         for d in self.full_data:
-            if self.similarity[0] is True:
-                target_new = self.get_similar_token(d, self.similarity[1])
-            else:
-                target_new = d["target_new"]
+            while True:
+                if self.similarity[0] is True:
+                    target_new = self.get_similar_token(d, self.similarity[1])
+            
+                else:
+                    target_new = d["target_new"]
 
-            prompt = d["template"].format(self.premise, target_new)
-            d["prompt"] = prompt
-            d["tokenized_prompt"] = self._tokenize_prompt(prompt, True)  # ( L)
-            target_new_token = self._tokenize_target(target_new, False).cuda()  # (1)
-            d["target_new_token"] = target_new_token
-            target_true_token = self._tokenize_target(
-                d["target_true"], False
-            ).cuda()  # (1)
-            d["target_true_token"] = target_true_token
-            d["targets"] = torch.cat(
-                [target_true_token, target_new_token], dim=0
-            )  # (2)
-            obj_pos_indices = (d["tokenized_prompt"] == target_new_token.cpu()).nonzero(
-                as_tuple=True
-            )[0]
-            if obj_pos_indices.size(0) > 0:
-                d["obj_pos"] = obj_pos_indices[0].item()
-            else:
-                raise ValueError("Target not found in prompt")
-            d["length"] = d["tokenized_prompt"].shape[0]
-            if d["length"] not in lenghts:
-                lenghts.append(d["length"])
-
-            print(d)
+                prompt = d["template"].format(self.premise, target_new)
+                d["prompt"] = prompt
+                d["tokenized_prompt"] = self._tokenize_prompt(prompt, True)  # ( L)
+                target_new_token = self._tokenize_target(target_new, False).cuda()  # (1)
+                d["target_new_token"] = target_new_token
+                target_true_token = self._tokenize_target(
+                    d["target_true"], False
+                ).cuda()  # (1)
+                d["target_true_token"] = target_true_token
+                d["targets"] = torch.cat(
+                    [target_true_token, target_new_token], dim=0
+                )  # (2)
+                obj_pos_indices = (d["tokenized_prompt"] == target_new_token.cpu()).nonzero(
+                    as_tuple=True
+                )[0]
+                if obj_pos_indices.size(0) > 0:
+                    d["obj_pos"] = obj_pos_indices[0].item()
+                else:
+                    #try again with the target_true_token
+                    continue
+                    # raise ValueError("Target not found in prompt")
+                d["length"] = d["tokenized_prompt"].shape[0]
+                if d["length"] not in lenghts:
+                    lenghts.append(d["length"])
+                break
 
         self._clear_cache()  # free up memory, we don't need the model anymore
 
