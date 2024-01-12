@@ -47,7 +47,7 @@ class LaunchConfig:
     family_name: str
     premise: str = "Redefine"
     num_samples: int = 1
-    batch_size: int = 50
+    batch_size: int = 10
     
 
 
