@@ -117,7 +117,9 @@ class EvaluateMechanism:
 
     def evaluate_all(self):
         target_true, target_false, other = [], [], []
+        print("SAMPLES", self.n_samples)
         for sample in range(self.n_samples):
+            self.dataset.reset()
             target_true_tmp, target_false_tmp, other_tmp = 0, 0, 0
             all_true_indices = []
             all_false_indices = []
@@ -143,19 +145,28 @@ class EvaluateMechanism:
             target_false.append(target_false_tmp)
             other.append(other_tmp)
 
+        print("Target true length", len(target_true))
         # average the results over the number of samples
+        Target_true = target_true
+        Target_false = target_false
+        Other = other
+        print("target true", Target_true)
+        
+        target_true = torch.mean(torch.tensor(Target_true).float())
+        target_false = torch.mean(torch.tensor(Target_false).float())
+        other = torch.mean(torch.tensor(Other).float())
 
-        target_true = torch.mean(torch.tensor(target_true).float())
-        target_false = torch.mean(torch.tensor(target_false).float())
-        other = torch.mean(torch.tensor(other).float())
-
-        target_true_std = torch.std(torch.tensor(target_true).float())
-        target_false_std = torch.std(torch.tensor(target_false).float())
-        other_std = torch.std(torch.tensor(other).float())
+        target_true_std = torch.std(torch.tensor(Target_true).float())
+        target_false_std = torch.std(torch.tensor(Target_false).float())
+        other_std = torch.std(torch.tensor(Other).float())
 
         print(
             f"Total: Target True: {target_true}, Target False: {target_false}, Other: {other}"
         )
+        print(
+            f"Total: Target True std: {target_true_std}, Target False std: {target_false_std}, Other std: {other_std}"
+        )
+        
         # index = torch.cat(index, dim=1)
 
         if len(self.model_name.split("/")) > 1:

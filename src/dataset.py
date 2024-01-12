@@ -2,6 +2,7 @@ from abc import abstractmethod
 
 from gensim.models import Word2Vec
 import gensim.downloader as api
+from matplotlib.pyplot import cla
 import torch
 from torch._tensor import Tensor
 from torch.utils.data import Dataset
@@ -29,6 +30,7 @@ class BaseDataset(Dataset):
             "logit",
         ),
     ):
+        self.init_args = {k: v for k, v in locals().items() if k != "self"}
         self.full_data = json.load(open(path))
         if slice is not None:
             self.full_data = self.full_data[:slice]
@@ -42,10 +44,10 @@ class BaseDataset(Dataset):
                 else path.split(".json")[0] + f"_similarity_{similarity[2]}_{slice}.json"
             )
             if os.path.isfile(similarity_path):
-                logging.info("Similarity file found, loading it")
+                print("Similarity file found, loading it")
                 self.full_data = json.load(open(similarity_path))
             else:
-                logging.info("Similarity file not found, generating it")
+                print("Similarity file not found, generating it")
                 self.full_data = self.generate_similarity_dataset(similarity[2])
                 json.dump(self.full_data, open(similarity_path, "w"), indent=2)
 
@@ -55,7 +57,16 @@ class BaseDataset(Dataset):
         self.tokenized_prompts = []
         self.targets = []
         self.obj_pos = []
+    
+    @classmethod
+    def set_init_argument(cls, path: str, slice: Optional[int] = None, premise: str = "Redefine:", similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = (False, 0, "logit")):
+        cls.init_args = locals()
+        return cls    
 
+    @abstractmethod
+    def reset(self):
+        pass
+        
     def __len__(self):
         if len(self.prompts) == 0:
             raise ValueError("Dataset is empty: please call set_len() first")
@@ -364,9 +375,11 @@ class BaseDataset(Dataset):
         # base_prompt = data_point["base_prompt"]
         # return self._get_similar_token(token_to_be_similar_str, token_to_be_similar, similarity_level, similarity_type, base_prompt)
         num_possible_choices = len(data_point[f"similar_tokens_{similarity_level}"])
+        index = random.randint(0, num_possible_choices - 1)
         string_token = data_point[f"similar_tokens_{similarity_level}"][
-            random.randint(0, num_possible_choices - 1)
+            index
         ]
+        # print(index)
         return string_token
 
     @abstractmethod
@@ -531,6 +544,9 @@ class HFDataset(BaseDataset):
             self.model = model
         self.tokenizer = tokenizer
         super().__init__(path, slice, premise, similarity)
+        
+    def reset(self):
+        super().reset()
 
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
         tokens = self.tokenizer.encode(
@@ -796,7 +812,7 @@ class SampleDataset:
             self.sample_dataset_hf(size)
 
     def sample_dataset_tlens(self, size: int):
-        random.seed(42)
+        #random.seed(42)
         new_data, index = self.load_from_checkpoint()
 
         random.shuffle(self.data)
@@ -818,7 +834,7 @@ class SampleDataset:
             self.data = new_data
 
     def sample_dataset_hf(self, size: int):
-        random.seed(42)
+        #random.seed(42)
         new_data, index = self.load_from_checkpoint()
 
         random.shuffle(self.data)
