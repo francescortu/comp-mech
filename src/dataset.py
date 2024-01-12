@@ -154,7 +154,7 @@ class BaseDataset(Dataset):
             all_token_with_similarity = self.compute_similarity_word2vec(base_target, word2vec)
             #save the distribution of the similarity score
             similarity_score = torch.tensor([score for token, score in all_token_with_similarity])
-            torch.save(similarity_score, f"../data/similarity_score/{base_target}.pt")
+            #torch.save(similarity_score, f"../data/similarity_score/{base_target}.pt")
             #
             # divide the tokens into 4 groups based on the quantile 
             quartile_1 = torch.quantile(similarity_score, 0.25)
