@@ -30,6 +30,9 @@ class BaseDataset(Dataset):
             "logit",
         ),
     ):
+        self.__initialize__(path, slice, premise, similarity)
+    
+    def __initialize__(self, path:str, slice: Optional[int] = None, premise: str = "Redefine:", similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = (False, 0, "logit")):
         self.init_args = {k: v for k, v in locals().items() if k != "self"}
         self.full_data = json.load(open(path))
         if slice is not None:
@@ -63,9 +66,9 @@ class BaseDataset(Dataset):
         cls.init_args = locals()
         return cls    
 
-    @abstractmethod
+    
     def reset(self):
-        pass
+        self.__initialize__(**self.init_args)
         
     def __len__(self):
         if len(self.prompts) == 0:
@@ -286,7 +289,7 @@ class BaseDataset(Dataset):
         Remove model and tokenizer from memory to free up space
         """
         self.model = None
-        self.tokenizer = None
+        # self.tokenizer = None
         torch.cuda.empty_cache()
 
     def cuda(self):
