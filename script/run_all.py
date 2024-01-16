@@ -103,16 +103,16 @@ def logit_attribution(model, dataset, config, args):
         dataset_slice_name if config.up_to_layer == "all" else f"{dataset_slice_name}_layer_{config.up_to_layer}"
     )
 
-    if args.only_plot:
-        subprocess.run(
-            [
-                "Rscript",
-                "../src_figure/logit_attribution.R",
-                f"../results/logit_attribution/{config.model_name}_{dataset_slice_name}",
-                f"{config.std_dev}",
-            ]
-        )
-        return
+    # if args.only_plot: !! TODO remove code
+    #     subprocess.run(
+    #         [
+    #             "Rscript",
+    #             "../src_figure/logit_attribution.R",
+    #             f"../results/logit_attribution/{config.model_name}_{dataset_slice_name}",
+    #             f"{config.std_dev}",
+    #         ]
+    #     )
+    #     return
 
     print("Running logit attribution")
     attributor = LogitAttribution(dataset, model, config.batch_size // 5)
@@ -125,6 +125,9 @@ def logit_attribution(model, dataset, config, args):
 
     if config.produce_plots:
         # run the R script
+        logit_attribution_plot(config, dataset_slice_name)
+        
+def logit_attribution_plot(config, dataset_slice_name):
         subprocess.run(
             [
                 "Rscript",
@@ -137,15 +140,15 @@ def logit_attribution(model, dataset, config, args):
 
 def logit_lens(model, dataset, config, args):
     data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
-    if args.only_plot:
-        subprocess.run(
-            [
-                "Rscript",
-                "../src_figure/logit_lens.R",
-                f"../results/logit_lens/{config.model_name}_{data_slice_name}",
-            ]
-        )
-        return
+    # if args.only_plot: !! TODO remove code
+    #     subprocess.run(
+    #         [
+    #             "Rscript",
+    #             "../src_figure/logit_lens.R",
+    #             f"../results/logit_lens/{config.model_name}_{data_slice_name}",
+    #         ]
+    #     )
+    #     return
 
     logit_lens_cnfg = logit_lens_config()
     print("Running logit lens")
@@ -163,6 +166,9 @@ def logit_lens(model, dataset, config, args):
 
     if config.produce_plots:
         # run the R script
+        logit_lens_plot(config, data_slice_name)
+        
+def logit_lens_plot(config, data_slice_name):
         subprocess.run(
             [
                 "Rscript",
@@ -174,15 +180,15 @@ def logit_lens(model, dataset, config, args):
 
 def ov_difference(model, dataset, config, args):
     data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
-    if args.only_plot:
-        subprocess.run(
-            [
-                "Rscript",
-                "../src_figure/ov_difference.R",
-                f"../results/ov_difference/{config.model_name}_{data_slice_name}",
-            ]
-        )
-        return
+    # if args.only_plot: !! TODO remove code
+    #     subprocess.run(
+    #         [
+    #             "Rscript",
+    #             "../src_figure/ov_difference.R",
+    #             f"../results/ov_difference/{config.model_name}_{data_slice_name}",
+    #         ]
+    #     )
+    #     return
 
     print("Running ov difference")
     ov = OV(dataset, model, config.batch_size)
@@ -195,6 +201,10 @@ def ov_difference(model, dataset, config, args):
 
     if config.produce_plots:
         # run the R script
+        ov_difference_plot(config, data_slice_name)
+        
+        
+def ov_difference_plot(config, data_slice_name):
         subprocess.run(
             [
                 "Rscript",
@@ -207,16 +217,16 @@ def ov_difference(model, dataset, config, args):
 def ablate(model, dataset, config, args):
     data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
     data_slice_name = f"{data_slice_name}_total_effect" if config.total_effect else data_slice_name
-    if args.only_plot:
-        subprocess.run(
-            [
-                "Rscript",
-                "../src_figure/ablation.R",
-                f"../results/ablation/{config.model_name}_{data_slice_name}",
-                f"{config.std_dev}",
-            ]
-        )
-        return
+    # if args.only_plot: !! TODO remove code
+    #     subprocess.run(
+    #         [
+    #             "Rscript",
+    #             "../src_figure/ablation.R",
+    #             f"../results/ablation/{config.model_name}_{data_slice_name}",
+    #             f"{config.std_dev}",
+    #         ]
+    #     )
+    #     return
     ablator = Ablate(dataset, model, config.batch_size)
     if args.ablate_component == "all":
         dataframe = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect)
@@ -235,26 +245,30 @@ def ablate(model, dataset, config, args):
 
     if config.produce_plots:
         # run the R script
-        subprocess.run(
-            [
-                "Rscript",
-                "../src_figure/ablation.R",
-                f"../results/ablation/{config.model_name}_{data_slice_name}",
-                f"{config.std_dev}",
-            ]
-        )
+        ablate_plot(config, data_slice_name)
+        
+def ablate_plot(config, data_slice_name):
+    data_slice_name = f"{data_slice_name}_total_effect" if config.total_effect else data_slice_name
+    subprocess.run(
+        [
+            "Rscript",
+            "../src_figure/ablation.R",
+            f"../results/ablation/{config.model_name}_{data_slice_name}",
+            f"{config.std_dev}",
+        ]
+    )
         
 def pattern(model, dataset, config, args):
     data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
-    if args.only_plot:
-        subprocess.run(
-            [
-                "Rscript",
-                "../src_figure/head_pattern.R",
-                f"../results/head_pattern/{config.model_name}_{data_slice_name}",
-            ]
-        )
-        return
+    # if args.only_plot: !! TODO remove code
+    #     subprocess.run(
+    #         [
+    #             "Rscript",
+    #             "../src_figure/head_pattern.R",
+    #             f"../results/head_pattern/{config.model_name}_{data_slice_name}",
+    #         ]
+    #     )
+    #     return
     print("Running head pattern")
     pattern = HeadPattern(dataset, model, config.batch_size)
     dataframe = pattern.run()
@@ -266,6 +280,10 @@ def pattern(model, dataset, config, args):
 
     if config.produce_plots:
         # run the R script
+        pattern_plot(config, data_slice_name)
+        
+
+def pattern_plot(config, data_slice_name):
         subprocess.run(
             [
                 "Rscript",
@@ -301,6 +319,33 @@ def load_model(config) -> Union[WrapHookedTransformer, HookedTransformer]:
 def main(args):
     config = Config().from_args(args)
     console.print(display_config(config))
+    if args.only_plot:
+        data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
+
+        def try_to_run_plot(plot_function):
+            try:
+                plot_function(config, data_slice_name)
+            except FileNotFoundError:
+                print(f"No {plot_function.__name__} data found")
+        
+        plots = []
+        if args.logit_attribution:
+            plots.append(logit_attribution_plot)
+        if args.logit_lens:
+            plots.append(logit_lens_plot)
+        if args.ov_diff:
+            plots.append(ov_difference_plot)
+        if args.ablate:
+            plots.append(ablate_plot)
+        if args.pattern:
+            plots.append(pattern_plot)
+        if args.all:
+            plots = [logit_attribution_plot, logit_lens_plot, ov_difference_plot, ablate_plot, pattern_plot]
+            
+        for plot in plots:
+            try_to_run_plot(plot)
+        return
+    
     check_dataset_and_sample(config.dataset_path, config.model_name, config.hf_model_name)
     if args.dataset:
         return

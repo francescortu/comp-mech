@@ -39,7 +39,7 @@ class EvaluateMechanism:
         self.model = self.model.to(device)
         self.model_name = model_name
         self.dataset = dataset
-        self.lenghts = self.dataset.get_lengths()
+        # self.lenghts = self.dataset.get_lengths()
         self.device = device
         self.batch_size = batch_size
         self.similarity = similarity
@@ -125,7 +125,7 @@ class EvaluateMechanism:
             all_true_indices = []
             all_false_indices = []
             all_other_indices = []
-            for length in self.lenghts:
+            for length in self.dataset.get_lengths():
                 result = self.evaluate(length)
                 target_true_tmp += result[0]
                 target_false_tmp += result[1]
