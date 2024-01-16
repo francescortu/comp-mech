@@ -46,6 +46,7 @@ class BaseDataset(Dataset):
                 if slice is None
                 else path.split(".json")[0] + f"_similarity_{similarity[2]}_{slice}.json"
             )
+            print("Search similarity path:", similarity_path)
             if os.path.isfile(similarity_path):
                 print("Similarity file found, loading it")
                 self.full_data = json.load(open(similarity_path))
@@ -121,7 +122,7 @@ class BaseDataset(Dataset):
                     [target_true_token, target_new_token], dim=0
                 )  # (2)
                 try:
-                    obj_pos_indices = (d["tokenized_prompt"] == target_new_token.cpu()).nonzero(
+                    obj_pos_indices = (d["tokenized_prompt"].cpu() == target_new_token.cpu()).nonzero(
                         as_tuple=True
                     )[0]
                     if obj_pos_indices.size(0) > 0:

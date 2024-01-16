@@ -18,7 +18,7 @@ class Ablate(BaseExperiment):
     ):
         super().__init__(dataset, model, batch_size)
         #self.position_component = ["mlp_out", "attn_out", "resid_pre"]
-        self.position_component = ["attn_out", "resid_pre"]
+        self.position_component = ["attn_out", "resid_pre", "mlp_out", "resid_pre"]
         self.head_component = ["head"]
 
     def _get_freezed_attn(self, cache) -> Dict[str, Tuple[torch.Tensor, Any]]:
