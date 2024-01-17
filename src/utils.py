@@ -60,6 +60,7 @@ def display_config(config):
         Text.assemble(("Std Dev: ", "bold"), str(config.std_dev)),
         Text.assemble(("Total Effect: ", "bold"), str(config.total_effect)),
         Text.assemble(("Up-to-layer: ", "bold"), str(config.up_to_layer)),
+        Text.assemble(("Experiment Name: ", "bold"), str(config.mech_fold)),
     ]
 
     columns = Columns(config_items, equal=True, expand=True)
