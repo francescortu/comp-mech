@@ -26,8 +26,8 @@ class OV_storage:
         return mem_input_, cp_input_
 
 class OV(BaseExperiment):
-    def __init__(self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size:int):
-        super().__init__(dataset, model, batch_size)
+    def __init__(self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size:int, experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",):
+        super().__init__(dataset, model, batch_size, experiment)
     
     def _ov_matrix(self, layer:int, head:int):
         return (self.model.W_U.T @ (self.model.OV[layer,head,:,:] @ self.model.W_E.T)) #! Positional encoding is not included in the OV matrix

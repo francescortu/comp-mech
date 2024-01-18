@@ -6,7 +6,7 @@ from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment, to_logit_token
 from typing import Optional, Tuple, Literal
-from src.utils import aggregate_result
+from src.utils import get_aggregator
 
 
 class LogitStorage:
@@ -14,11 +14,12 @@ class LogitStorage:
     store logits and return shape (layers, position, examples) or (layers, position, heads, examples)
     """
 
-    def __init__(self, n_layers: int, length: int, n_heads: int = 1):
+    def __init__(self, n_layers: int, length: int, experiment:Literal["copyVSfact", "contextVSfact"] ,n_heads: int = 1):
         self.n_layers = n_layers
         self.length = length
         self.n_heads = n_heads
         self.size = n_layers * length * n_heads
+        self.experiment:Literal["copyVSfact", "contextVSfact"] = experiment
 
         # Using a dictionary to store logit values
         self.logits = {
@@ -40,29 +41,16 @@ class LogitStorage:
         )
 
     def _aggregate_result(
-        self, object_positions: int, pattern: torch.Tensor
+        self, object_positions: int, pattern: torch.Tensor, **kwargs
     ) -> torch.Tensor:
         pattern = self._reshape_tensor(pattern)
+        aggregate_result = get_aggregator(self.experiment)
         intermediate_aggregate = aggregate_result(
-            pattern, object_positions, self.length
+            pattern, object_positions, self.length, **kwargs
         )
         return self._reshape_tensor_back(intermediate_aggregate)
 
-        # result_aggregate[..., 0,:] = intermediate_aggregate[..., :subject_1_1,:].mean(dim=-2)
-        # result_aggregate[..., 1,:] = intermediate_aggregate[..., subject_1_1,:]
-        # result_aggregate[..., 2,:] = intermediate_aggregate[..., subject_1_2,:]
-        # result_aggregate[..., 3,:] = intermediate_aggregate[..., subject_1_3,:]
-        # result_aggregate[..., 4,:] = intermediate_aggregate[..., subject_1_3 + 1:object_positions_pre,:].mean(dim=-2)
-        # result_aggregate[..., 5,:] = intermediate_aggregate[..., object_positions_pre,:]
-        # result_aggregate[..., 6,:] = intermediate_aggregate[..., object_positions,:]
-        # result_aggregate[..., 7,:] = intermediate_aggregate[..., object_positions_next,:]
-        # result_aggregate[..., 8,:] = intermediate_aggregate[..., subject_2_1,:]
-        # result_aggregate[..., 9,:] = intermediate_aggregate[..., subject_2_2,:]
-        # result_aggregate[..., 10,:] = intermediate_aggregate[..., subject_2_3,:]
-        # result_aggregate[..., 11,:] = intermediate_aggregate[..., subject_2_3+ 1:last_position,:].mean(dim=-2)
-        # result_aggregate[..., 12,:] = intermediate_aggregate[..., last_position,:]
-        # print(result_aggregate.shape)
-        # return result_aggregate
+
 
     def store(
         self,
@@ -90,18 +78,18 @@ class LogitStorage:
             self._reshape_logits(self.logits[key], shape) for key in self.logits
         )
 
-    def get_aggregate_logit(self, object_position: int):
+    def get_aggregate_logit(self, object_position: int, **kwargs):
         return_tuple = self.get_logit()
         aggregate_tensor = []
         for elem in return_tuple:
-            aggregate_tensor.append(self._aggregate_result(object_position, elem))
+            aggregate_tensor.append(self._aggregate_result(object_position, elem, **kwargs))
 
         return tuple(aggregate_tensor)
 
 
 class IndexLogitStorage(LogitStorage):
-    def __init__(self, n_layers: int, length: int, n_heads: int = 1):
-        super().__init__(n_layers, length, n_heads)
+    def __init__(self, n_layers: int, length: int, experiment:Literal["copyVSfact", "contextVSfact"],  n_heads: int = 1):
+        super().__init__(n_layers, length, experiment, n_heads)
         self.logits.update(
             {
                 "mem_logit_idx": [[] for _ in range(self.size)],
@@ -135,18 +123,18 @@ class IndexLogitStorage(LogitStorage):
 
 
 class HeadLogitStorage(IndexLogitStorage, LogitStorage):
-    def __init__(self, n_layers: int, length: int, n_heads: int):
-        super().__init__(n_layers, length, n_heads)
+    def __init__(self, n_layers: int, length: int, experiment:Literal["copyVSfact", "contextVSfact"], n_heads: int):
+        super().__init__(n_layers, length, experiment, n_heads)
 
     @classmethod
     def from_logit_storage(cls, logit_storage: LogitStorage, n_heads: int):
-        return cls(logit_storage.n_layers, logit_storage.length, n_heads)
+        return cls(logit_storage.n_layers, logit_storage.length, logit_storage.experiment, n_heads)
 
     @classmethod
     def from_index_logit_storage(
         cls, index_logit_storage: IndexLogitStorage, n_heads: int
     ):
-        return cls(index_logit_storage.n_layers, index_logit_storage.length, n_heads)
+        return cls(index_logit_storage.n_layers, index_logit_storage.length,index_logit_storage.experiment, n_heads)
 
     def _reshape_tensor(self, tensor: torch.Tensor):
         return einops.rearrange(
@@ -167,9 +155,9 @@ class HeadLogitStorage(IndexLogitStorage, LogitStorage):
 
 class LogitLens(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int
+        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
     ):
-        super().__init__(dataset, model, batch_size)
+        super().__init__(dataset, model, batch_size, experiment)
         self.valid_blocks = ["mlp_out", "resid_pre", "resid_post", "attn_out"]
         self.valid_heads = ["head"]
 
@@ -203,13 +191,13 @@ class LogitLens(BaseExperiment):
             return None
 
         if return_index:
-            storer = IndexLogitStorage(self.model.cfg.n_layers, length)
+            storer = IndexLogitStorage(self.model.cfg.n_layers, length, self.experiment)
             if component in self.valid_heads:
                 storer = HeadLogitStorage.from_index_logit_storage(
                     storer, self.model.cfg.n_heads
                 )
         else:
-            storer = LogitStorage(self.model.cfg.n_layers, length)
+            storer = LogitStorage(self.model.cfg.n_layers, length, self.experiment)
             if component in self.valid_heads:
                 storer = HeadLogitStorage.from_logit_storage(
                     storer, self.model.cfg.n_heads

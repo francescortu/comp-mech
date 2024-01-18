@@ -50,6 +50,7 @@ class BaseExperiment:
         dataset: TlensDataset,
         model: WrapHookedTransformer,
         batch_size: int,
+        experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
         filter_outliers: bool = False,
     ):
         self.dataset = dataset
@@ -57,6 +58,7 @@ class BaseExperiment:
         self.model.eval()
         self.batch_size = batch_size
         self.filter_outliers = filter_outliers
+        self.experiment: Literal["copyVSfact", "contextVSfact"] = experiment
         #requires grad to false
         torch.set_grad_enabled(False)
         # if self.model.cfg.model_name != self.dataset.model.cfg.model_name:
@@ -65,30 +67,6 @@ class BaseExperiment:
 
     def set_len(self, length: int, slice_to_fit_batch: bool = True) -> None:
         self.dataset.set_len(length)
-        # if self.filter_outliers:
-        #     self._filter_outliers()
-        # elif slice_to_fit_batch:
-        #     print("WARNING: slicing to fit batch")
-        #     self.dataset.slice_to_fit_batch(self.batch_size)
-
-    # def _filter_outliers(self, save_filtered:bool=False)->None:
-    #     print("save filtered:", save_filtered)
-    #     print("Number of examples before outliers:", len(self.dataset))
-    #     corrupted_logit, target = self.compute_logit()
-    #     # clean_logit_mem, clean_logit_cp = to_logit_token(clean_logit, target)
-    #     corrupted_logit_mem, corrupted_logit_cp, _, _ = to_logit_token(corrupted_logit, target)
-
-    #     outliers_under = torch.where(corrupted_logit_mem < (corrupted_logit_mem.mean() - corrupted_logit_mem.std()))[0]
-    #     outliers_over = torch.where(corrupted_logit_cp > (corrupted_logit_cp.mean() + corrupted_logit_cp.std()))[0]
-    #     outliers_indexes = torch.cat([outliers_under, outliers_over], dim=0).tolist()
-
-    #     maxdatasize = ((len(self.dataset) - len(outliers_indexes)) // self.batch_size) * self.batch_size
-
-    #     self.dataset.filter_from_idx(outliers_indexes, exclude=True, save_filtered=save_filtered)
-    #     self.dataset.slice(maxdatasize)
-    #     self.dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
-    #     self.num_batches = len(self.dataloader)
-    #     print("Number of examples after outliers:", len(self.dataloader) * self.batch_size)
 
     def get_basic_logit(
         self, normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
@@ -131,8 +109,15 @@ class BaseExperiment:
         self.set_len(len, **kwargs)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         return next(iter(dataloader))
+    
+    def get_position(self, resid_pos: str):
+        if self.experiment == "copyVSfact":
+            return self.__get_position_copyVSfact__(resid_pos)
+        elif self.experiment == "contextVSfact":
+            return 0
+            raise NotImplementedError
 
-    def get_position(self, resid_pos: str) -> int:
+    def __get_position_copyVSfact__(self, resid_pos: str) -> int:
         positions = {
             "1_1_subject": 5,
             "1_2_subject": 6,
@@ -151,7 +136,16 @@ class BaseExperiment:
             ),
         )
 
-    def aggregate_result(
+    def aggregate_result(self, **args):
+        if self.experiment == "copyVSfact":
+            return self.__aggregate_result_copyVSfact__(**args)
+        elif self.experiment == "contextVSfact":
+            return self.__aggregate_result_contextVSfact__(**args)
+        
+    def __aggregate_result_contextVSfact__(self, object_positions: int, pattern: torch.Tensor, length: int, dim: int = -1) -> torch.Tensor:
+        raise NotImplementedError
+
+    def __aggregate_result_copyVSfact__(
         self, object_positions: int, pattern: torch.Tensor, length: int, dim: int = -1
     ) -> torch.Tensor:
         subject_1_1 = 5

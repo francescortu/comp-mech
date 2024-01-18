@@ -292,15 +292,11 @@ class BaseDataset(Dataset):
             desc="Generating similarity tokens",
             total=len(self.full_data),
         ):
-            best_string_token_predictions = self.get_best_string_token_predictions(
-                d["base_prompt"], tokenizer, model, 100
+            best_string_token_predictions, best_token_score = self.get_best_string_token_predictions(
+                d["base_prompt"], tokenizer, model, 1000
             )
             token_per_similarity_level = self.get_token_per_similarity_level(
-                d["base_prompt"],
-                d["target_true"],
                 best_string_token_predictions,
-                tokenizer,
-                model,
             )
             d["similar_tokens_1"] = token_per_similarity_level[1]
             d["similar_tokens_2"] = token_per_similarity_level[2]
@@ -315,55 +311,43 @@ class BaseDataset(Dataset):
         tokenizer,
         model,
         n: int = 1000,
-    ) -> List[str]:
+    ) -> Tuple[List[str], Tensor]:
         input_ids = tokenizer.encode(prompt, return_tensors="pt")
         input_ids = input_ids.to(model.device)  # type: ignore
         logits = model(input_ids)["logits"][0, -1, :].cpu()  # type: ignore
         sorted_indices = logits.argsort(descending=True)
         sorted_indices = sorted_indices[:n]
         best_string_token_predictions = self._to_string_token(sorted_indices, tokenizer)
-        return best_string_token_predictions
+        best_token_score = logits[sorted_indices]
+        return best_string_token_predictions, best_token_score
 
     def get_token_per_similarity_level(
         self,
-        prompt: str,
-        target: str,
         best_string_token_predictions: List[str],
-        tokenizer,
-        model,
     ) -> Dict[int, List[str]]:
-        prompt_ids = tokenizer.encode(prompt, return_tensors="pt")
-        prompt_ids = prompt_ids.to(model.device)  # type: ignore
-        prompt_embedding = model(prompt_ids, output_hidden_states=True).hidden_states[
-            -1
-        ][0, -1, :]  # type: ignore
-        similarity_scores = {}
-        for string_token in best_string_token_predictions:
-            new_prompt = prompt.replace(target, string_token)
-            new_prompt_ids = tokenizer.encode(new_prompt, return_tensors="pt")
-            new_prompt_ids = new_prompt_ids.to(model.device)  # type: ignore
-            new_prompt_embedding = model(new_prompt_ids, output_hidden_states=True)[
-                "hidden_states"
-            ][-1][0, -1, :]  # type: ignore
-            similarity_scores[string_token] = torch.nn.functional.cosine_similarity(
-                prompt_embedding, new_prompt_embedding, dim=-1
-            ).item()
 
-        # sort the tokens by similarity
-        sorted_tokens = sorted(
-            similarity_scores.items(), key=lambda x: x[1], reverse=True
-        )
-        sorted_tokens = [token for token, score in sorted_tokens]
+        # # sort the tokens by similarity
+        # sorted_tokens = sorted(
+        #     similarity_scores.items(), key=lambda x: x[1], reverse=True
+        # )
+        # sorted_tokens = [token for token, score in sorted_tokens]
 
-        # get the lenght of the dataset and split it into 4 groups
-        length = len(sorted_tokens)
+        # # get the lenght of the dataset and split it into 4 groups
+        # length = len(sorted_tokens)
 
+        # group = {}
+        # group[1] = sorted_tokens[: length // 4]
+        # group[2] = sorted_tokens[length // 4 : length // 2]
+        # group[3] = sorted_tokens[length // 2 : 3 * length // 4]
+        # group[4] = sorted_tokens[3 * length // 4 :]
+
+        # return group
+        n_tokens = len(best_string_token_predictions)
         group = {}
-        group[1] = sorted_tokens[: length // 4]
-        group[2] = sorted_tokens[length // 4 : length // 2]
-        group[3] = sorted_tokens[length // 2 : 3 * length // 4]
-        group[4] = sorted_tokens[3 * length // 4 :]
-
+        group[1] = best_string_token_predictions[: n_tokens // 4]
+        group[2] = best_string_token_predictions[n_tokens // 4 : n_tokens // 2]
+        group[3] = best_string_token_predictions[n_tokens // 2 : 3 * n_tokens // 4]
+        group[4] = best_string_token_predictions[3 * n_tokens // 4 :]
         return group
 
     def _to_string_token(self, token_id: List[int], tokenizer) -> List[str]:
@@ -648,7 +632,7 @@ class HFDataset(BaseDataset):
         else:
             self.model = model
         self.tokenizer = tokenizer
-        super().__init__(path, slice, experiment, premise, similarity)
+        super().__init__(path=path, slice=slice, experiment=experiment, premise=premise, similarity=similarity)
 
     def reset(self):
         super().reset()

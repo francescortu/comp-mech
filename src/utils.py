@@ -8,6 +8,7 @@ import time
 import os
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer, GPTNeoXForCausalLM
+from typing import Literal
 
 def check_dataset_and_sample(dataset_path, model_name, hf_model_name):
     if os.path.exists(dataset_path):
@@ -152,8 +153,13 @@ def dict_of_lists_to_dict_of_tensors(dict_of_lists):
         dict_of_tensors[key] = torch.stack(tensor_list)
     return dict_of_tensors
 
+def get_aggregator(experiment: Literal["copyVSfact", "contextVSfact"]):
+    if experiment == "copyVSfact":
+        return aggregate_result_copyVSfact
+    if experiment == "contextVSfact":
+        raise NotImplementedError("Not implemented yet")
 
-def aggregate_result(
+def aggregate_result_copyVSfact(
     pattern: torch.Tensor, object_positions: int, length: int
 ) -> torch.Tensor:
     subject_1_1 = 5
@@ -189,3 +195,15 @@ def aggregate_result(
     ].mean(dim=-1)
     intermediate_aggregate[..., 12] = pattern[..., last_position]
     return intermediate_aggregate
+
+def aggregate_result_contextVSfact(
+    pattern: torch.Tensor, object_positions: int, length: int, subj_positions: int
+) -> torch.Tensor:
+    subject_1 = subj_positions
+    subject_2 = object_positions + 1 if length > 15 else subject_1
+    subject_3 = object_positions + 2 if length > 17 else subject_2
+    
+    
+    
+    
+    raise NotImplementedError("Not implemented yet")

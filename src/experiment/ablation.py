@@ -14,9 +14,9 @@ from copy import deepcopy
 
 class Ablate(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int
+        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
     ):
-        super().__init__(dataset, model, batch_size)
+        super().__init__(dataset, model, batch_size, experiment)
         #self.position_component = ["mlp_out", "attn_out", "resid_pre"]
         self.position_component = ["attn_out", "resid_pre", "mlp_out", "resid_pre"]
         self.head_component = ["head"]
@@ -147,12 +147,13 @@ class Ablate(BaseExperiment):
             return None
 
         if component in self.position_component:
-            storage = LogitStorage(n_layers=self.model.cfg.n_layers, length=length)
+            storage = LogitStorage(n_layers=self.model.cfg.n_layers, length=length, experiment=self.experiment)
         elif component in self.head_component:
             storage = HeadLogitStorage(
                 n_layers=self.model.cfg.n_layers,
                 length=1,
                 n_heads=self.model.cfg.n_heads,
+                experiment=self.experiment,
             )
         else:
             raise ValueError(f"component {component} not supported")

@@ -8,7 +8,7 @@ from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment
 from typing import Tuple,  Literal
-from src.utils import aggregate_result
+from src.utils import get_aggregator
 import pandas as pd
 
 
@@ -17,11 +17,12 @@ class AttributeStorage:
     Class to store the attributes of the logit attribution
     """
 
-    def __init__(self):
+    def __init__(self, experiment: Literal["copyVSfact", "contextVSfact"]):
         self.mem_attribute = []
         self.cp_attribute = []
         self.diff_attribute = []
         self.labels = None
+        self.experiment:Literal["copyVSfact", "contextVSfact"] = experiment
 
     def append(
         self,
@@ -39,21 +40,25 @@ class AttributeStorage:
         self.diff_attribute.append(diff_attribute.cpu())
         if self.labels is None:
             self.labels = labels
+        
+
 
     def aggregate(
-        self, mem_attribute, cp_attribute, diff_attribute, object_position: int
+        self, mem_attribute, cp_attribute, diff_attribute, object_position: int, **kwargs
     ):
+        aggregate_result = get_aggregator(self.experiment)
         length = mem_attribute.shape[-1]
         aggregated_mem = aggregate_result(
-            mem_attribute, object_positions=object_position, length=length
+            mem_attribute, object_positions=object_position, length=length, **kwargs
         )
         aggregated_cp = aggregate_result(
-            cp_attribute, object_positions=object_position, length=length
+            cp_attribute, object_positions=object_position, length=length, **kwargs
         )
         aggregated_diff = aggregate_result(
-            diff_attribute, object_positions=object_position, length=length
+            diff_attribute, object_positions=object_position, length=length, **kwargs
         )
         return aggregated_mem, aggregated_cp, aggregated_diff
+
 
     def stack(self):
         """
@@ -68,9 +73,9 @@ class AttributeStorage:
 
 class LogitAttribution(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int
+        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
     ):
-        super().__init__(dataset, model, batch_size)
+        super().__init__(dataset, model, batch_size, experiment)
 
     def slice_target(
         self, target: torch.Tensor, length: int
@@ -157,7 +162,7 @@ class LogitAttribution(BaseExperiment):
         """
         run the logit attribution for all the lengths in the dataset and return a tuple of (mem, cp, diff) of shape (component, batch, position)
         """
-        storage = AttributeStorage()
+        storage = AttributeStorage(self.experiment)
         lengths = self.dataset.get_lengths()
         for length in tqdm(lengths, desc="Attributing"):
             if length == 11:

@@ -5,14 +5,15 @@ from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment
-from typing import  Dict
+from typing import  Dict, Literal
 import pandas as pd
 
 
 class HeadPatternStorage():
-    def __init__(self, n_layers:int, n_heads:int):
+    def __init__(self, n_layers:int, n_heads:int, experiment:Literal["copyVSfact", "contextVSfact"]):
         self.n_layers = n_layers
         self.n_heads = n_heads
+        self.experiment:Literal["copyVSfact", "contextVSfact"] = experiment
         self.storage = {f"L{i}H{j}":[] for i in range(n_layers) for j in range(n_heads)}
         
     def _get_position_to_aggregate(self, i:int, object_position:int, length:int):
@@ -61,6 +62,8 @@ class HeadPatternStorage():
         pattern shape: (batch_size, seq_len, seq_len)
         return shape:(batch_size, 13, 13)
         """
+        if self.experiment != "copyVSfact":
+            raise NotImplementedError("Only copyVSfact is supported")
         length = pattern.shape[-1]
 
         
@@ -97,9 +100,9 @@ class HeadPatternStorage():
 
 class HeadPattern(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int
+        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
     ):
-        super().__init__(dataset, model, batch_size)
+        super().__init__(dataset, model, batch_size, experiment)
         
     def _extract_pattern(self, cache, layer: int, head: int):
         pattern = cache[f"blocks.{layer}.attn.hook_pattern"][:, head, :, :]
@@ -122,7 +125,7 @@ class HeadPattern(BaseExperiment):
         torch.cuda.empty_cache()
 
     def extract(self) -> Dict[str, torch.Tensor]:
-        self.storage = HeadPatternStorage(self.model.cfg.n_layers, self.model.cfg.n_heads)
+        self.storage = HeadPatternStorage(self.model.cfg.n_layers, self.model.cfg.n_heads, self.experiment)
         for length in tqdm(self.dataset.lengths):
             if length == 11:
                 continue
