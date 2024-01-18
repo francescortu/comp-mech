@@ -56,6 +56,7 @@ class Config:
     batch_size: int = 10
     dataset_path: str = f"../data/full_data_sampled_{model_name}.json"
     dataset_slice: Optional[int] = None
+    dataset_start: Optional[int] = None
     produce_plots: bool = True
     normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
     std_dev: int = 1  # 0 False, 1 True
@@ -71,6 +72,7 @@ class Config:
             batch_size=args.batch,
             dataset_path= get_dataset_path(args),
             dataset_slice=args.slice,
+            dataset_start=args.start,
             produce_plots=args.produce_plots,
             std_dev=1 if not args.std_dev else 0,
             total_effect=args.total_effect if args.total_effect else False,
@@ -226,7 +228,8 @@ def ov_difference_plot(config, data_slice_name):
 
 def ablate(model, dataset, config, args):
     data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
-    data_slice_name = f"{data_slice_name}_total_effect" if config.total_effect else data_slice_name
+    start_slice_name = "" if config.dataset_start is None else f"{config.dataset_start}_"
+    data_slice_name = f"{start_slice_name}{data_slice_name}_total_effect" if config.total_effect else data_slice_name
     # if args.only_plot: !! TODO remove code
     #     subprocess.run(
     #         [
@@ -364,7 +367,7 @@ def main(args):
     if args.dataset:
         return
     model = load_model(config)
-    dataset = TlensDataset(config.dataset_path, config.mech_fold, model, slice=config.dataset_slice)
+    dataset = TlensDataset(config.dataset_path, config.mech_fold, model, slice=config.dataset_slice, start=config.dataset_start)
 
     experiments = []
     if args.logit_attribution:
@@ -397,6 +400,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default=config_defaults.model_name)
     parser.add_argument("--slice", type=int, default=config_defaults.dataset_slice)
+    parser.add_argument("--start", type=int, default=0)
     parser.add_argument(
         "--no-plot", dest="produce_plots", action="store_false", default=True
     )

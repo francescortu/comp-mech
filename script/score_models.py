@@ -68,6 +68,7 @@ def launch_evaluation(config: LaunchConfig):
         model=config.model_name,
         tokenizer=tokenizer,
         path=dataset_path,
+        experiment="copyVSfact",
         slice=10000,
         premise=config.premise,
         similarity=(config.similarity, config.interval, config.similarity_type),

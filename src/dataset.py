@@ -25,6 +25,7 @@ class BaseDataset(Dataset):
         self,
         path: str,
         slice: Optional[int] = None,
+        start: Optional[int] = None,
         experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
         premise: str = "Redefine:",
         similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = (
@@ -33,12 +34,13 @@ class BaseDataset(Dataset):
             "logit",
         ),
     ):
-        self.__initialize__(path, slice, experiment, premise, similarity)
+        self.__initialize__(path, slice, start, experiment, premise, similarity)
 
     def __initialize__(
         self,
         path: str,
         slice: Optional[int] = None,
+        start: Optional[int] = None,
         experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
         premise: str = "Redefine:",
         similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = (
@@ -51,6 +53,8 @@ class BaseDataset(Dataset):
         self.full_data = json.load(open(path))
         if slice is not None:
             self.full_data = self.full_data[:slice]
+        if start is not None:
+            self.full_data = self.full_data[start:]
         self.premise = premise
         self.similarity = similarity
         self.experiment = experiment
@@ -510,6 +514,7 @@ class TlensDataset(BaseDataset):
         experiment: Literal["copyVSfact", "contextVSfact"],
         model: Union[WrapHookedTransformer, str, HookedTransformer],
         slice: Optional[int] = None,
+        start: Optional[int] = None,
         premise: str = "Redefine:",
         similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = (
             False,
@@ -522,7 +527,7 @@ class TlensDataset(BaseDataset):
         else:
             self.model = model
         self.model.eval()
-        super().__init__(path, slice, experiment, premise, similarity)
+        super().__init__(path, slice, start, experiment, premise, similarity)
 
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
         tokens = self.model.to_tokens(prompt, prepend_bos).squeeze(0)
