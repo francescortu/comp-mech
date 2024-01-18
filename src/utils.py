@@ -1,3 +1,4 @@
+from numpy import object_
 import torch
 import warnings
 from rich.panel import Panel
@@ -200,8 +201,38 @@ def aggregate_result_contextVSfact(
     pattern: torch.Tensor, object_positions: int, length: int, subj_positions: int
 ) -> torch.Tensor:
     subject_1 = subj_positions
-    subject_2 = object_positions + 1 if length > 15 else subject_1
-    subject_3 = object_positions + 2 if length > 17 else subject_2
+    subject_2 = subj_positions + 1 if length > 15 else subject_1
+    subject_3 = subj_positions + 2 if length > 17 else subject_2
+    object_positions_next = object_positions + 1 if object_positions < length - 1 else object_positions
+    subject_pos_pre = subj_positions - 1 if subj_positions > 0 else 0
+    last_position = length - 1
+    
+    *leading_dims, pen_len, last_len = pattern.shape
+    if object_positions > 0:
+        intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 9))   
+        intermediate_aggregate[..., 0] = pattern[..., :object_positions].mean(dim=-1) # before object
+        intermediate_aggregate[..., 1] = pattern[..., object_positions]
+        intermediate_aggregate[..., 2] = pattern[..., object_positions_next]
+        intermediate_aggregate[..., 3] = pattern[..., object_positions_next + 1 : subject_1].mean(dim=-1) # between object and subject
+        intermediate_aggregate[..., 4] = pattern[..., subject_1]
+        intermediate_aggregate[..., 5] = pattern[..., subject_2]
+        intermediate_aggregate[..., 6] = pattern[..., subject_3]
+        intermediate_aggregate[..., 7] = pattern[..., subject_3 + 1 : last_position].mean(dim=-1) # between subject and last
+        intermediate_aggregate[..., 8] = pattern[..., last_position]
+    else:
+        intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 8))
+        intermediate_aggregate[..., 0] = pattern[..., object_positions] 
+        intermediate_aggregate[..., 1] = pattern[..., object_positions_next]
+        intermediate_aggregate[..., 2] = pattern[..., object_positions_next + 1 : subject_1].mean(dim=-1) # between object and subject
+        intermediate_aggregate[..., 3] = pattern[..., subject_1]    
+        intermediate_aggregate[..., 4] = pattern[..., subject_2]
+        intermediate_aggregate[..., 5] = pattern[..., subject_3]
+        intermediate_aggregate[..., 6] = pattern[..., subject_3 + 1 : last_position].mean(dim=-1)
+        intermediate_aggregate[..., 7] = pattern[..., last_position]
+    return intermediate_aggregate
+    
+        
+    
     
     
     
