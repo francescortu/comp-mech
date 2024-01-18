@@ -41,6 +41,8 @@ def get_hf_model_name(model_name):
         return "facebook/" + model_name
     elif "pythia" in model_name:
         return "EleutherAI/" + model_name
+    elif "gpt2" in model_name:
+        return model_name
     else:
         raise ValueError("No HF model name found for model name: ", model_name)
     return model_name
@@ -48,6 +50,7 @@ def get_hf_model_name(model_name):
 
 @dataclass
 class Config:
+    mech_fold: Literal["copyVSfact", "contextVSfact"] = "copyVSfact"
     model_name: str = "gpt2"
     hf_model_name: str = "gpt2"
     batch_size: int = 10
@@ -63,9 +66,10 @@ class Config:
     @classmethod
     def from_args(cls, args):
         return cls(
+            mech_fold=args.folder,
             model_name=args.model_name,
             batch_size=args.batch,
-            dataset_path=f"../data/full_data_sampled_{args.model_name}.json",
+            dataset_path= get_dataset_path(args),
             dataset_slice=args.slice,
             produce_plots=args.produce_plots,
             std_dev=1 if not args.std_dev else 0,
@@ -74,7 +78,13 @@ class Config:
             ablate_component=args.ablate_component,
         )
 
-
+def get_dataset_path(args):
+    if args.folder == "copyVSfact":
+        return f"../data/full_data_sampled_{args.model_name}.json"
+    elif args.folder == "contextVSfact":
+        return f"../data/context_dataset_{args.model_name}.json"
+    else:
+        raise ValueError("No dataset path found for folder: ", args.folder)
 @dataclass
 class logit_attribution_config:
     std_dev: int = 0  # 0 False, 1 True
@@ -118,7 +128,7 @@ def logit_attribution(model, dataset, config, args):
     attributor = LogitAttribution(dataset, model, config.batch_size // 5)
     dataframe = attributor.run(normalize_logit=config.normalize_logit, up_to_layer=config.up_to_layer)
     save_dataframe(
-        f"../results/logit_attribution/{config.model_name}_{dataset_slice_name}",
+        f"../results/{config.mech_fold}/logit_attribution/{config.model_name}_{dataset_slice_name}",
         "logit_attribution_data",
         dataframe,
     )
@@ -132,7 +142,7 @@ def logit_attribution_plot(config, dataset_slice_name):
             [
                 "Rscript",
                 "../src_figure/logit_attribution.R",
-                f"../results/logit_attribution/{config.model_name}_{dataset_slice_name}",
+                f"../results/{config.mech_fold}/logit_attribution/{config.model_name}_{dataset_slice_name}",
                 f"{config.std_dev}",
             ]
         )
@@ -159,7 +169,7 @@ def logit_lens(model, dataset, config, args):
         normalize_logit=config.normalize_logit,
     )
     save_dataframe(
-        f"../results/logit_lens/{config.model_name}_{data_slice_name}",
+        f"../results/{config.mech_fold}/logit_lens/{config.model_name}_{data_slice_name}",
         "logit_lens_data",
         dataframe,
     )
@@ -173,7 +183,7 @@ def logit_lens_plot(config, data_slice_name):
             [
                 "Rscript",
                 "../src_figure/logit_lens.R",
-                f"../results/logit_lens/{config.model_name}_{data_slice_name}",
+                f"../results/{config.mech_fold}/logit_lens/{config.model_name}_{data_slice_name}",
             ]
         )
 
@@ -194,7 +204,7 @@ def ov_difference(model, dataset, config, args):
     ov = OV(dataset, model, config.batch_size)
     dataframe = ov.run(normalize_logit=config.normalize_logit)
     save_dataframe(
-        f"../results/ov_difference/{config.model_name}_{data_slice_name}",
+        f"../results/{config.mech_fold}/ov_difference/{config.model_name}_{data_slice_name}",
         "ov_difference_data",
         dataframe,
     )
@@ -209,7 +219,7 @@ def ov_difference_plot(config, data_slice_name):
             [
                 "Rscript",
                 "../src_figure/ov_difference.R",
-                f"../results/ov_difference/{config.model_name}_{data_slice_name}",
+                f"../results/{config.mech_fold}/ov_difference/{config.model_name}_{data_slice_name}",
             ]
         )
 
@@ -231,14 +241,14 @@ def ablate(model, dataset, config, args):
     if args.ablate_component == "all":
         dataframe = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect)
         save_dataframe(
-            f"../results/ablation/{config.model_name}_{data_slice_name}",
+            f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}",
             "ablation_data",
             dataframe,
         )
     else:
         dataframe = ablator.run(args.ablate_component, normalize_logit=config.normalize_logit, total_effect=args.total_effect)
         save_dataframe(
-            f"../results/ablation/{config.model_name}_{data_slice_name}",
+            f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}",
             f"ablation_data_{args.ablate_component}",
             dataframe,
         )
@@ -253,7 +263,7 @@ def ablate_plot(config, data_slice_name):
         [
             "Rscript",
             "../src_figure/ablation.R",
-            f"../results/ablation/{config.model_name}_{data_slice_name}",
+            f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}",
             f"{config.std_dev}",
         ]
     )
@@ -273,7 +283,7 @@ def pattern(model, dataset, config, args):
     pattern = HeadPattern(dataset, model, config.batch_size)
     dataframe = pattern.run()
     save_dataframe(
-        f"../results/head_pattern/{config.model_name}_{data_slice_name}",
+        f"../results/{config.mech_fold}/head_pattern/{config.model_name}_{data_slice_name}",
         "head_pattern_data",
         dataframe,
     )
@@ -288,7 +298,7 @@ def pattern_plot(config, data_slice_name):
             [
                 "Rscript",
                 "../src_figure/head_pattern.R",
-                f"../results/head_pattern/{config.model_name}_{data_slice_name}",
+                f"../results/{config.mech_fold}/head_pattern/{config.model_name}_{data_slice_name}",
             ]
         )
 
@@ -319,6 +329,10 @@ def load_model(config) -> Union[WrapHookedTransformer, HookedTransformer]:
 def main(args):
     config = Config().from_args(args)
     console.print(display_config(config))
+    # create experiment folder
+    if not os.path.exists(f"../results/{config.mech_fold}"):
+        os.makedirs(f"../results/{config.mech_fold}")
+    # create experiment folder
     if args.only_plot:
         data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
 
@@ -350,7 +364,7 @@ def main(args):
     if args.dataset:
         return
     model = load_model(config)
-    dataset = TlensDataset(config.dataset_path, model, slice=config.dataset_slice)
+    dataset = TlensDataset(config.dataset_path, config.mech_fold, model, slice=config.dataset_slice)
 
     experiments = []
     if args.logit_attribution:
@@ -399,6 +413,7 @@ if __name__ == "__main__":
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--dataset", action="store_true", default=False)
     parser.add_argument("--ablate-component", type=str, default="all")
+    parser.add_argument("--folder", type=str, default="")
     
     args = parser.parse_args()
     main(args)
