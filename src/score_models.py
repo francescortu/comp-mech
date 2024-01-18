@@ -60,6 +60,7 @@ class EvaluateMechanism:
         other_indices = []
         for i in range(num_samples):
             if torch.argmax(probs[i]) == target[i, 0]:
+                #print("DEBUG:", self.tokenizer.decode(target[i, 0]), self.tokenizer.decode(torch.argmax(probs[i])))
                 target_true += 1
                 target_true_indices.append(i)
             elif torch.argmax(probs[i]) == target[i, 1]:

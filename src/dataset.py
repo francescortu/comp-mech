@@ -232,7 +232,7 @@ class BaseDataset(Dataset):
         ):
             base_target = d["target_true"]
             all_token_with_similarity = self.compute_similarity_word2vec(
-                base_target, word2vec
+                base_target, word2vec, d["target_new"]
             )
             # save the distribution of the similarity score
             similarity_score = torch.tensor(
@@ -275,7 +275,7 @@ class BaseDataset(Dataset):
 
     @abstractmethod
     def compute_similarity_word2vec(
-        self, base_target: str, word2vec
+        self, base_target: str, word2vec, other_target: str
     ) -> List[Tuple[str, float]]:
         pass
 
@@ -652,17 +652,21 @@ class HFDataset(BaseDataset):
         return tokens
 
     def compute_similarity_word2vec(
-        self, base_target: str, word2vec
+        self, base_target: str, word2vec, other_target: str
     ) -> List[Tuple[str, float]]:
         similarity = []
         # remove the first space
+
         base_target = base_target[1:]
-        for str_token in self.tokenizer.vocab.keys():
-            if str_token == base_target:
-                continue
+        for token in range(self.tokenizer.vocab_size):
+            str_token = self.tokenizer.decode(token)
             try:
+                if str_token[0] == " ":
+                    space_token = str_token
+                else:
+                    space_token = " " + str_token
                 similarity.append(
-                    (" " + str_token, word2vec.similarity(base_target, str_token))
+                    (space_token, word2vec.similarity(base_target, str_token))
                 )
             except KeyError:
                 continue
