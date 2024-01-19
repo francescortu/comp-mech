@@ -77,6 +77,7 @@ class BaseDataset(Dataset):
                 self.full_data = json.load(open(similarity_path))
             else:
                 print("Similarity file not found, generating it")
+                self.similarity_path = similarity_path
                 self.full_data = self.generate_similarity_dataset(similarity[2])
                 json.dump(self.full_data, open(similarity_path, "w"), indent=2)
 
@@ -180,7 +181,7 @@ class BaseDataset(Dataset):
                                     "target_new": target_new,
                                 }
                             )
-                            #remove the sample if the target is not found in the prompt
+                            # remove the sample if the target is not found in the prompt
                             break
                             # raise ValueError(
                             #     "Target not found in prompt"
@@ -205,9 +206,6 @@ class BaseDataset(Dataset):
                 for d in self.full_data:
                     if d["prompt"] == logdata["prompt"]:
                         self.full_data.remove(d)
-                        
-                
-        
 
         self._clear_cache()  # free up memory, we don't need the model anymore
 
@@ -225,6 +223,7 @@ class BaseDataset(Dataset):
 
     def generate_similarity_dataset_word2vec(self) -> List[dict]:
         word2vec = api.load("word2vec-google-news-300")
+        similarity_score_dict = {}
         for d in tqdm(
             self.full_data,
             desc="Generating similarity tokens (word2vec)",
@@ -238,6 +237,7 @@ class BaseDataset(Dataset):
             similarity_score = torch.tensor(
                 [score for token, score in all_token_with_similarity]
             )
+            similarity_score_dict[base_target] = all_token_with_similarity
             # torch.save(similarity_score, f"../data/similarity_score/{base_target}.pt")
             #
             # divide the tokens into 4 groups based on the quantile
@@ -267,18 +267,18 @@ class BaseDataset(Dataset):
                 if score >= quartile_3
             ]
             group[0] = [
-                token
-                for token, score in all_token_with_similarity
-                if score >= top_2
+                token for token, score in all_token_with_similarity if score >= top_2
             ]
             d["similar_tokens_0"] = group[0]
             d["similar_tokens_1"] = group[1]
             d["similar_tokens_2"] = group[2]
             d["similar_tokens_3"] = group[3]
             d["similar_tokens_4"] = group[4]
-
+            
+        save_similarity_path = self.similarity_path.split(".json")[0] + "_score_dict_w2v.pt"
+        torch.save(similarity_score_dict, save_similarity_path)
         return self.full_data
-    
+
     # def generate_similarity_dataset_word2vec(self) -> List[dict]:
     #     word2vec = api.load("word2vec-google-news-300")
     #     for d in tqdm(
@@ -322,7 +322,10 @@ class BaseDataset(Dataset):
             desc="Generating similarity tokens",
             total=len(self.full_data),
         ):
-            best_string_token_predictions, best_token_score = self.get_best_string_token_predictions(
+            (
+                best_string_token_predictions,
+                best_token_score,
+            ) = self.get_best_string_token_predictions(
                 d["base_prompt"], tokenizer, model, 1000
             )
             token_per_similarity_level = self.get_token_per_similarity_level(
@@ -355,7 +358,6 @@ class BaseDataset(Dataset):
         self,
         best_string_token_predictions: List[str],
     ) -> Dict[int, List[str]]:
-
         # # sort the tokens by similarity
         # sorted_tokens = sorted(
         #     similarity_scores.items(), key=lambda x: x[1], reverse=True
@@ -662,7 +664,13 @@ class HFDataset(BaseDataset):
         else:
             self.model = model
         self.tokenizer = tokenizer
-        super().__init__(path=path, slice=slice, experiment=experiment, premise=premise, similarity=similarity)
+        super().__init__(
+            path=path,
+            slice=slice,
+            experiment=experiment,
+            premise=premise,
+            similarity=similarity,
+        )
 
     def reset(self):
         super().reset()
