@@ -244,6 +244,7 @@ class BaseDataset(Dataset):
             quartile_1 = torch.quantile(similarity_score, 0.25)
             quartile_2 = torch.quantile(similarity_score, 0.5)
             quartile_3 = torch.quantile(similarity_score, 0.75)
+            top_2 = torch.quantile(similarity_score, 0.98)
             group = {}
             group[4] = [
                 token
@@ -265,13 +266,42 @@ class BaseDataset(Dataset):
                 for token, score in all_token_with_similarity
                 if score >= quartile_3
             ]
-
+            group[0] = [
+                token
+                for token, score in all_token_with_similarity
+                if score >= top_2
+            ]
+            d["similar_tokens_0"] = group[0]
             d["similar_tokens_1"] = group[1]
             d["similar_tokens_2"] = group[2]
             d["similar_tokens_3"] = group[3]
             d["similar_tokens_4"] = group[4]
 
         return self.full_data
+    
+    # def generate_similarity_dataset_word2vec(self) -> List[dict]:
+    #     word2vec = api.load("word2vec-google-news-300")
+    #     for d in tqdm(
+    #         self.full_data,
+    #         desc="Generating similarity tokens (word2vec)",
+    #         total=len(self.full_data),
+    #     ):
+    #         base_target = d["target_true"]
+    #         all_token_with_similarity = self.compute_similarity_word2vec(
+    #             base_target, word2vec, d["target_new"]
+    #         )
+    #         # save the distribution of the similarity score
+    #         similarity_score = torch.tensor(
+    #             [score for token, score in all_token_with_similarity]
+    #         )
+    #         # sort the tokens by similarity
+    #         sorted_tokens = sorted(
+    #             all_token_with_similarity, key=lambda x: x[1], reverse=True
+    #         )
+    #         # write the tokens in the dataset
+    #         d["similar_tokens"] = [ (token, round(score.item(), 3)) for token, score in sorted_tokens]
+
+    #     return self.full_data
 
     @abstractmethod
     def compute_similarity_word2vec(

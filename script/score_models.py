@@ -28,14 +28,14 @@ FAMILY_NAME = "gpt2"
 @dataclass
 class Options:
     models_name: List[str] = field(
-        # default_factory=lambda: ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]
-        default_factory=lambda: ["gpt2-large"]
+        default_factory=lambda: ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"]
+        # default_factory=lambda: ["gpt2-large"]
     )
     premise: List[str] = field(
         default_factory=lambda: ["Redefine", "Assume", "Suppose", "Context"]
     )
     similarity: List[bool] = field(default_factory=lambda: [True, False])
-    interval: List[int] = field(default_factory=lambda: [4, 3, 2, 1])
+    interval: List[int] = field(default_factory=lambda: [4, 3, 2, 1, 0])
 
 
 @dataclass
@@ -44,12 +44,11 @@ class LaunchConfig:
     hf_model_name: str
     similarity: bool
     interval: int
-    similarity_type: Literal["logit", "word2vec"] 
+    similarity_type: Literal["logit", "word2vec"]
     family_name: str
     premise: str = "Redefine"
     num_samples: int = 1
     batch_size: int = 10
-    
 
 
 def launch_evaluation(config: LaunchConfig):
@@ -176,7 +175,7 @@ if __name__ == "__main__":
     parser.add_argument("--similarity", action="store_true")
     parser.add_argument("--similarity-type", type=str, default="logit")
     parser.add_argument("--num-samples", type=int, default=NUM_SAMPLES)
-    
+
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args()
     NUM_SAMPLES = args.num_samples
