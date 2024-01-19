@@ -127,7 +127,7 @@ def logit_attribution(model, dataset, config, args):
     #     return
 
     print("Running logit attribution")
-    attributor = LogitAttribution(dataset, model, config.batch_size // 5)
+    attributor = LogitAttribution(dataset, model, config.batch_size // 5, config.mech_fold)
     dataframe = attributor.run(normalize_logit=config.normalize_logit, up_to_layer=config.up_to_layer)
     save_dataframe(
         f"../results/{config.mech_fold}/logit_attribution/{config.model_name}_{dataset_slice_name}",
@@ -164,7 +164,7 @@ def logit_lens(model, dataset, config, args):
 
     logit_lens_cnfg = logit_lens_config()
     print("Running logit lens")
-    logit_lens = LogitLens(dataset, model, config.batch_size)
+    logit_lens = LogitLens(dataset, model, config.batch_size, config.mech_fold)
     dataframe = logit_lens.run(
         logit_lens_cnfg.component,
         logit_lens_cnfg.return_index,
@@ -203,7 +203,7 @@ def ov_difference(model, dataset, config, args):
     #     return
 
     print("Running ov difference")
-    ov = OV(dataset, model, config.batch_size)
+    ov = OV(dataset, model, config.batch_size, config.mech_fold)
     dataframe = ov.run(normalize_logit=config.normalize_logit)
     save_dataframe(
         f"../results/{config.mech_fold}/ov_difference/{config.model_name}_{data_slice_name}",
@@ -240,7 +240,7 @@ def ablate(model, dataset, config, args):
     #         ]
     #     )
     #     return
-    ablator = Ablate(dataset, model, config.batch_size)
+    ablator = Ablate(dataset, model, config.batch_size, config.mech_fold)
     if args.ablate_component == "all":
         dataframe = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect)
         save_dataframe(
