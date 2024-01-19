@@ -158,7 +158,7 @@ def get_aggregator(experiment: Literal["copyVSfact", "contextVSfact"]):
     if experiment == "copyVSfact":
         return aggregate_result_copyVSfact
     if experiment == "contextVSfact":
-        raise NotImplementedError("Not implemented yet")
+        return aggregate_result_contextVSfact
 
 def aggregate_result_copyVSfact(
     pattern: torch.Tensor, object_positions: int, length: int
@@ -198,22 +198,49 @@ def aggregate_result_copyVSfact(
     return intermediate_aggregate
 
 def aggregate_result_contextVSfact(
-    pattern: torch.Tensor, object_positions: int, length: int, subj_positions: int
+    pattern: torch.Tensor, object_positions: int, length: int, subj_positions: int, batch_dim: int
 ) -> torch.Tensor:
-    subject_1 = subj_positions
-    subject_2 = subj_positions + 1 if length > 15 else subject_1
-    subject_3 = subj_positions + 2 if length > 17 else subject_2
+    batch_size = pattern.shape[batch_dim]
+    if object_positions > 0:
+        len_aggregate = 9
+    else:
+        len_aggregate = 8
+
+    if batch_dim == 0:
+        pattern = pattern.transpose(0, 1)
+    aggregate_result = torch.zeros((pattern.shape[0], batch_size, len_aggregate))
+
+    for i in range(batch_size):
+        single_subject_positions = subj_positions[i] # type: ignore
+        aggregate_result[:, i, :] = aggregate_single_result_contextVSfact(pattern[:, i], object_positions, length, single_subject_positions)
+    if batch_dim == 0:
+        aggregate_result = aggregate_result.transpose(0, 1)
+    
+    
+    return aggregate_result
+    
+def aggregate_single_result_contextVSfact(
+    pattern: torch.Tensor, object_positions: int, length: int, subj_position: int
+) -> torch.Tensor:
+    subject_1 = subj_position
+    subject_2 = subj_position + 1 if (length - subj_position) > 15 else subject_1
+    subject_3 = subj_position + 2 if (length - subj_position) > 17 else subject_2
     object_positions_next = object_positions + 1 if object_positions < length - 1 else object_positions
-    subject_pos_pre = subj_positions - 1 if subj_positions > 0 else 0
+    subject_pos_pre = subj_position - 1 if subj_position > 0 else 0
     last_position = length - 1
+    
     
     *leading_dims, pen_len, last_len = pattern.shape
     if object_positions > 0:
+        
+        assert object_positions_next + 1 < subject_1, "object_positions_next + 1 < subject_1"
+        
+        
         intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 9))   
         intermediate_aggregate[..., 0] = pattern[..., :object_positions].mean(dim=-1) # before object
         intermediate_aggregate[..., 1] = pattern[..., object_positions]
         intermediate_aggregate[..., 2] = pattern[..., object_positions_next]
-        intermediate_aggregate[..., 3] = pattern[..., object_positions_next + 1 : subject_1].mean(dim=-1) # between object and subject
+        intermediate_aggregate[..., 3] = pattern[..., (object_positions_next + 1) : subject_1].mean(dim=-1) # between object and subject
         intermediate_aggregate[..., 4] = pattern[..., subject_1]
         intermediate_aggregate[..., 5] = pattern[..., subject_2]
         intermediate_aggregate[..., 6] = pattern[..., subject_3]

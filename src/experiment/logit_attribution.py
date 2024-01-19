@@ -31,9 +31,10 @@ class AttributeStorage:
         diff_attribute: torch.Tensor,
         labels,
         object_position: int,
+        **kwargs,
     ):
         mem_attribute, cp_attribute, diff_attribute = self.aggregate(
-            mem_attribute, cp_attribute, diff_attribute, object_position
+            mem_attribute, cp_attribute, diff_attribute, object_position, **kwargs
         )
         self.mem_attribute.append(mem_attribute.cpu())
         self.cp_attribute.append(cp_attribute.cpu())
@@ -73,7 +74,7 @@ class AttributeStorage:
 
 class LogitAttribution(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
+        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"] ,
     ):
         super().__init__(dataset, model, batch_size, experiment)
 
@@ -147,13 +148,24 @@ class LogitAttribution(BaseExperiment):
                 stack_of_component, tokens=target_mem, incorrect_tokens=target_cp
             )  # (component, batch, position)
             object_position = self.dataset.obj_pos[0]
-            storage.append(
-                mem_attribute.cpu(),
-                cp_attribute.cpu(),
-                diff_attribute.cpu(),
-                labels,
-                object_position,
-            )
+            if self.experiment == "copyVSfact":
+                storage.append(
+                    mem_attribute.cpu(),
+                    cp_attribute.cpu(),
+                    diff_attribute.cpu(),
+                    labels,
+                    object_position,
+                )
+            elif self.experiment == "contextVSfact":
+                storage.append(
+                    mem_attribute.cpu(),
+                    cp_attribute.cpu(),
+                    diff_attribute.cpu(),
+                    labels,
+                    object_position,
+                    subj_positions=batch["subj_pos"],
+                    batch_dim=1,
+                )
 
         # clear the cuda cache
         torch.cuda.empty_cache()

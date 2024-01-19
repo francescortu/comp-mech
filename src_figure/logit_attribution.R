@@ -11,6 +11,7 @@ if (length(args) == 0) {
 folder_name <- args[1]
 std_dev <- as.numeric(args[2])
 
+
 ######################################### function #################################################################
 
 create_heatmap <- function(data, x, y, fill, title) {
@@ -31,7 +32,6 @@ create_heatmap <- function(data, x, y, fill, title) {
 # Set working directory and read data
 data <- read.csv(paste(folder_name, "logit_attribution_data.csv", sep = "/"))
 
-
 #############################################################################################################
 ###################################       HEAD              #################################################
 #############################################################################################################
@@ -39,9 +39,9 @@ data <- read.csv(paste(folder_name, "logit_attribution_data.csv", sep = "/"))
 ## filter the data to only include label of type LiHj
 
 data_head <- data %>% filter(grepl("^L[0-9]+H[0-9]+$", label))
-
+number_of_position <- max(as.numeric(data_head$position))
 ## filter to have just position 12
-for (pos in 0:12) {
+for (pos in 0:number_of_position) {
 
   data_head_ <- data_head %>% filter(position == pos)
   

@@ -13,10 +13,10 @@ folder_name <- args[1]
 
 data <- read.csv(paste(folder_name, "logit_lens_data.csv", sep = "/"))
 #data <- read.csv("logit_lens_data.csv")
-
+data <- read.csv("logit_lens_data.csv")
+number_of_position <- max(as.numeric(data$position))
 ########################### resid_post ########################################
 data_resid_post <- data %>% filter(grepl("resid_post", component))
-
 p <- ggplot(data_resid_post, aes(x=data$position, y=data$layer, fill=data$mem)) +
   #geom_tile()+
   geom_point(shape=21, stroke=0.6, size=33)+
@@ -27,7 +27,7 @@ p <- ggplot(data_resid_post, aes(x=data$position, y=data$layer, fill=data$mem)) 
                        labels = function(x) paste0(round(x, 1), "%"))+
   labs(x='Postion', y='Layers', fill='')+
   scale_y_continuous(breaks = seq(0, 11, 1))+
-  scale_x_continuous(breaks = seq(0, 12, 1), labels = c("-", "Subect 1", "Subject 2", "Subject 3", "-", "last", "attribute","-","Subject 1", "Subject 2", "Subject 3", "-", "last"))+
+  scale_x_continuous(breaks = seq(0, number_of_position, 1))+
   theme_minimal() +  # Minimal theme  
   theme(
     panel.grid.major = element_blank(), 
@@ -54,7 +54,7 @@ p <- ggplot(data_resid_post, aes(x=data$position, y=data$layer, fill=data$cp)) +
                        labels = function(x) paste0(round(x, 1), "%"))+
   labs(x='Postion', y='Layers', fill='')+
   scale_y_continuous(breaks = seq(0, 11, 1))+
-  scale_x_continuous(breaks = seq(0, 12, 1), labels = c("-", "Subect 1", "Subject 2", "Subject 3", "-", "last", "attribute","-","Subject 1", "Subject 2", "Subject 3", "-", "last"))+
+  scale_x_continuous(breaks = seq(0, number_of_position, 1))+
   theme_minimal() +  # Minimal theme  
   theme(
     panel.grid.major = element_blank(), 

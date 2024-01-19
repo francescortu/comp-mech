@@ -155,7 +155,7 @@ class HeadLogitStorage(IndexLogitStorage, LogitStorage):
 
 class LogitLens(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
+        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"],
     ):
         super().__init__(dataset, model, batch_size, experiment)
         self.valid_blocks = ["mlp_out", "resid_pre", "resid_post", "attn_out"]
@@ -202,9 +202,10 @@ class LogitLens(BaseExperiment):
                 storer = HeadLogitStorage.from_logit_storage(
                     storer, self.model.cfg.n_heads
                 )
-
+        subject_positions = []
         for batch in dataloader:
             _, cache = self.model.run_with_cache(batch["prompt"])
+            subject_positions.append(batch["subj_pos"])
             for layer in range(self.model.cfg.n_layers):
                 if component in self.valid_blocks:
                     cached_component = cache[component, layer]
@@ -246,7 +247,9 @@ class LogitLens(BaseExperiment):
                         f"component must be one of {self.valid_blocks + self.valid_heads}"
                     )
         object_positions = self.dataset.obj_pos[0]
-
+        subject_positions = torch.cat(subject_positions, dim=0)
+        if self.experiment == "contextVSfact":
+            return storer.get_aggregate_logit(object_position=object_positions, subj_positions=subject_positions, batch_dim=0)
         return storer.get_aggregate_logit(object_position=object_positions)
 
     def project(

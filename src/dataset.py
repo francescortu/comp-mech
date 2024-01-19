@@ -119,6 +119,7 @@ class BaseDataset(Dataset):
             "input_ids": self.tokenized_prompts[idx],
             "target": self.targets[idx],
             "obj_pos": self.obj_pos[idx],
+            "subj_pos": self.subj_pos[idx],
         }
 
     def get_lengths(self):
@@ -165,6 +166,14 @@ class BaseDataset(Dataset):
                 d["targets"] = torch.cat(
                     [target_true_token, target_new_token], dim=0
                 )  # (2)
+                if self.experiment == "contextVSfact":
+                    subject_token = self._tokenize_prompt(" " + d["base_prompt"], False)[1]
+                    for i in range(len(d["tokenized_prompt"]), 0, -1):
+                        if d["tokenized_prompt"][i-1] == subject_token:
+                            d["subj_position"] = i
+                            break
+
+
                 try:
                     obj_pos_indices = (
                         d["tokenized_prompt"].cpu() == target_new_token.cpu()
@@ -190,6 +199,7 @@ class BaseDataset(Dataset):
                     if d["length"] not in lenghts:
                         lenghts.append(d["length"])
                     break
+                    
                 except RuntimeError:
                     if self.similarity[0] is True:
                         continue  # Resample if similarity is true
@@ -425,6 +435,7 @@ class BaseDataset(Dataset):
         self.targets = []
         self.obj_pos = []
         self.data = []
+        self.subj_pos = []
 
         self.data = [d for d in self.full_data if d["length"] == length]
         # filter data by length
@@ -435,7 +446,10 @@ class BaseDataset(Dataset):
         self.original_index = [
             i for i, d in enumerate(self.full_data) if d["length"] == length
         ]
-
+        if self.experiment == "contextVSfact":
+            self.subj_pos = [d["subj_position"] for d in self.data]
+        else:
+            self.subj_pos = [None for d in self.data]
         # if self.similarity[0] is True:
         #     self.apply_similarity()
 
