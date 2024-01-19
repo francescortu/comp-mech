@@ -8,7 +8,7 @@ from src.context_dataset_generator import ContextDatasetGPT
 
 def main():
     model_name = "gpt2"
-    n_samples = 100
+    n_samples = 10000
     context_dataset = ContextDatasetGPT(model_name, n_samples)
     context_dataset.run()
 
