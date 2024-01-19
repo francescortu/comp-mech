@@ -55,8 +55,8 @@ class ContextDatasetGPT:
     def process_dataset(self):
         new_dataset = []
         self.new_dataset, index = self.load_checkpoints()
-
-        with Pool(8) as p:
+        print("Using", cpu_count(), " CPU to make multiple API call to OpenAI")
+        with Pool(cpu_count()) as p:
             new_dataset = list(tqdm(
                 p.imap(process_sample, self.original_dataset[index:]),
                 total=len(self.original_dataset[index:]),
