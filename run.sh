@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH -n10
+#SBATCH -n5
 #SBATCH --job-name=pythia6b
 #SBATCH -N1
 #SBATCH -p DGX
 #SBATCH --gpus=1
-#SBATCH --mem=200gb
+#SBATCH --mem=150gb
 #SBATCH --time=150:00:00
 #SBATCH --output=my_job_%j.out
 #SBATCH --error=my_job_%j.err
