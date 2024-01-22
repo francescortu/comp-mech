@@ -81,7 +81,8 @@ class EvaluateMechanism:
         all_false_indices = []
         all_other_indices = []
 
-        for idx, batch in tqdm(enumerate(dataloader), total=n_batch):
+        idx = 0
+        for batch in tqdm(dataloader, total=n_batch):
             input_ids = batch["input_ids"].to(self.device)
             logits = self.model(input_ids)["logits"]
             count = self.check_prediction(logits, batch["target"])
@@ -107,7 +108,7 @@ class EvaluateMechanism:
                     for i in count[2]
                 ]
             )
-
+            idx += 1
         return (
             target_true,
             target_false,

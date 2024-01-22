@@ -449,7 +449,7 @@ class BaseDataset(Dataset):
         if self.experiment == "contextVSfact":
             self.subj_pos = [d["subj_position"] for d in self.data]
         else:
-            self.subj_pos = [None for d in self.data]
+            self.subj_pos = [-100 for d in self.data]
         # if self.similarity[0] is True:
         #     self.apply_similarity()
 

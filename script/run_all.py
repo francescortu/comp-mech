@@ -283,7 +283,7 @@ def pattern(model, dataset, config, args):
     #     )
     #     return
     print("Running head pattern")
-    pattern = HeadPattern(dataset, model, config.batch_size)
+    pattern = HeadPattern(dataset, model, config.batch_size, config.mech_fold)
     dataframe = pattern.run()
     save_dataframe(
         f"../results/{config.mech_fold}/head_pattern/{config.model_name}_{data_slice_name}",

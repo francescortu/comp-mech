@@ -1,3 +1,4 @@
+from calendar import c
 import sys
 import os
 
@@ -45,6 +46,7 @@ class LaunchConfig:
     similarity: bool
     interval: int
     similarity_type: Literal["logit", "word2vec"]
+    experiment: Literal["copyVSfact", "contextVSfact"]
     family_name: str
     premise: str = "Redefine"
     num_samples: int = 1
@@ -68,7 +70,7 @@ def launch_evaluation(config: LaunchConfig):
         model=config.model_name,
         tokenizer=tokenizer,
         path=dataset_path,
-        experiment="copyVSfact",
+        experiment=config.experiment,
         slice=10000,
         premise=config.premise,
         similarity=(config.similarity, config.interval, config.similarity_type),
@@ -87,7 +89,7 @@ def launch_evaluation(config: LaunchConfig):
     evaluator.evaluate_all()
 
 
-def evaluate_size(options: Options):
+def evaluate_size(options: Options, experiment:Literal["copyVSfact", "contextVSfact"]):
     for model_name in options.models_name:
         launch_config = LaunchConfig(
             model_name=model_name,
@@ -95,13 +97,14 @@ def evaluate_size(options: Options):
             similarity=False,
             interval=0,
             similarity_type=SIMILARITY_TYPE,
+            experiment=experiment,
             family_name=FAMILY_NAME,
             num_samples=NUM_SAMPLES,
         )
         launch_evaluation(launch_config)
 
 
-def evaluate_premise(options: Options):
+def evaluate_premise(options: Options, experiment:Literal["copyVSfact", "contextVSfact"]):
     for model_name in options.models_name:
         for premise in options.premise:
             launch_config = LaunchConfig(
@@ -110,6 +113,7 @@ def evaluate_premise(options: Options):
                 similarity=False,
                 interval=0,
                 similarity_type=SIMILARITY_TYPE,
+                experiment=experiment,
                 family_name=FAMILY_NAME,
                 premise=premise,
                 num_samples=NUM_SAMPLES,
@@ -117,7 +121,7 @@ def evaluate_premise(options: Options):
             launch_evaluation(launch_config)
 
 
-def evaluate_similarity_default_premise(options: Options):
+def evaluate_similarity_default_premise(options: Options, experiment:Literal["copyVSfact", "contextVSfact"]):
     for model_name in options.models_name:
         for interval in options.interval:
             launch_config = LaunchConfig(
@@ -126,13 +130,14 @@ def evaluate_similarity_default_premise(options: Options):
                 similarity=True,
                 interval=interval,
                 similarity_type=SIMILARITY_TYPE,
+                experiment=experiment,
                 family_name=FAMILY_NAME,
                 num_samples=NUM_SAMPLES,
             )
             launch_evaluation(launch_config)
 
 
-def evaluate_similarity_all_premise(options: Options):
+def evaluate_similarity_all_premise(options: Options, experiment:Literal["copyVSfact", "contextVSfact"]):
     for model_name in options.models_name:
         for premise in options.premise:
             for interval in options.interval:
@@ -142,6 +147,7 @@ def evaluate_similarity_all_premise(options: Options):
                     similarity=True,
                     interval=interval,
                     similarity_type=SIMILARITY_TYPE,
+                    experiment=experiment,
                     family_name=FAMILY_NAME,
                     premise=premise,
                     num_samples=NUM_SAMPLES,
@@ -165,7 +171,7 @@ def main(args):
     options = Options()
     for experiment in experiments:
         print("Running experiment", experiment.__name__)
-        experiment(options)
+        experiment(options, args.experiment)
 
 
 if __name__ == "__main__":
@@ -175,6 +181,7 @@ if __name__ == "__main__":
     parser.add_argument("--similarity", action="store_true")
     parser.add_argument("--similarity-type", type=str, default="logit")
     parser.add_argument("--num-samples", type=int, default=NUM_SAMPLES)
+    parser.add_argument("--experiment", type=str, default="")
 
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args()
