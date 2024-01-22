@@ -10,5 +10,6 @@
 
 conda activate torch
 cd script
-python context_dataset_openai.py --n_samples 10000 --model_name gpt2
-python context_dataset_openai.py --n_samples 10000 --model_name gpt2-medium
+python context_dataset_openai.py --n_samples 10000 --model_name gpt2-large
+python context_dataset_openai.py --n_samples 10000 --model_name gpt2-xl
+python context_dataset_openai.py --n_samples 10000 --model_name pythia-6.9b

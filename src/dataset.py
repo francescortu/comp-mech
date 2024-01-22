@@ -114,13 +114,22 @@ class BaseDataset(Dataset):
     def __getitem__(self, idx):
         if len(self.prompts) == 0:
             raise ValueError("Dataset is empty: please call set_len() first")
-        return {
-            "prompt": self.prompts[idx],
-            "input_ids": self.tokenized_prompts[idx],
-            "target": self.targets[idx],
-            "obj_pos": self.obj_pos[idx],
-            "subj_pos": self.subj_pos[idx],
-        }
+        if self.experiment == "copyVSfact":
+            return {
+                "prompt": self.prompts[idx],
+                "input_ids": self.tokenized_prompts[idx],
+                "target": self.targets[idx],
+                "obj_pos": self.obj_pos[idx],
+                #"subj_pos": self.subj_pos[idx],
+            }
+        else:
+            return {
+                 "prompt": self.prompts[idx],
+                 "input_ids": self.tokenized_prompts[idx],
+                 "target": self.targets[idx],
+                 "obj_pos": self.obj_pos[idx],
+                 "subj_pos": self.subj_pos[idx]
+            }
 
     def get_lengths(self):
         return self.lengths
@@ -701,6 +710,7 @@ class HFDataset(BaseDataset):
             target, return_tensors="pt", add_special_tokens=False
         ).squeeze(0)
         assert len(tokens.shape) == 1
+        assert tokens.shape[0] == 1, f"target must bu just one token      {target}, {tokens} {self.tokenizer.decode(tokens[0])} {self.tokenizer.decode(tokens[1])}"
         return tokens
 
     def compute_similarity_word2vec(
