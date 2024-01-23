@@ -18,7 +18,7 @@ import logging
 import os
 from line_profiler import profile
 import time
-from multiprocessing import Pool
+from multiprocessing import Pool, set_start_method
 from typing import Tuple
 
 
@@ -35,7 +35,8 @@ class BaseDataset(Dataset):
             0,
             "logit",
         ),
-    ):
+    ):          
+        set_start_method('spawn', force=True)  # Set spawn method for multiprocessing
         self.__initialize__(path, slice, start, experiment, premise, similarity)
 
     def __initialize__(
@@ -237,11 +238,82 @@ class BaseDataset(Dataset):
         self, method: Literal["word2vec", "logit"]
     ) -> List[dict]:
         if method == "word2vec":
-            return self.generate_similarity_dataset_word2vec()
+            return self.generate_similarity_dataset_word2vec_parallel()
         elif method == "logit":
             return self.generate_similarity_dataset_logit()
         else:
             raise ValueError("method must be either 'word2vec' or 'logit'")
+        
+    def worker_function(self, d: dict) -> dict:
+        word2vec = api.load("word2vec-google-news-300")
+        base_target = d["target_true"]
+        all_token_with_similarity = self.compute_similarity_word2vec(
+            base_target, word2vec, d["target_new"]
+        )
+        # save the distribution of the similarity score
+        similarity_score = torch.tensor(
+            [score for token, score in all_token_with_similarity]
+        )
+        # divide the tokens into 4 groups based on the quantile
+        quartile_1 = torch.quantile(similarity_score, 0.25)
+        quartile_2 = torch.quantile(similarity_score, 0.5)
+        quartile_3 = torch.quantile(similarity_score, 0.75)
+        top_2 = torch.quantile(similarity_score, 0.98)
+        group = {}
+        group[4] = [
+            token
+            for token, score in all_token_with_similarity
+            if score < quartile_1
+        ]
+        group[3] = [
+            token
+            for token, score in all_token_with_similarity
+            if (score >= quartile_1) & (score < quartile_2)
+        ]
+        group[2] = [
+            token
+            for token, score in all_token_with_similarity
+            if (score >= quartile_2) & (score < quartile_3)
+        ]
+        group[1] = [
+            token
+            for token, score in all_token_with_similarity
+            if score >= quartile_3
+        ]
+        group[0] = [
+            token for token, score in all_token_with_similarity if score >= top_2
+        ]
+        d["similar_tokens_0"] = group[0]
+        d["similar_tokens_1"] = group[1]
+        d["similar_tokens_2"] = group[2]
+        d["similar_tokens_3"] = group[3]
+        d["similar_tokens_4"] = group[4]
+        
+
+    def generate_similarity_dataset_word2vec_parallel(self) -> List[dict]:
+            # Load word2vec model
+            word2vec = api.load("word2vec-google-news-300")
+
+            # Create a pool of workers
+            with Pool(processes=4) as pool:  # Adjust the number of processes as needed
+                results = pool.map(self.worker_function, self.full_data)
+
+            # Aggregate results here
+            similarity_score_dict = {}
+            for result in results:
+                base_target = result["base_target"]
+                d = result["data"]
+                # Aggregate your results as needed
+                # For example:
+                similarity_score_dict[base_target] = d
+
+            # Save results
+            save_similarity_path = (
+                self.similarity_path.split(".json")[0] + "_score_dict_w2v.pt"
+            )
+            torch.save(similarity_score_dict, save_similarity_path)
+            return self.full_data
+
 
     def generate_similarity_dataset_word2vec(self) -> List[dict]:
         word2vec = api.load("word2vec-google-news-300")
@@ -720,59 +792,59 @@ class HFDataset(BaseDataset):
             tokens = tokens.unsqueeze(0)
         return tokens
 
-    # def compute_similarity_word2vec(
-    #     self, base_target: str, word2vec, other_target: str
-    # ) -> List[Tuple[str, float]]:
-    #     similarity = []
-    #     # remove the first space
+    def compute_similarity_word2vec(
+        self, base_target: str, word2vec, other_target: str
+    ) -> List[Tuple[str, float]]:
+        similarity = []
+        # remove the first space
 
-    #     base_target = base_target[1:]
-    #     # print(self.tokenizer.encode(" C"))
-    #     for token in range(self.tokenizer.vocab_size):
-    #         str_token = self.tokenizer.decode(token)
-    #         if str_token[0] == " ":
-    #             space_token = str_token
-    #             str_token = str_token[1:]
-    #         else:
-    #             space_token = " " + str_token
-    #         # if str_token == other_target:
-    #         #     print("found")
-    #         try:
-    #             similarity.append(
-    #                 (space_token, word2vec.similarity(base_target, str_token))
-    #             )
-    #         except KeyError:
-    #             if " " + str_token == other_target:
-    #                 print("other_target", other_target, " is not in the w2v vocab")
-    #     # similarity_len = len(similarity)
-    #     # print(similarity_len)
-    #     return similarity
-
-    def compute_similarity_word2vec(self, base_target, word2vec, other_target):
         base_target = base_target[1:]
+        # print(self.tokenizer.encode(" C"))
+        for token in range(self.tokenizer.vocab_size):
+            str_token = self.tokenizer.decode(token)
+            if str_token[0] == " ":
+                space_token = str_token
+                str_token = str_token[1:]
+            else:
+                space_token = " " + str_token
+            # if str_token == other_target:
+            #     print("found")
+            try:
+                similarity.append(
+                    (space_token, word2vec.similarity(base_target, str_token))
+                )
+            except KeyError:
+                if " " + str_token == other_target:
+                    print("other_target", other_target, " is not in the w2v vocab")
+        # similarity_len = len(similarity)
+        # print(similarity_len)
+        return similarity
 
-        with Pool(processes=4) as pool:  # Adjust the number of processes as needed
-            results = pool.starmap(
-                compute_similarity_for_token,
-                [(base_target, word2vec, token, self.tokenizer) for token in range(self.tokenizer.vocab_size)]
-            )
+#     def compute_similarity_word2vec(self, base_target, word2vec, other_target):
+#         base_target = base_target[1:]
 
-        # Filter out None results and return
-        return [result for result in results if result is not None]
+#         with Pool(processes=4) as pool:  # Adjust the number of processes as needed
+#             results = pool.starmap(
+#                 compute_similarity_for_token,
+#                 [(base_target, word2vec, token, self.tokenizer) for token in range(self.tokenizer.vocab_size)]
+#             )
+
+#         # Filter out None results and return
+#         return [result for result in results if result is not None]
     
     
-def compute_similarity_for_token(base_target, word2vec, token, tokenizer):
-    str_token = tokenizer.decode(token)
-    if str_token[0] == " ":
-        space_token = str_token
-        str_token = str_token[1:]
-    else:
-        space_token = " " + str_token
+# def compute_similarity_for_token(base_target, word2vec, token, tokenizer):
+#     str_token = tokenizer.decode(token)
+#     if str_token[0] == " ":
+#         space_token = str_token
+#         str_token = str_token[1:]
+#     else:
+#         space_token = " " + str_token
 
-    try:
-        return space_token, word2vec.similarity(base_target, str_token)
-    except KeyError:
-        return None
+#     try:
+#         return space_token, word2vec.similarity(base_target, str_token)
+#     except KeyError:
+#         return None
 
 
 class SampleDataset:
