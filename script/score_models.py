@@ -2,6 +2,8 @@ from calendar import c
 import sys
 import os
 
+from openai import models
+
 
 # Get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -29,9 +31,9 @@ FAMILY_NAME = "gpt2"
 @dataclass
 class Options:
     models_name: List[str] = field(
-        #default_factory=lambda: ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "EleutherAI/pythia-6.9b"]
+        # default_factory=lambda: ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "EleutherAI/pythia-6.9b"]
         default_factory=lambda: ["gpt2-xl", "EleutherAI/pythia-6.9b"]
-        #default_factory=lambda: ["gpt2"]
+        # default_factory=lambda: ["gpt2"]
     )
     premise: List[str] = field(
         default_factory=lambda: ["Redefine", "Assume", "Suppose", "Context"]
@@ -72,9 +74,10 @@ def launch_evaluation(config: LaunchConfig):
         tokenizer=tokenizer,
         path=dataset_path,
         experiment=config.experiment,
-        slice=1000,
+        slice=10000,
         premise=config.premise,
         similarity=(config.similarity, config.interval, config.similarity_type),
+        family_name="gpt2" if "gpt2" in config.model_name else "pythia",
     )
     print("Dataset loaded")
     evaluator = EvaluateMechanism(
@@ -90,7 +93,7 @@ def launch_evaluation(config: LaunchConfig):
     evaluator.evaluate_all()
 
 
-def evaluate_size(options: Options, experiment:Literal["copyVSfact", "contextVSfact"]):
+def evaluate_size(options: Options, experiment: Literal["copyVSfact", "contextVSfact"]):
     for model_name in options.models_name:
         launch_config = LaunchConfig(
             model_name=model_name,
@@ -105,7 +108,9 @@ def evaluate_size(options: Options, experiment:Literal["copyVSfact", "contextVSf
         launch_evaluation(launch_config)
 
 
-def evaluate_premise(options: Options, experiment:Literal["copyVSfact", "contextVSfact"]):
+def evaluate_premise(
+    options: Options, experiment: Literal["copyVSfact", "contextVSfact"]
+):
     for model_name in options.models_name:
         for premise in options.premise:
             launch_config = LaunchConfig(
@@ -122,7 +127,9 @@ def evaluate_premise(options: Options, experiment:Literal["copyVSfact", "context
             launch_evaluation(launch_config)
 
 
-def evaluate_similarity_default_premise(options: Options, experiment:Literal["copyVSfact", "contextVSfact"]):
+def evaluate_similarity_default_premise(
+    options: Options, experiment: Literal["copyVSfact", "contextVSfact"]
+):
     for model_name in options.models_name:
         for interval in options.interval:
             launch_config = LaunchConfig(
@@ -138,7 +145,9 @@ def evaluate_similarity_default_premise(options: Options, experiment:Literal["co
             launch_evaluation(launch_config)
 
 
-def evaluate_similarity_all_premise(options: Options, experiment:Literal["copyVSfact", "contextVSfact"]):
+def evaluate_similarity_all_premise(
+    options: Options, experiment: Literal["copyVSfact", "contextVSfact"]
+):
     for model_name in options.models_name:
         for premise in options.premise:
             for interval in options.interval:
@@ -169,7 +178,7 @@ def main(args):
     if args.all:
         experiments = [evaluate_size, evaluate_premise, evaluate_similarity_all_premise]
 
-    options = Options()
+    options = Options(models_name=args.models_name)
     for experiment in experiments:
         print("Running experiment", experiment.__name__)
         experiment(options, args.experiment)
@@ -183,6 +192,18 @@ if __name__ == "__main__":
     parser.add_argument("--similarity-type", type=str, default="logit")
     parser.add_argument("--num-samples", type=int, default=NUM_SAMPLES)
     parser.add_argument("--experiment", type=str, default="")
+    parser.add_argument(
+        "--models-name",
+        nargs="+",
+        type=str,
+        default=[
+            "gpt2",
+            "gpt2-medium",
+            "gpt2-large",
+            "gpt2-xl",
+            "EleutherAI/pythia-6.9b",
+        ],
+    )
 
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args()
