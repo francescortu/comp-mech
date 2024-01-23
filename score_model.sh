@@ -12,5 +12,5 @@
 
 conda activate torch
 cd script
-python score_models.py --similarity --num-samples 10 --similarity-type word2vec --experiment copyVSfact
+python score_models.py --similarity --num-samples 1 --similarity-type word2vec --experiment copyVSfact
 #python score_models.py --all --num-samples 10 --similarity-type logit
