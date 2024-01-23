@@ -239,7 +239,7 @@ class BaseDataset(Dataset):
         self, method: Literal["word2vec", "logit"]
     ) -> List[dict]:
         if method == "word2vec":
-            return self.generate_similarity_dataset_word2vec_parallel()
+            return self.generate_similarity_dataset_word2vec()
         elif method == "logit":
             return self.generate_similarity_dataset_logit()
         else:
