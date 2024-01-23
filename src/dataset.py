@@ -720,18 +720,25 @@ class HFDataset(BaseDataset):
         # remove the first space
 
         base_target = base_target[1:]
+        # print(self.tokenizer.encode(" C"))
         for token in range(self.tokenizer.vocab_size):
             str_token = self.tokenizer.decode(token)
+            if str_token[0] == " ":
+                space_token = str_token
+                str_token = str_token[1:]
+            else:
+                space_token = " " + str_token
+            # if str_token == other_target:
+            #     print("found")
             try:
-                if str_token[0] == " ":
-                    space_token = str_token
-                else:
-                    space_token = " " + str_token
                 similarity.append(
                     (space_token, word2vec.similarity(base_target, str_token))
                 )
             except KeyError:
-                continue
+                if " " + str_token == other_target:
+                    print("other_target", other_target, " is not in the w2v vocab")
+        # similarity_len = len(similarity)
+        # print(similarity_len)
         return similarity
 
 

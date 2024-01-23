@@ -29,8 +29,8 @@ FAMILY_NAME = "gpt2"
 @dataclass
 class Options:
     models_name: List[str] = field(
-        #default_factory=lambda: ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "EleutherAI/pythia-6.9b"]
-        default_factory=lambda: ["EleutherAI/pythia-6.9b"]
+        default_factory=lambda: ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "EleutherAI/pythia-6.9b"]
+        # default_factory=lambda: ["EleutherAI/pythia-6.9b"]
         #default_factory=lambda: ["gpt2"]
     )
     premise: List[str] = field(
