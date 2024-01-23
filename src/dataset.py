@@ -21,6 +21,7 @@ import time
 from multiprocessing import Pool
 from typing import Tuple
 
+
 class BaseDataset(Dataset):
     def __init__(
         self,
@@ -121,15 +122,15 @@ class BaseDataset(Dataset):
                 "input_ids": self.tokenized_prompts[idx],
                 "target": self.targets[idx],
                 "obj_pos": self.obj_pos[idx],
-                #"subj_pos": self.subj_pos[idx],
+                # "subj_pos": self.subj_pos[idx],
             }
         else:
             return {
-                 "prompt": self.prompts[idx],
-                 "input_ids": self.tokenized_prompts[idx],
-                 "target": self.targets[idx],
-                 "obj_pos": self.obj_pos[idx],
-                 "subj_pos": self.subj_pos[idx]
+                "prompt": self.prompts[idx],
+                "input_ids": self.tokenized_prompts[idx],
+                "target": self.targets[idx],
+                "obj_pos": self.obj_pos[idx],
+                "subj_pos": self.subj_pos[idx],
             }
 
     def get_lengths(self):
@@ -177,12 +178,13 @@ class BaseDataset(Dataset):
                     [target_true_token, target_new_token], dim=0
                 )  # (2)
                 if self.experiment == "contextVSfact":
-                    subject_token = self._tokenize_prompt(" " + d["base_prompt"], False)[1]
+                    subject_token = self._tokenize_prompt(
+                        " " + d["base_prompt"], False
+                    )[1]
                     for i in range(len(d["tokenized_prompt"]), 0, -1):
-                        if d["tokenized_prompt"][i-1] == subject_token:
+                        if d["tokenized_prompt"][i - 1] == subject_token:
                             d["subj_position"] = i
                             break
-
 
                 try:
                     obj_pos_indices = (
@@ -209,7 +211,7 @@ class BaseDataset(Dataset):
                     if d["length"] not in lenghts:
                         lenghts.append(d["length"])
                     break
-                    
+
                 except RuntimeError:
                     if self.similarity[0] is True:
                         continue  # Resample if similarity is true
@@ -294,8 +296,10 @@ class BaseDataset(Dataset):
             d["similar_tokens_2"] = group[2]
             d["similar_tokens_3"] = group[3]
             d["similar_tokens_4"] = group[4]
-            
-        save_similarity_path = self.similarity_path.split(".json")[0] + "_score_dict_w2v.pt"
+
+        save_similarity_path = (
+            self.similarity_path.split(".json")[0] + "_score_dict_w2v.pt"
+        )
         torch.save(similarity_score_dict, save_similarity_path)
         return self.full_data
 
@@ -716,33 +720,59 @@ class HFDataset(BaseDataset):
             tokens = tokens.unsqueeze(0)
         return tokens
 
-    def compute_similarity_word2vec(
-        self, base_target: str, word2vec, other_target: str
-    ) -> List[Tuple[str, float]]:
-        similarity = []
-        # remove the first space
+    # def compute_similarity_word2vec(
+    #     self, base_target: str, word2vec, other_target: str
+    # ) -> List[Tuple[str, float]]:
+    #     similarity = []
+    #     # remove the first space
 
+    #     base_target = base_target[1:]
+    #     # print(self.tokenizer.encode(" C"))
+    #     for token in range(self.tokenizer.vocab_size):
+    #         str_token = self.tokenizer.decode(token)
+    #         if str_token[0] == " ":
+    #             space_token = str_token
+    #             str_token = str_token[1:]
+    #         else:
+    #             space_token = " " + str_token
+    #         # if str_token == other_target:
+    #         #     print("found")
+    #         try:
+    #             similarity.append(
+    #                 (space_token, word2vec.similarity(base_target, str_token))
+    #             )
+    #         except KeyError:
+    #             if " " + str_token == other_target:
+    #                 print("other_target", other_target, " is not in the w2v vocab")
+    #     # similarity_len = len(similarity)
+    #     # print(similarity_len)
+    #     return similarity
+
+    def compute_similarity_word2vec(self, base_target, word2vec, other_target):
         base_target = base_target[1:]
-        # print(self.tokenizer.encode(" C"))
-        for token in range(self.tokenizer.vocab_size):
-            str_token = self.tokenizer.decode(token)
-            if str_token[0] == " ":
-                space_token = str_token
-                str_token = str_token[1:]
-            else:
-                space_token = " " + str_token
-            # if str_token == other_target:
-            #     print("found")
-            try:
-                similarity.append(
-                    (space_token, word2vec.similarity(base_target, str_token))
-                )
-            except KeyError:
-                if " " + str_token == other_target:
-                    print("other_target", other_target, " is not in the w2v vocab")
-        # similarity_len = len(similarity)
-        # print(similarity_len)
-        return similarity
+
+        with Pool(processes=4) as pool:  # Adjust the number of processes as needed
+            results = pool.starmap(
+                compute_similarity_for_token,
+                [(base_target, word2vec, token, self.tokenizer) for token in range(self.tokenizer.vocab_size)]
+            )
+
+        # Filter out None results and return
+        return [result for result in results if result is not None]
+    
+    
+def compute_similarity_for_token(base_target, word2vec, token, tokenizer):
+    str_token = tokenizer.decode(token)
+    if str_token[0] == " ":
+        space_token = str_token
+        str_token = str_token[1:]
+    else:
+        space_token = " " + str_token
+
+    try:
+        return space_token, word2vec.similarity(base_target, str_token)
+    except KeyError:
+        return None
 
 
 class SampleDataset:
