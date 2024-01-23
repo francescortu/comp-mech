@@ -18,7 +18,8 @@ import logging
 import os
 from line_profiler import profile
 import time
-
+from multiprocessing import Pool
+from typing import Tuple
 
 class BaseDataset(Dataset):
     def __init__(
@@ -722,20 +723,48 @@ class HFDataset(BaseDataset):
         # remove the first space
 
         base_target = base_target[1:]
+        # print(self.tokenizer.encode(" C"))
         for token in range(self.tokenizer.vocab_size):
             str_token = self.tokenizer.decode(token)
+            if str_token[0] == " ":
+                space_token = str_token
+                str_token = str_token[1:]
+            else:
+                space_token = " " + str_token
+            # if str_token == other_target:
+            #     print("found")
             try:
-                if str_token[0] == " ":
-                    space_token = str_token
-                else:
-                    space_token = " " + str_token
                 similarity.append(
                     (space_token, word2vec.similarity(base_target, str_token))
                 )
             except KeyError:
-                continue
+                if " " + str_token == other_target:
+                    print("other_target", other_target, " is not in the w2v vocab")
+        # similarity_len = len(similarity)
+        # print(similarity_len)
         return similarity
+#     def compute_similarity_word2vec(self, base_target: str, word2vec, other_target: str):
+#         base_target = base_target[1:]
+#         with Pool(2) as p:
+#             args = [(base_target, word2vec, other_target, self.tokenizer, token) for token in range(self.tokenizer.vocab_size)]
+#             similarities = p.map(compute_similarity_word2vec__, args)
+#         return [sim for sim in similarities if sim is not None]
 
+
+# def compute_similarity_word2vec__(args: Tuple):
+#     base_target, word2vec, other_target, tokenizer, token = args
+#     str_token = tokenizer.decode(token)
+#     if str_token[0] == " ":
+#         space_token = str_token
+#         str_token = str_token[1:]
+#     else:
+#         space_token = " " + str_token
+#     try:
+#         return (space_token, word2vec.similarity(base_target, str_token))
+#     except KeyError:
+#         if " " + str_token == other_target:
+#             print("other_target", other_target, " is not in the w2v vocab")
+#         return None
 
 class SampleDataset:
     def __init__(self, path: str, model, save_path: str, tokenizer: Optional[object]):
