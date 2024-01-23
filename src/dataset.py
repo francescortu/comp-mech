@@ -238,7 +238,7 @@ class BaseDataset(Dataset):
         self, method: Literal["word2vec", "logit"]
     ) -> List[dict]:
         if method == "word2vec":
-            return self.generate_similarity_dataset_word2vec_parallel()
+            return self.generate_similarity_dataset_word2vec()
         elif method == "logit":
             return self.generate_similarity_dataset_logit()
         else:
@@ -246,6 +246,7 @@ class BaseDataset(Dataset):
         
     def worker_function(self, d: dict) -> dict:
         word2vec = api.load("word2vec-google-news-300")
+        print("model loaded")
         base_target = d["target_true"]
         all_token_with_similarity = self.compute_similarity_word2vec(
             base_target, word2vec, d["target_new"]
@@ -296,7 +297,7 @@ class BaseDataset(Dataset):
 
             # Create a pool of workers
             with Pool(processes=4) as pool:  # Adjust the number of processes as needed
-                results = pool.map(self.worker_function, self.full_data)
+                results = list(tqdm(pool.map(self.worker_function, self.full_data), total=len(self.full_data), desc="processing"))
 
             # Aggregate results here
             similarity_score_dict = {}
