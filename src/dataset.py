@@ -20,6 +20,7 @@ from line_profiler import profile
 import time
 from multiprocessing import Pool, set_start_method
 from typing import Tuple
+from functools import partial
 
 
 class BaseDataset(Dataset):
@@ -238,15 +239,14 @@ class BaseDataset(Dataset):
         self, method: Literal["word2vec", "logit"]
     ) -> List[dict]:
         if method == "word2vec":
-            return self.generate_similarity_dataset_word2vec()
+            return self.generate_similarity_dataset_word2vec_parallel()
         elif method == "logit":
             return self.generate_similarity_dataset_logit()
         else:
             raise ValueError("method must be either 'word2vec' or 'logit'")
         
-    def worker_function(self, d: dict) -> dict:
-        word2vec = api.load("word2vec-google-news-300")
-        print("model loaded")
+    def worker_function(self, d: dict, word2vec):
+
         base_target = d["target_true"]
         all_token_with_similarity = self.compute_similarity_word2vec(
             base_target, word2vec, d["target_new"]
@@ -289,15 +289,14 @@ class BaseDataset(Dataset):
         d["similar_tokens_2"] = group[2]
         d["similar_tokens_3"] = group[3]
         d["similar_tokens_4"] = group[4]
-        
+        return {"base_target": base_target, "data": d}
 
     def generate_similarity_dataset_word2vec_parallel(self) -> List[dict]:
-            # Load word2vec model
-            word2vec = api.load("word2vec-google-news-300")
-
             # Create a pool of workers
-            with Pool(processes=4) as pool:  # Adjust the number of processes as needed
-                results = list(tqdm(pool.map(self.worker_function, self.full_data), total=len(self.full_data), desc="processing"))
+            word2vec = api.load("word2vec-google-news-300")
+            worker_function = partial(self.worker_function, word2vec=word2vec)
+            with Pool(processes=2) as pool:  # Adjust the number of processes as needed
+                results = list(tqdm(pool.map(worker_function, self.full_data ), total=len(self.full_data), desc="processing"))
 
             # Aggregate results here
             similarity_score_dict = {}
