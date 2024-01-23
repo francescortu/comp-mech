@@ -83,8 +83,6 @@ class EvaluateMechanism:
 
         idx = 0
         print(n_batch)
-        for i in range(15):
-             print("index:", i, "\n ---------", self.dataset[i])
         for batch in tqdm(dataloader, total=n_batch):
             input_ids = batch["input_ids"].to(self.device)
             logits = self.model(input_ids)["logits"]

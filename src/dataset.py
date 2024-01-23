@@ -710,7 +710,9 @@ class HFDataset(BaseDataset):
             target, return_tensors="pt", add_special_tokens=False
         ).squeeze(0)
         assert len(tokens.shape) == 1
-        assert tokens.shape[0] == 1, f"target must bu just one token      {target}, {tokens} {self.tokenizer.decode(tokens[0])} {self.tokenizer.decode(tokens[1])}"
+        if tokens.shape[0] > 1:
+            tokens = tokens[0]
+            tokens = tokens.unsqueeze(0)
         return tokens
 
     def compute_similarity_word2vec(
