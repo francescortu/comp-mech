@@ -73,7 +73,6 @@ class EvaluateMechanism:
 
     def evaluate(self, length):
         self.dataset.set_len(length)
-        print("DEBUG: length:", length)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)

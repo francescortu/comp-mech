@@ -6,6 +6,7 @@ from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment, to_logit_token
 from typing import  Literal
 import pandas as pd
+from tqdm import tqdm
 
 
 
@@ -87,7 +88,7 @@ class OV(BaseExperiment):
     def ov_diff(self, **kwargs):
         storage = OV_storage(n_layers=self.model.cfg.n_layers, n_heads=self.model.cfg.n_heads)
         lengths = self.dataset.get_lengths()
-        for length in lengths:
+        for length in tqdm(lengths):
             if length == 11:
                 continue
             self.compute_logit_dif_single_len(length, storage, **kwargs)
