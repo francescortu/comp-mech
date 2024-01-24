@@ -2,9 +2,6 @@ from calendar import c
 import sys
 import os
 
-from openai import models
-from pygame import init
-
 
 # Get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -76,22 +73,25 @@ def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None):
         evaluator.update(
             dataset=dataset,
             premise=config.premise,
-            similarity=(config.similarity, config.interval, config.similarity_type))
-    
+            similarity=(config.similarity, config.interval, config.similarity_type),
+        )
+
     evaluator.evaluate_all()
+
 
 def init_evaluator(config: LaunchConfig, dataset: HFDataset):
     DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
     return EvaluateMechanism(
-            model_name=config.model_name,
-            dataset=dataset,
-            device=DEVICE,
-            batch_size=config.batch_size,
-            similarity=(config.similarity, config.interval, config.similarity_type),
-            premise=config.premise,
-            family_name=config.family_name,
-            num_samples=config.num_samples,
-        )
+        model_name=config.model_name,
+        dataset=dataset,
+        device=DEVICE,
+        batch_size=config.batch_size,
+        similarity=(config.similarity, config.interval, config.similarity_type),
+        premise=config.premise,
+        family_name=config.family_name,
+        num_samples=config.num_samples,
+    )
+
 
 def init_dataset(config: LaunchConfig):
     tokenizer = AutoTokenizer.from_pretrained(
@@ -103,7 +103,7 @@ def init_dataset(config: LaunchConfig):
         save_name = config.model_name
     dataset_path = f"../data/full_data_sampled_{save_name}.json"
     check_dataset_and_sample(dataset_path, config.model_name, config.hf_model_name)
-    
+
     return HFDataset(
         model=config.model_name,
         tokenizer=tokenizer,
@@ -114,7 +114,8 @@ def init_dataset(config: LaunchConfig):
         similarity=(config.similarity, config.interval, config.similarity_type),
         family_name="gpt2" if "gpt2" in config.model_name else "pythia",
     )
-    
+
+
 def evaluate_size(options: Options, experiment: Literal["copyVSfact", "contextVSfact"]):
     for model_name in options.models_name:
         launch_config = LaunchConfig(
@@ -185,7 +186,6 @@ def evaluate_similarity_default_premise(
             launch_evaluation(launch_config, dataset, evaluator)
         dataset = None
         evaluator = None
-
 
 
 def evaluate_similarity_all_premise(

@@ -99,6 +99,7 @@ class BaseDataset(Dataset):
         self.obj_pos = []
     
     def update(self, premise: str, similarity: Tuple[bool, int, Literal["word2vec", "logit"]]):
+        print(f"Updating dataset from {self.premise} to {premise} and {self.similarity} to {similarity}")
         self.similarity = similarity
         self.premise = premise
         self.full_data = self.similarity_data
