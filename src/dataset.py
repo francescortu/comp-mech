@@ -88,7 +88,19 @@ class BaseDataset(Dataset):
         self.targets = []
         self.obj_pos = []
 
-    def reset(self):
+    def reset(self, similarity: Tuple[bool, int, Literal["word2vec", "logit"]]):
+        if similarity is True:
+            self.similarity = similarity
+        self.full_data = self.similarity_data
+        self.lengths = self._get_lenghts_and_tokenize()
+        self.prompts = []
+        self.tokenized_prompts = []
+        self.targets = []
+        self.obj_pos = []
+    
+    def update(self, premise: str, similarity: Tuple[bool, int, Literal["word2vec", "logit"]]):
+        self.similarity = similarity
+        self.premise = premise
         self.full_data = self.similarity_data
         self.lengths = self._get_lenghts_and_tokenize()
         self.prompts = []
@@ -755,8 +767,8 @@ class HFDataset(BaseDataset):
             family_name=family_name,
         )
 
-    def reset(self):
-        super().reset()
+    def reset(self, similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = None):
+        super().reset(similarity=similarity)
 
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
         tokens = self.tokenizer.encode(
