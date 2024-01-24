@@ -53,7 +53,7 @@ class BaseDataset(Dataset):
             self.dict_path = f"../data/similarity_score_{family_name}_w2v.pt"
 
         # if the file exist, load it
-        if self.similarity[0]: 
+        if self.similarity[0]:
             print(f"Loading similarity score dict {self.dict_path}")
             if os.path.isfile(self.dict_path):
                 self.similarity_score_dict = torch.load(self.dict_path)
@@ -81,7 +81,7 @@ class BaseDataset(Dataset):
                 self.similarity_data = self.generate_similarity_dataset(similarity[2])
                 json.dump(self.full_data, open(similarity_path, "w"), indent=2)
 
-        self.full_data = self.similarity_data
+            self.full_data = self.similarity_data
         self.lengths = self._get_lenghts_and_tokenize()
 
         self.prompts = []
@@ -98,9 +98,13 @@ class BaseDataset(Dataset):
         self.tokenized_prompts = []
         self.targets = []
         self.obj_pos = []
-    
-    def update(self, premise: str, similarity: Tuple[bool, int, Literal["word2vec", "logit"]]):
-        print(f"Updating dataset from {self.premise} to {premise} and {self.similarity} to {similarity}")
+
+    def update(
+        self, premise: str, similarity: Tuple[bool, int, Literal["word2vec", "logit"]]
+    ):
+        print(
+            f"Updating dataset from {self.premise} to {premise} and {self.similarity} to {similarity}"
+        )
         self.similarity = similarity
         self.premise = premise
         self.full_data = self.similarity_data
@@ -124,7 +128,6 @@ class BaseDataset(Dataset):
     ):
         cls.init_args = locals()
         return cls
-
 
     def __len__(self):
         if len(self.prompts) == 0:
@@ -201,7 +204,7 @@ class BaseDataset(Dataset):
                     )[0]
                     for i in range(len(d["tokenized_prompt"]), 0, -1):
                         if d["tokenized_prompt"][i - 1] == subject_token:
-                            d["subj_position"] = i-1
+                            d["subj_position"] = i - 1
                             break
 
                 try:
@@ -331,7 +334,7 @@ class BaseDataset(Dataset):
         torch.save(similarity_score_dict, save_similarity_path)
         return self.full_data
 
-    @profile    
+    @profile
     def generate_similarity_dataset_word2vec(self) -> List[dict]:
         word2vec = api.load("word2vec-google-news-300")
         for d in tqdm(
@@ -352,24 +355,26 @@ class BaseDataset(Dataset):
             # torch.save(similarity_score, f"../data/similarity_score/{base_target}.pt")
             #
             # divide the tokens into 4 groups based on the quantile
-        #     quartile_1, quartile_2, quartile_3, top_2 = torch.quantile(similarity_score, torch.tensor([0.25, 0.5, 0.75, 0.98]))
+            #     quartile_1, quartile_2, quartile_3, top_2 = torch.quantile(similarity_score, torch.tensor([0.25, 0.5, 0.75, 0.98]))
 
-        #     # Creating masks for each group
-        #     masks = {
-        #         4: similarity_score < quartile_1,
-        #         3: (similarity_score >= quartile_1) & (similarity_score < quartile_2),
-        #         2: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
-        #         1: (similarity_score >= quartile_3) & (similarity_score < top_2),
-        #         0: similarity_score >= top_2,
-        #     }
+            #     # Creating masks for each group
+            #     masks = {
+            #         4: similarity_score < quartile_1,
+            #         3: (similarity_score >= quartile_1) & (similarity_score < quartile_2),
+            #         2: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
+            #         1: (similarity_score >= quartile_3) & (similarity_score < top_2),
+            #         0: similarity_score >= top_2,
+            #     }
 
-        #     # Grouping tokens based on masks
-        #     for i in range(5):
-        #         d[f"similar_tokens_{i}"] = [tokens[j] for j in torch.where(masks[i])[0]]
+            #     # Grouping tokens based on masks
+            #     for i in range(5):
+            #         d[f"similar_tokens_{i}"] = [tokens[j] for j in torch.where(masks[i])[0]]
 
-        # torch.save(self.similarity_score_dict, self.dict_path)
-        # return self.full_data
-            quartile_1, quartile_2, quartile_3, quartile_4, quartile_5 = torch.quantile(similarity_score, torch.tensor([0.90, 0.92, 0.94, 0.96, 0.98]))
+            # torch.save(self.similarity_score_dict, self.dict_path)
+            # return self.full_data
+            quartile_1, quartile_2, quartile_3, quartile_4, quartile_5 = torch.quantile(
+                similarity_score, torch.tensor([0.90, 0.92, 0.94, 0.96, 0.98])
+            )
 
             # Creating masks for each group
             masks = {
