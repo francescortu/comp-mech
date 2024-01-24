@@ -81,7 +81,6 @@ class EvaluateMechanism:
         all_other_indices = []
 
         idx = 0
-        print(n_batch)
         for batch in dataloader:
             input_ids = batch["input_ids"].to(self.device)
             logits = self.model(input_ids)["logits"]
