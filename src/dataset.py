@@ -99,6 +99,7 @@ class BaseDataset(Dataset):
         self.obj_pos = []
     
     def update(self, premise: str, similarity: Tuple[bool, int, Literal["word2vec", "logit"]]):
+        print(f"Updating dataset from {self.premise} to {premise} and {self.similarity} to {similarity}")
         self.similarity = similarity
         self.premise = premise
         self.full_data = self.similarity_data
@@ -350,15 +351,32 @@ class BaseDataset(Dataset):
             # torch.save(similarity_score, f"../data/similarity_score/{base_target}.pt")
             #
             # divide the tokens into 4 groups based on the quantile
-            quartile_1, quartile_2, quartile_3, top_2 = torch.quantile(similarity_score, torch.tensor([0.25, 0.5, 0.75, 0.98]))
+        #     quartile_1, quartile_2, quartile_3, top_2 = torch.quantile(similarity_score, torch.tensor([0.25, 0.5, 0.75, 0.98]))
+
+        #     # Creating masks for each group
+        #     masks = {
+        #         4: similarity_score < quartile_1,
+        #         3: (similarity_score >= quartile_1) & (similarity_score < quartile_2),
+        #         2: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
+        #         1: (similarity_score >= quartile_3) & (similarity_score < top_2),
+        #         0: similarity_score >= top_2,
+        #     }
+
+        #     # Grouping tokens based on masks
+        #     for i in range(5):
+        #         d[f"similar_tokens_{i}"] = [tokens[j] for j in torch.where(masks[i])[0]]
+
+        # torch.save(self.similarity_score_dict, self.dict_path)
+        # return self.full_data
+            quartile_1, quartile_2, quartile_3, quartile_4, quartile_5 = torch.quantile(similarity_score, torch.tensor([0.90, 0.92, 0.94, 0.96, 0.98]))
 
             # Creating masks for each group
             masks = {
-                4: similarity_score < quartile_1,
-                3: (similarity_score >= quartile_1) & (similarity_score < quartile_2),
-                2: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
-                1: (similarity_score >= quartile_3) & (similarity_score < top_2),
-                0: similarity_score >= top_2,
+                4: (similarity_score > quartile_1) & (similarity_score < quartile_2),
+                3: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
+                2: (similarity_score >= quartile_3) & (similarity_score < quartile_4),
+                1: (similarity_score >= quartile_4) & (similarity_score < quartile_5),
+                0: similarity_score >= quartile_5,
             }
 
             # Grouping tokens based on masks
