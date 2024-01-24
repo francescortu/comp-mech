@@ -54,6 +54,7 @@ class BaseDataset(Dataset):
 
         # if the file exist, load it
         if self.similarity[0]: 
+            print(f"Loading similarity score dict {self.dict_path}")
             if os.path.isfile(self.dict_path):
                 self.similarity_score_dict = torch.load(self.dict_path)
             else:

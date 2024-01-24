@@ -24,7 +24,7 @@ from typing import List, Literal  # noqa: E402
 from src.utils import check_dataset_and_sample  # noqa: E402
 
 NUM_SAMPLES = 10
-FAMILY_NAME = "gpt2_new"
+FAMILY_NAME = "gpt2"
 
 
 @dataclass
