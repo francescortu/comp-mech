@@ -2,11 +2,7 @@ from calendar import c
 import sys
 import os
 
-from openai import models
-from pygame import init
-
-
-# Get the directory of the current script
+#Get the directory of the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Add the parent directory (..) to sys.path
@@ -54,7 +50,7 @@ class LaunchConfig:
     family_name: str
     premise: str = "Redefine"
     num_samples: int = 1
-    batch_size: int = 10
+    batch_size: int = 40
 
 
 def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None):
@@ -109,7 +105,7 @@ def init_dataset(config: LaunchConfig):
         tokenizer=tokenizer,
         path=dataset_path,
         experiment=config.experiment,
-        slice=100,
+        slice=10000,
         premise=config.premise,
         similarity=(config.similarity, config.interval, config.similarity_type),
         family_name="gpt2" if "gpt2" in config.model_name else "pythia",
