@@ -48,6 +48,15 @@ class EvaluateMechanism:
         self.n_samples = num_samples
         print("Model device", self.model.device)
 
+    def update(
+        self,
+        dataset: HFDataset,
+        similarity: Tuple[bool, int, str],
+        premise: str):
+        self.dataset = dataset
+        self.similarity = similarity
+        self.premise = premise
+
     def check_prediction(self, logit, target):
         probs = torch.softmax(logit, dim=-1)[:, -1, :]
         # count the number of times the model predicts the target[:, 0] or target[:, 1]
