@@ -19,7 +19,7 @@ import logging
 import os
 from line_profiler import profile
 import time
-from multiprocessing import Pool, set_start_method
+from multiprocessing import Pool, process, set_start_method
 from typing import Tuple
 from functools import partial
 from line_profiler import profile
@@ -40,26 +40,6 @@ class BaseDataset(Dataset):
         ),
         family_name: str = "gpt2",
     ):
-        self.__initialize__(
-            path, slice, start, experiment, premise, similarity, family_name
-        )
-
-    def __initialize__(
-        self,
-        path: str,
-        slice: Optional[int] = None,
-        start: Optional[int] = None,
-        experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
-        premise: str = "Redefine:",
-        similarity: Tuple[bool, int, Literal["word2vec", "logit"]] = (
-            False,
-            0,
-            "logit",
-        ),
-        family_name: str = "gpt2",
-    ):
-        self.init_args = {k: v for k, v in locals().items() if k != "self"}
-        self.full_data = json.load(open(path))
         if slice is not None:
             self.full_data = self.full_data[:slice]
         if start is not None:
@@ -92,15 +72,24 @@ class BaseDataset(Dataset):
             print("Search similarity path:", similarity_path)
             if os.path.isfile(similarity_path):
                 print("Similarity file found, loading it")
-                self.full_data = json.load(open(similarity_path))
+                self.similarity_data = json.load(open(similarity_path))
             else:
                 print("Similarity file not found, generating it")
                 self.similarity_path = similarity_path
-                self.full_data = self.generate_similarity_dataset(similarity[2])
+                self.similarity_data = self.generate_similarity_dataset(similarity[2])
                 json.dump(self.full_data, open(similarity_path, "w"), indent=2)
 
+        self.full_data = self.similarity_data
         self.lengths = self._get_lenghts_and_tokenize()
 
+        self.prompts = []
+        self.tokenized_prompts = []
+        self.targets = []
+        self.obj_pos = []
+
+    def reset(self):
+        self.full_data = self.similarity_data
+        self.lengths = self._get_lenghts_and_tokenize()
         self.prompts = []
         self.tokenized_prompts = []
         self.targets = []
@@ -121,8 +110,6 @@ class BaseDataset(Dataset):
         cls.init_args = locals()
         return cls
 
-    def reset(self):
-        self.__initialize__(**self.init_args)
 
     def __len__(self):
         if len(self.prompts) == 0:

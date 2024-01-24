@@ -10,6 +10,7 @@ import pandas as pd
 from src.experiment import LogitStorage, HeadLogitStorage
 from functools import partial
 from copy import deepcopy
+from line_profiler import profile
 
 
 class Ablate(BaseExperiment):
@@ -100,6 +101,7 @@ class Ablate(BaseExperiment):
         list_hooks = list(hooks.values())
         return list_hooks
 
+    @profile
     def _run_with_hooks(self, batch, hooks):
         """
         launch the model with the given hooks
@@ -112,6 +114,7 @@ class Ablate(BaseExperiment):
             )
         return logit[:, -1, :]  # type: ignore
 
+    @profile
     def _process_model_run(
         self, layer, position, head, component, batch, freezed_attn, storage, normalize_logit
     ):
@@ -128,6 +131,7 @@ class Ablate(BaseExperiment):
         if component in self.head_component:
             storage.store(layer=layer, position=0, head=head, logit=logit_token)
 
+    @profile
     def ablate_single_len(
         self,
         length: int,
@@ -158,8 +162,10 @@ class Ablate(BaseExperiment):
         else:
             raise ValueError(f"component {component} not supported")
         subject_positions = []
+        object_position = []
         for batch in tqdm(dataloader, total=num_batches):
             subject_positions.append(batch["subj_pos"])
+            object_position.append(batch["obj_pos"])
             _, cache = self.model.run_with_cache(batch["prompt"])
             if component == "mlp_out" or component == "attn_out" and total_effect is False:
                 freezed_attn = self._get_freezed_attn_pattern(cache)
@@ -197,7 +203,8 @@ class Ablate(BaseExperiment):
         if component in self.position_component:
             if self.experiment == "contextVSfact":
                 subject_positions = torch.cat(subject_positions, dim=0)
-                return storage.get_aggregate_logit(object_position=self.dataset.obj_pos[0], subj_positions=subject_positions, batch_dim=0)
+                object_position = torch.cat(object_position, dim=0)
+                return storage.get_aggregate_logit(object_position=object_position, subj_positions=subject_positions, batch_dim=0)
             return storage.get_aggregate_logit(object_position=self.dataset.obj_pos[0])
 
         if component in self.head_component:

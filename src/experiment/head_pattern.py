@@ -1,3 +1,5 @@
+from math import isnan
+from git import Union
 from tomlkit import value
 import torch
 from torch.utils.data import DataLoader
@@ -61,8 +63,7 @@ class HeadPatternStorage():
         subject_1 = subj_position
         subject_2 = subj_position + 1 if (length - subj_position) > 15 else subject_1
         subject_3 = subj_position + 2 if (length - subj_position) > 17 else subject_2
-        object_positions_next = object_position + 1 if object_position < length - 1 else object_position
-        subject_pos_pre = subj_position - 1 if subj_position > 0 else 0
+        subject_pos_pre = subj_position - 1 
         last_position = length - 1
         
         if i == 0:
@@ -70,7 +71,12 @@ class HeadPatternStorage():
         if i == 1:
             return object_position
         if i == 2:
-            if object_position + 1 == subject_pos_pre:
+            slice_object = slice(object_position + 1, subject_pos_pre)
+            if slice_object.start > slice_object.stop:
+                print("ERROR")
+            if object_position + 1 > subj_position:
+                return object_position
+            elif object_position + 1 == subject_pos_pre:
                 return object_position + 1
             else: 
                 return slice(object_position + 1, subject_pos_pre)
@@ -92,7 +98,7 @@ class HeadPatternStorage():
 
         
         
-    def _aggregate_pattern(self, pattern:torch.Tensor, object_position:int, **kwargs) -> torch.Tensor:    
+    def _aggregate_pattern(self, pattern:torch.Tensor, object_position, **kwargs) -> torch.Tensor:    
         """
         pattern shape: (batch_size, seq_len, seq_len)
         return shape:(batch_size, 13, 13)
@@ -108,20 +114,23 @@ class HeadPatternStorage():
             raise NotImplementedError("Only copyVSfact and contextVSfact are supported")
         
         
-    def _aggregate_pattern_contextVSfact(self, pattern:torch.Tensor, object_position:int, length:int, subj_position) -> torch.Tensor:
+    def _aggregate_pattern_contextVSfact(self, pattern:torch.Tensor, object_position:torch.Tensor, length:int, subj_position) -> torch.Tensor:
         batch_size = pattern.shape[0]
         aggregate_result = torch.zeros((batch_size, 9, 9))
         
         for batch_idx in range(batch_size):
             for i in range(9):
-                position_to_aggregate_row = self._get_position_to_aggregate_contextVSfact(i, object_position, length, subj_position=subj_position[batch_idx])
+                position_to_aggregate_row = self._get_position_to_aggregate_contextVSfact(i, object_position[batch_idx], length, subj_position=subj_position[batch_idx])
                 for j in range(9):
-                    position_to_aggregate_col = self._get_position_to_aggregate_contextVSfact(j, object_position, length, subj_position=subj_position[batch_idx])
+                    position_to_aggregate_col = self._get_position_to_aggregate_contextVSfact(j, object_position[batch_idx], length, subj_position=subj_position[batch_idx])
                     value_to_aggregate = pattern[batch_idx, position_to_aggregate_row, position_to_aggregate_col]
                     if value_to_aggregate.ndim == 2:
                         value_to_aggregate = value_to_aggregate.mean(dim=(0, 1))
                     elif value_to_aggregate.ndim == 1:
                         value_to_aggregate = value_to_aggregate.mean(dim=0)
+                    if torch.isnan(value_to_aggregate).any():
+                        print(torch.isnan(value_to_aggregate))
+                        print("NAN")
                     aggregate_result[batch_idx, i, j] = value_to_aggregate
         return aggregate_result
 
@@ -181,7 +190,7 @@ class HeadPattern(BaseExperiment):
                 for head in range(self.model.cfg.n_heads):
                     pattern = self._extract_pattern(cache, layer, head)
                     if self.experiment == "contextVSfact":
-                        storage.store(layer, head, pattern.cpu(), object_position, subj_position=batch["subj_pos"])
+                        storage.store(layer, head, pattern.cpu(), batch["obj_pos"], subj_position=batch["subj_pos"])
                     elif self.experiment == "copyVSfact":
                         storage.store(layer, head, pattern.cpu(), object_position)
                     else:
@@ -202,7 +211,7 @@ class HeadPattern(BaseExperiment):
         
         data = []
         if self.experiment == "contextVSfact":
-            n_grid = 10
+            n_grid = 9
         elif self.experiment == "copyVSfact":
             n_grid = 13
         else:
