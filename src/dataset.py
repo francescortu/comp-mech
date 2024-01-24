@@ -40,6 +40,7 @@ class BaseDataset(Dataset):
         ),
         family_name: str = "gpt2",
     ):
+        self.full_data = json.load(open(path))
         if slice is not None:
             self.full_data = self.full_data[:slice]
         if start is not None:
