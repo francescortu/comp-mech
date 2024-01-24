@@ -23,14 +23,14 @@ from typing import List, Literal  # noqa: E402
 from src.utils import check_dataset_and_sample  # noqa: E402
 
 NUM_SAMPLES = 10
-FAMILY_NAME = "gpt2"
+FAMILY_NAME = "gpt2_new"
 
 
 @dataclass
 class Options:
     models_name: List[str] = field(
-        # default_factory=lambda: ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "EleutherAI/pythia-6.9b"]
-        default_factory=lambda: ["gpt2-xl", "EleutherAI/pythia-6.9b"]
+        default_factory=lambda: ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "EleutherAI/pythia-6.9b"]
+        # default_factory=lambda: ["gpt2-xl", "EleutherAI/pythia-6.9b"]
         # default_factory=lambda: ["gpt2"]
     )
     premise: List[str] = field(
