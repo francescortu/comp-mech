@@ -92,7 +92,7 @@ class BaseDataset(Dataset):
     def reset(self, similarity: Tuple[bool, int, Literal["word2vec", "logit"]]):
         if similarity is True:
             self.similarity = similarity
-        self.full_data = self.similarity_data
+            self.full_data = self.similarity_data
         self.lengths = self._get_lenghts_and_tokenize()
         self.prompts = []
         self.tokenized_prompts = []
