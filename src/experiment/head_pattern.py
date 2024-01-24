@@ -70,20 +70,24 @@ class HeadPatternStorage():
         if i == 1:
             return object_position
         if i == 2:
-            return object_positions_next
+            if object_position + 1 == subject_pos_pre:
+                return object_position + 1
+            else: 
+                return slice(object_position + 1, subject_pos_pre)
         if i == 3:
-            return slice(object_positions_next + 1, subject_pos_pre)
-        if i == 4:
             return subject_pos_pre
-        if i == 5:
+        if i == 4:
             return subject_1
-        if i == 6:
+        if i == 5:
             return subject_2
-        if i == 7:
+        if i == 6:
             return subject_3
+        if i == 7:
+            if subject_3 + 1 == last_position:
+                return subject_3
+            else:
+                return slice(subject_3 + 1, last_position)
         if i == 8:
-            return slice(subject_3 + 1, last_position)
-        if i == 9:
             return last_position
 
         
@@ -106,12 +110,12 @@ class HeadPatternStorage():
         
     def _aggregate_pattern_contextVSfact(self, pattern:torch.Tensor, object_position:int, length:int, subj_position) -> torch.Tensor:
         batch_size = pattern.shape[0]
-        aggregate_result = torch.zeros((batch_size, 10, 10))
+        aggregate_result = torch.zeros((batch_size, 9, 9))
         
         for batch_idx in range(batch_size):
-            for i in range(10):
+            for i in range(9):
                 position_to_aggregate_row = self._get_position_to_aggregate_contextVSfact(i, object_position, length, subj_position=subj_position[batch_idx])
-                for j in range(10):
+                for j in range(9):
                     position_to_aggregate_col = self._get_position_to_aggregate_contextVSfact(j, object_position, length, subj_position=subj_position[batch_idx])
                     value_to_aggregate = pattern[batch_idx, position_to_aggregate_row, position_to_aggregate_col]
                     if value_to_aggregate.ndim == 2:
@@ -171,7 +175,7 @@ class HeadPattern(BaseExperiment):
         # initialize storage
     
         object_position = self.dataset.obj_pos[0]
-        for batch in dataloader:
+        for batch in tqdm(dataloader, total=len(dataloader)):
             _, cache = self.model.run_with_cache(batch["prompt"])
             for layer in range(self.model.cfg.n_layers):
                 for head in range(self.model.cfg.n_heads):

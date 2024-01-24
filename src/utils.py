@@ -1,3 +1,5 @@
+from math import e
+from re import sub
 from numpy import object_
 import torch
 import warnings
@@ -9,7 +11,7 @@ import time
 import os
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer, GPTNeoXForCausalLM
-from typing import Literal
+from typing import Literal, Union
 
 def check_dataset_and_sample(dataset_path, model_name, hf_model_name):
     if os.path.exists(dataset_path):
@@ -161,7 +163,7 @@ def get_aggregator(experiment: Literal["copyVSfact", "contextVSfact"]):
         return aggregate_result_contextVSfact
 
 def aggregate_result_copyVSfact(
-    pattern: torch.Tensor, object_positions: int, length: int
+    pattern: torch.Tensor, object_positions: Union[torch.Tensor, int], length: int
 ) -> torch.Tensor:
     subject_1_1 = 5
     subject_1_2 = 6 if length > 15 else 5
@@ -198,13 +200,10 @@ def aggregate_result_copyVSfact(
     return intermediate_aggregate
 
 def aggregate_result_contextVSfact(
-    pattern: torch.Tensor, object_positions: int, length: int, subj_positions: int, batch_dim: int
+    pattern: torch.Tensor, object_positions: Union[torch.Tensor, int], length: int, subj_positions: int, batch_dim: int
 ) -> torch.Tensor:
     batch_size = pattern.shape[batch_dim]
-    if object_positions > 0:
-        len_aggregate = 9
-    else:
-        len_aggregate = 8
+    len_aggregate = 9
 
     if batch_dim == 0:
         pattern = pattern.transpose(0, 1)
@@ -212,7 +211,7 @@ def aggregate_result_contextVSfact(
 
     for i in range(batch_size):
         single_subject_positions = subj_positions[i] # type: ignore
-        aggregate_result[:, i, :] = aggregate_single_result_contextVSfact(pattern[:, i], object_positions, length, single_subject_positions)
+        aggregate_result[:, i, :] = aggregate_single_result_contextVSfact(pattern[:, i], object_positions[i], length, single_subject_positions)
     if batch_dim == 0:
         aggregate_result = aggregate_result.transpose(0, 1)
     
@@ -233,29 +232,43 @@ def aggregate_single_result_contextVSfact(
     *leading_dims, pen_len, last_len = pattern.shape
     if object_positions > 0:
         
-        assert object_positions_next + 1 < subject_1, "object_positions_next + 1 < subject_1"
+        assert object_positions + 1 < subject_1, "object_positions_next + 1 < subject_1"
         
         
         intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 9))   
         intermediate_aggregate[..., 0] = pattern[..., :object_positions].mean(dim=-1) # before object
         intermediate_aggregate[..., 1] = pattern[..., object_positions]
-        intermediate_aggregate[..., 2] = pattern[..., object_positions_next]
-        intermediate_aggregate[..., 3] = pattern[..., (object_positions_next + 1) : subject_1].mean(dim=-1) # between object and subject
+        if object_positions_next == subject_1:
+            intermediate_aggregate[..., 2] = 0
+        elif object_positions_next + 1 == subject_1:
+            intermediate_aggregate[..., 2] = pattern[..., object_positions_next]
+        else:
+            assert object_positions_next < subject_1, "object_positions_next < subject_1"
+            mypattern = pattern[..., object_positions_next:subject_pos_pre]
+            mypattern[torch.isnan(mypattern)] = 0
+            assert not torch.isnan(mypattern.mean(dim=-1)).any(), "nan in mypattern"
+            intermediate_aggregate[..., 2] = mypattern.mean(dim=-1) # between object and subject
+        intermediate_aggregate[..., 3] = pattern[..., subject_pos_pre]
         intermediate_aggregate[..., 4] = pattern[..., subject_1]
         intermediate_aggregate[..., 5] = pattern[..., subject_2]
         intermediate_aggregate[..., 6] = pattern[..., subject_3]
-        intermediate_aggregate[..., 7] = pattern[..., subject_3 + 1 : last_position].mean(dim=-1) # between subject and last
+        if subject_3 + 1 == last_position:
+            intermediate_aggregate[..., 7] = 0
+        else:
+            intermediate_aggregate[..., 7] = pattern[..., subject_3 + 1 : last_position].mean(dim=-1) # between subject and last
         intermediate_aggregate[..., 8] = pattern[..., last_position]
-    else:
-        intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 8))
-        intermediate_aggregate[..., 0] = pattern[..., object_positions] 
-        intermediate_aggregate[..., 1] = pattern[..., object_positions_next]
-        intermediate_aggregate[..., 2] = pattern[..., object_positions_next + 1 : subject_1].mean(dim=-1) # between object and subject
-        intermediate_aggregate[..., 3] = pattern[..., subject_1]    
-        intermediate_aggregate[..., 4] = pattern[..., subject_2]
-        intermediate_aggregate[..., 5] = pattern[..., subject_3]
-        intermediate_aggregate[..., 6] = pattern[..., subject_3 + 1 : last_position].mean(dim=-1)
-        intermediate_aggregate[..., 7] = pattern[..., last_position]
+        
+        
+    # else:
+    #     intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 8))
+    #     intermediate_aggregate[..., 0] = pattern[..., object_positions] 
+    #     intermediate_aggregate[..., 1] = pattern[..., object_positions_next]
+    #     intermediate_aggregate[..., 2] = pattern[..., object_positions_next + 1 : subject_1].mean(dim=-1) # between object and subject
+    #     intermediate_aggregate[..., 3] = pattern[..., subject_1]    
+    #     intermediate_aggregate[..., 4] = pattern[..., subject_2]
+    #     intermediate_aggregate[..., 5] = pattern[..., subject_3]
+    #     intermediate_aggregate[..., 6] = pattern[..., subject_3 + 1 : last_position].mean(dim=-1)
+    #     intermediate_aggregate[..., 7] = pattern[..., last_position]
     return intermediate_aggregate
     
         

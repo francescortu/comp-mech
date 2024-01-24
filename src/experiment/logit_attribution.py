@@ -7,7 +7,7 @@ from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment
-from typing import Tuple,  Literal
+from typing import Tuple, Literal
 from src.utils import get_aggregator
 import pandas as pd
 
@@ -22,7 +22,7 @@ class AttributeStorage:
         self.cp_attribute = []
         self.diff_attribute = []
         self.labels = None
-        self.experiment:Literal["copyVSfact", "contextVSfact"] = experiment
+        self.experiment: Literal["copyVSfact", "contextVSfact"] = experiment
 
     def append(
         self,
@@ -41,11 +41,14 @@ class AttributeStorage:
         self.diff_attribute.append(diff_attribute.cpu())
         if self.labels is None:
             self.labels = labels
-        
-
 
     def aggregate(
-        self, mem_attribute, cp_attribute, diff_attribute, object_position: int, **kwargs
+        self,
+        mem_attribute,
+        cp_attribute,
+        diff_attribute,
+        object_position: int,
+        **kwargs,
     ):
         aggregate_result = get_aggregator(self.experiment)
         length = mem_attribute.shape[-1]
@@ -60,7 +63,6 @@ class AttributeStorage:
         )
         return aggregated_mem, aggregated_cp, aggregated_diff
 
-
     def stack(self):
         """
         from a list of tensors of shape (batch, component, position) to a tensor of shape (component, batch, position)
@@ -74,7 +76,11 @@ class AttributeStorage:
 
 class LogitAttribution(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"] ,
+        self,
+        dataset: TlensDataset,
+        model: WrapHookedTransformer,
+        batch_size: int,
+        experiment: Literal["copyVSfact", "contextVSfact"],
     ):
         super().__init__(dataset, model, batch_size, experiment)
 
@@ -114,11 +120,10 @@ class LogitAttribution(BaseExperiment):
             raise ValueError(
                 f"up_to_layer must be smaller than the number of layers: {self.model.cfg.n_layers}"
             )
-            
+
         self.set_len(length, slice_to_fit_batch=False)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
-        
-        
+
         # Create a storage object to store the logits
         for batch in dataloader:
             # print cuda memory
@@ -128,14 +133,17 @@ class LogitAttribution(BaseExperiment):
             #     )
             # else:
             logits, cache = self.model.run_with_cache(batch["prompt"])
-                
+
             if normalize_logit != "none":
                 raise NotImplementedError
             stack_of_resid, resid_labels = cache.decompose_resid(
                 apply_ln=apply_ln, return_labels=True, mode="attn", layer=up_to_layer
             )
             stack_of_component, labels = cache.get_full_resid_decomposition(
-                expand_neurons=False, apply_ln=apply_ln, return_labels=True, layer=up_to_layer
+                expand_neurons=False,
+                apply_ln=apply_ln,
+                return_labels=True,
+                layer=up_to_layer,
             )  # return a tensor of shape (component_size, batch_size, seq_len, hidden_size)
             target_mem, target_cp = self.slice_target(batch["target"], length=length)
 
@@ -147,8 +155,8 @@ class LogitAttribution(BaseExperiment):
             diff_attribute = cache.logit_attrs(
                 stack_of_component, tokens=target_mem, incorrect_tokens=target_cp
             )  # (component, batch, position)
-            object_position = self.dataset.obj_pos[0]
             if self.experiment == "copyVSfact":
+                object_position = self.dataset.obj_pos[0]
                 storage.append(
                     mem_attribute.cpu(),
                     cp_attribute.cpu(),
@@ -162,7 +170,7 @@ class LogitAttribution(BaseExperiment):
                     cp_attribute.cpu(),
                     diff_attribute.cpu(),
                     labels,
-                    object_position,
+                    batch["obj_pos"],
                     subj_positions=batch["subj_pos"],
                     batch_dim=1,
                 )
@@ -201,6 +209,10 @@ class LogitAttribution(BaseExperiment):
         data = []
         for i, label in enumerate(labels):  # type: ignore
             for position in range(mem.shape[-1]):
+                if position == 2:
+                    print(mem[i, :, position].mean(-1))
+                    print(mem[i, :, position].shape)
+                    print(torch.isnan(mem[i, :, position]).any())
                 data.append(
                     {
                         "label": label,
@@ -214,4 +226,3 @@ class LogitAttribution(BaseExperiment):
                     }
                 )
         return pd.DataFrame(data)
-

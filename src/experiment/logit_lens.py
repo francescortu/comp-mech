@@ -1,3 +1,4 @@
+from git import Union
 import torch
 from torch.utils.data import DataLoader
 import einops
@@ -41,7 +42,7 @@ class LogitStorage:
         )
 
     def _aggregate_result(
-        self, object_positions: int, pattern: torch.Tensor, **kwargs
+        self, object_positions: Union[torch.Tensor, int], pattern: torch.Tensor, **kwargs
     ) -> torch.Tensor:
         pattern = self._reshape_tensor(pattern)
         aggregate_result = get_aggregator(self.experiment)
@@ -78,7 +79,7 @@ class LogitStorage:
             self._reshape_logits(self.logits[key], shape) for key in self.logits
         )
 
-    def get_aggregate_logit(self, object_position: int, **kwargs):
+    def get_aggregate_logit(self, object_position: torch.Tensor, **kwargs):
         return_tuple = self.get_logit()
         aggregate_tensor = []
         for elem in return_tuple:
@@ -203,9 +204,11 @@ class LogitLens(BaseExperiment):
                     storer, self.model.cfg.n_heads
                 )
         subject_positions = []
+        object_positions = []
         for batch in dataloader:
             _, cache = self.model.run_with_cache(batch["prompt"])
             subject_positions.append(batch["subj_pos"])
+            object_positions.append(batch["obj_pos"])
             for layer in range(self.model.cfg.n_layers):
                 if component in self.valid_blocks:
                     cached_component = cache[component, layer]
@@ -246,10 +249,11 @@ class LogitLens(BaseExperiment):
                     raise ValueError(
                         f"component must be one of {self.valid_blocks + self.valid_heads}"
                     )
-        object_positions = self.dataset.obj_pos[0]
         subject_positions = torch.cat(subject_positions, dim=0)
         if self.experiment == "contextVSfact":
+            object_positions = torch.cat(object_positions, dim=0)
             return storer.get_aggregate_logit(object_position=object_positions, subj_positions=subject_positions, batch_dim=0)
+        object_positions = self.dataset.obj_pos[0]
         return storer.get_aggregate_logit(object_position=object_positions)
 
     def project(

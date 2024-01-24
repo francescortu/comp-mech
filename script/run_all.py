@@ -381,7 +381,7 @@ def main(args):
     if args.pattern:
         experiments.append(pattern)
     if args.all:
-        experiments = [logit_attribution, logit_lens, ov_difference, ablate, pattern]
+        experiments = [logit_attribution, logit_lens, ov_difference, pattern, ablate]
 
     status = ["Pending" for _ in experiments]
 
