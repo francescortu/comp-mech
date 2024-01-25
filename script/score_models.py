@@ -3,7 +3,7 @@ import sys
 import os
 
 
-#Get the directory of the current script
+# Get the directory of the current script
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -30,7 +30,13 @@ FAMILY_NAME = "gpt2"
 @dataclass
 class Options:
     models_name: List[str] = field(
-        default_factory=lambda: ["gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "EleutherAI/pythia-6.9b"]
+        default_factory=lambda: [
+            "gpt2",
+            "gpt2-medium",
+            "gpt2-large",
+            "gpt2-xl",
+            "EleutherAI/pythia-6.9b",
+        ]
         # default_factory=lambda: ["gpt2-xl", "EleutherAI/pythia-6.9b"]
         # default_factory=lambda: ["gpt2"]
     )
@@ -38,7 +44,7 @@ class Options:
         default_factory=lambda: ["Redefine", "Assume", "Suppose", "Context"]
     )
     similarity: List[bool] = field(default_factory=lambda: [True, False])
-    interval: List[int] = field(default_factory=lambda: [4,3,2,1,0])
+    interval: List[int] = field(default_factory=lambda: [4, 3, 2, 1, 0])
 
 
 @dataclass
@@ -127,7 +133,7 @@ def evaluate_size(options: Options, experiment: Literal["copyVSfact", "contextVS
             similarity_type=SIMILARITY_TYPE,
             experiment=experiment,
             family_name=FAMILY_NAME,
-            num_samples=NUM_SAMPLES,
+            num_samples=1,
         )
         launch_evaluation(launch_config)
 
