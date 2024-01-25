@@ -20,7 +20,7 @@ import logging
 import torch
 from transformer_lens import HookedTransformer
 from transformers import AutoModelForCausalLM, LlamaForCausalLM, LlamaTokenizer
-
+import ipdb
 # Local application/library specific imports
 
 from src.dataset import TlensDataset  # noqa: E402
@@ -240,6 +240,7 @@ def ablate(model, dataset, config, args):
     #         ]
     #     )
     #     return
+    ipdb.set_trace()
     ablator = Ablate(dataset, model, config.batch_size, config.mech_fold)
     if args.ablate_component == "all":
         dataframe = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect)
@@ -367,7 +368,8 @@ def main(args):
     if args.dataset:
         return
     model = load_model(config)
-    dataset = TlensDataset(config.dataset_path, config.mech_fold, model, slice=config.dataset_slice, start=config.dataset_start)
+    ipdb.set_trace()
+    dataset = TlensDataset(path=config.dataset_path, experiment=config.mech_fold, model=model, slice=config.dataset_slice, start=config.dataset_start)
 
     experiments = []
     if args.logit_attribution:
