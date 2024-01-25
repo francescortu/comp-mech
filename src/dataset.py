@@ -17,12 +17,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformer_lens import HookedTransformer
 import logging
 import os
-from line_profiler import profile
+
 import time
 from multiprocessing import Pool, process, set_start_method
 from typing import Tuple
 from functools import partial
-from line_profiler import profile
+
 
 
 class BaseDataset(Dataset):
@@ -329,7 +329,6 @@ class BaseDataset(Dataset):
         torch.save(similarity_score_dict, save_similarity_path)
         return self.full_data
 
-    @profile
     def generate_similarity_dataset_word2vec(self) -> List[dict]:
         word2vec = api.load("word2vec-google-news-300")
         for d in tqdm(

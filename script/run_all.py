@@ -1,4 +1,5 @@
 # Standard library imports
+from json import load
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join("..")))
@@ -240,22 +241,24 @@ def ablate(model, dataset, config, args):
     #         ]
     #     )
     #     return
-
+    LOAD_FROM_PT = False
     ablator = Ablate(dataset, model, config.batch_size, config.mech_fold)
     if args.ablate_component == "all":
-        dataframe = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect)
+        dataframe, tuple_results = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
         save_dataframe(
             f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}",
             "ablation_data",
             dataframe,
         )
+        torch.save(tuple_results, f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}/ablation_data.pt")
     else:
-        dataframe = ablator.run(args.ablate_component, normalize_logit=config.normalize_logit, total_effect=args.total_effect)
+        dataframe = ablator.run(args.ablate_component, normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
         save_dataframe(
             f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}",
             f"ablation_data_{args.ablate_component}",
             dataframe,
         )
+        torch.save(dataframe, f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}/ablation_data_{args.ablate_component}.pt")
 
     if config.produce_plots:
         # run the R script

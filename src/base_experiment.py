@@ -1,8 +1,10 @@
+
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 import torch
 from torch.utils.data import DataLoader
 from typing import Optional,  Literal
+
 
 torch.set_grad_enabled(False)
 
@@ -31,7 +33,9 @@ def to_logit_token(
             sorted_indices = torch.argsort(logit[i], descending=True).tolist()
             index_mem[i] = sorted_indices.index(target[i, 0])
             index_cp[i] = sorted_indices.index(target[i, 1])
-
+    # batch_indices = torch.arange(target.shape[0])
+    # logit_mem = logit[batch_indices, target[:, 0]]
+    # logit_cp = logit[batch_indices, target[:, 1]]
     for i in range(target.shape[0]):
         logit_mem[i] = logit[i, target[i, 0]]
         # save the position of target[i, 0] in the logit sorted

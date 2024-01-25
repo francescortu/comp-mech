@@ -10,7 +10,7 @@ import pandas as pd
 from src.experiment import LogitStorage, HeadLogitStorage
 from functools import partial
 from copy import deepcopy
-from line_profiler import profile
+
 
 
 class Ablate(BaseExperiment):
@@ -101,7 +101,7 @@ class Ablate(BaseExperiment):
         list_hooks = list(hooks.values())
         return list_hooks
 
-    @profile
+
     def _run_with_hooks(self, batch, hooks):
         """
         launch the model with the given hooks
@@ -114,7 +114,7 @@ class Ablate(BaseExperiment):
             )
         return logit[:, -1, :]  # type: ignore
 
-    @profile
+
     def _process_model_run(
         self, layer, position, head, component, batch, freezed_attn, storage, normalize_logit
     ):
@@ -124,14 +124,14 @@ class Ablate(BaseExperiment):
         hooks = self._get_current_hooks(
             layer, component, freezed_attn, head=head, position=position
         )
-        logit = self._run_with_hooks(batch, hooks)
+        logit = self._run_with_hooks(batch, hooks) #!more performance
         logit_token = to_logit_token(logit, batch["target"], normalize=normalize_logit)
         if component in self.position_component:
             storage.store(layer=layer, position=position, logit=logit_token)
         if component in self.head_component:
             storage.store(layer=layer, position=0, head=head, logit=logit_token)
 
-    @profile
+
     def ablate_single_len(
         self,
         length: int,
@@ -239,17 +239,23 @@ class Ablate(BaseExperiment):
         component: str,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
         total_effect: bool = False,
-    ):
+        load_from_pt:Optional[str] = None,
+    )-> Tuple[pd.DataFrame, Dict[str, torch.Tensor]]:
         """
         Run ablation for a specific component
         """
+        if load_from_pt is None:
+            result = self.ablate(component, normalize_logit, total_effect=total_effect)
 
-        result = self.ablate(component, normalize_logit, total_effect=total_effect)
-
-        base_logit_mem, base_logit_cp = self.get_basic_logit(
-            normalize_logit=normalize_logit
-        )
-
+            base_logit_mem, base_logit_cp = self.get_basic_logit(
+                normalize_logit=normalize_logit
+            )
+        else:
+            result_dict = torch.load(load_from_pt)
+            result = (result_dict["mem"], result_dict["cp"])
+            base_logit_mem = result_dict["base_mem"]
+            base_logit_cp = result_dict["base_cp"]
+            
         import pandas as pd
 
         if component in self.position_component:
@@ -325,16 +331,24 @@ class Ablate(BaseExperiment):
             }
         )
 
-        return pd.DataFrame(data)
+        return pd.DataFrame(data), {"mem": result[0], "cp": result[1], "base_mem": base_logit_mem, "base_cp": base_logit_cp}
 
     def run_all(
-        self, normalize_logit: Literal["none", "softmax", "log_softmax"] = "none", **kwargs
-    ):
+        self, normalize_logit: Literal["none", "softmax", "log_softmax"] = "none", load_from_pt:Optional[str] = None, **kwargs
+    ) -> Tuple[pd.DataFrame, Dict[str, torch.Tensor]]:
         """
         Run ablation for all components
         """
         dataframe_list = []
+        tuple_results_cat = {"mem": [], "cp": [], "base_mem": [], "base_cp": []}
         for component in self.position_component + self.head_component:
             print(f"Running ablation for {component}")
-            dataframe_list.append(self.run(component, normalize_logit, **kwargs))
-        return pd.concat(dataframe_list)
+            dataset, tuple_results = self.run(component, normalize_logit, load_from_pt, **kwargs)
+            dataframe_list.append(dataset)
+            tuple_results_cat["mem"].append(tuple_results["mem"])
+            tuple_results_cat["cp"].append(tuple_results["cp"])
+            tuple_results_cat["base_mem"].append(tuple_results["base_mem"])
+            tuple_results_cat["base_cp"].append(tuple_results["base_cp"])
+        
+        tuple_results = {key: torch.cat(tuple_results_cat[key], dim=-1) for key in tuple_results_cat}
+        return pd.concat(dataframe_list), tuple_results
