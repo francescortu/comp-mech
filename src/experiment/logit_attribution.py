@@ -50,7 +50,6 @@ class AttributeStorage:
         object_position: int,
         **kwargs,
     ):
-        #ipdb.set_trace()
         aggregate_result = get_aggregator(self.experiment)
         length = mem_attribute.shape[-1]
         aggregated_mem = aggregate_result(
@@ -168,7 +167,6 @@ class LogitAttribution(BaseExperiment):
             elif self.experiment == "contextVSfact":
                 for h in range(batch["subj_pos"].shape[0]):
                     if batch["subj_pos"][h] <= batch["obj_pos"][h]:
-                        ipdb.set_trace()
                         print("Error is coming")
                 storage.append(
                     mem_attribute.cpu(),

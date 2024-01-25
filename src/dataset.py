@@ -23,7 +23,7 @@ from multiprocessing import Pool, process, set_start_method
 from typing import Tuple
 from functools import partial
 from line_profiler import profile
-import ipdb
+
 
 class BaseDataset(Dataset):
     def __init__(
@@ -137,14 +137,6 @@ class BaseDataset(Dataset):
     def __getitem__(self, idx):
         if len(self.prompts) == 0:
             raise ValueError("Dataset is empty: please call set_len() first")
-        if self.experiment == "copyVSfact":
-            return {
-                "prompt": self.prompts[idx],
-                "input_ids": self.tokenized_prompts[idx],
-                "target": self.targets[idx],
-                "obj_pos": self.obj_pos[idx],
-                # "subj_pos": self.subj_pos[idx],
-            }
         else:
             return {
                 "prompt": self.prompts[idx],
@@ -358,10 +350,10 @@ class BaseDataset(Dataset):
             # torch.save(similarity_score, f"../data/similarity_score/{base_target}.pt")
             #
             # divide the tokens into 4 groups based on the quantile
-            #quartile_1, quartile_2, quartile_3, top_2 = torch.quantile(similarity_score, torch.tensor([0.25, 0.5, 0.75, 0.98]))
+            # quartile_1, quartile_2, quartile_3, top_2 = torch.quantile(similarity_score, torch.tensor([0.25, 0.5, 0.75, 0.98]))
 
-            #Creating masks for each group
-            #masks = {
+            # Creating masks for each group
+            # masks = {
             #     4: similarity_score < quartile_1,
             #     3: (similarity_score >= quartile_1) & (similarity_score < quartile_2),
             #     2: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
@@ -370,16 +362,16 @@ class BaseDataset(Dataset):
             #     }
 
             # Grouping tokens based on masks
-            #for i in range(5):
+            # for i in range(5):
             #    d[f"similar_tokens_{i}"] = [tokens[j] for j in torch.where(masks[i])[0]]
 
-            #torch.save(self.similarity_score_dict, self.dict_path)
-            #return self.full_data
+            # torch.save(self.similarity_score_dict, self.dict_path)
+            # return self.full_data
             quartile_1, quartile_2, quartile_3, quartile_4, quartile_5 = torch.quantile(
                 similarity_score, torch.tensor([0.90, 0.92, 0.94, 0.96, 0.98])
             )
 
-             #Creating masks for each group
+            # Creating masks for each group
             masks = {
                 4: (similarity_score > quartile_1) & (similarity_score < quartile_2),
                 3: (similarity_score >= quartile_2) & (similarity_score < quartile_3),

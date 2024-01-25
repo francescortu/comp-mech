@@ -240,7 +240,7 @@ def ablate(model, dataset, config, args):
     #         ]
     #     )
     #     return
-    ipdb.set_trace()
+
     ablator = Ablate(dataset, model, config.batch_size, config.mech_fold)
     if args.ablate_component == "all":
         dataframe = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect)
@@ -368,7 +368,6 @@ def main(args):
     if args.dataset:
         return
     model = load_model(config)
-    ipdb.set_trace()
     dataset = TlensDataset(path=config.dataset_path, experiment=config.mech_fold, model=model, slice=config.dataset_slice, start=config.dataset_start)
 
     experiments = []
