@@ -241,7 +241,7 @@ def ablate(model, dataset, config, args):
     #         ]
     #     )
     #     return
-    LOAD_FROM_PT = False
+    LOAD_FROM_PT = None
     ablator = Ablate(dataset, model, config.batch_size, config.mech_fold)
     if args.ablate_component == "all":
         dataframe, tuple_results = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
@@ -252,7 +252,7 @@ def ablate(model, dataset, config, args):
         )
         torch.save(tuple_results, f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}/ablation_data.pt")
     else:
-        dataframe = ablator.run(args.ablate_component, normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
+        dataframe, tuple_results = ablator.run(args.ablate_component, normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
         save_dataframe(
             f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}",
             f"ablation_data_{args.ablate_component}",

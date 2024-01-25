@@ -5,7 +5,7 @@ from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment, to_logit_token
-from typing import Optional,  Tuple,  Dict, Any, Literal
+from typing import Optional,  Tuple,  Dict, Any, Literal, Union, List
 import pandas as pd
 from src.experiment import LogitStorage, HeadLogitStorage
 from functools import partial
@@ -244,6 +244,7 @@ class Ablate(BaseExperiment):
         """
         Run ablation for a specific component
         """
+        print(load_from_pt)
         if load_from_pt is None:
             result = self.ablate(component, normalize_logit, total_effect=total_effect)
 
@@ -335,7 +336,7 @@ class Ablate(BaseExperiment):
 
     def run_all(
         self, normalize_logit: Literal["none", "softmax", "log_softmax"] = "none", load_from_pt:Optional[str] = None, **kwargs
-    ) -> Tuple[pd.DataFrame, Dict[str, torch.Tensor]]:
+    ) -> Tuple[pd.DataFrame, Dict[str, Union[List[torch.Tensor],torch.Tensor]]]:
         """
         Run ablation for all components
         """
@@ -343,12 +344,12 @@ class Ablate(BaseExperiment):
         tuple_results_cat = {"mem": [], "cp": [], "base_mem": [], "base_cp": []}
         for component in self.position_component + self.head_component:
             print(f"Running ablation for {component}")
-            dataset, tuple_results = self.run(component, normalize_logit, load_from_pt, **kwargs)
+            dataset, tuple_results = self.run(component, normalize_logit, load_from_pt=load_from_pt, **kwargs)
             dataframe_list.append(dataset)
             tuple_results_cat["mem"].append(tuple_results["mem"])
             tuple_results_cat["cp"].append(tuple_results["cp"])
             tuple_results_cat["base_mem"].append(tuple_results["base_mem"])
             tuple_results_cat["base_cp"].append(tuple_results["base_cp"])
-        
-        tuple_results = {key: torch.cat(tuple_results_cat[key], dim=-1) for key in tuple_results_cat}
-        return pd.concat(dataframe_list), tuple_results
+            
+            
+        return pd.concat(dataframe_list), tuple_results_cat
