@@ -232,7 +232,7 @@ def aggregate_single_result_contextVSfact(
     *leading_dims, pen_len, last_len = pattern.shape
     if object_positions > 0:
         
-        assert object_positions + 1 < subject_1, "object_positions_next + 1 < subject_1"
+        assert object_positions < subject_1, f"object_positions {object_positions} < subject_1 {subject_1}"
         
         
         intermediate_aggregate = torch.zeros((*leading_dims, pen_len, 9))   

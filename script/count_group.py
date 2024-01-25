@@ -24,22 +24,16 @@ for similarity in similarity_type:
         print("Model", model)
         data = json.load(
             open(
-                f"../data/full_data_sampled_{model}_similarity_{similarity}_10000.json",
+                f"../data/tmp/full_data_sampled_{model}_similarity_{similarity}_10000.json",
                 "r",
             )
         )
         sim_1, sim_2, sim_3, sim_4 = 0, 0, 0, 0
         position_1 = []
         for i, d in enumerate(data):
-            if d["target_new"] in d["similar_tokens_1"]:
+            if d["target_new"][1:] in d["similar_tokens_1"] or d["target_new"] in d["similar_tokens_1"]:
                 position_1.append(i)
                 sim_1 += 1
-            if d["target_true"][1:] not in d["similar_tokens_1"]:
-                if d["target_true"][1:] not in d["similar_tokens_2"]:
-                    if d["target_true"][1:] not in d["similar_tokens_3"]:
-                        if d["target_true"][1:] not in d["similar_tokens_4"]:
-                            sim_true +=1
-                            print(d["target_true"])
             if d["target_new"][1:] in d["similar_tokens_2"] or d["target_new"] in d["similar_tokens_2"]:
                 sim_2 += 1
             if d["target_new"][1:] in d["similar_tokens_3"] or d["target_new"] in d["similar_tokens_3"]:
