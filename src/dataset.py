@@ -305,9 +305,11 @@ class BaseDataset(Dataset):
                 base_target = base_target[1:]
             
             #compute similarity
-            similarity_score = word2vec.similarity(base_target, other_target) # type: ignore
-            similarity_score_list.append(similarity_score)
-            
+            try:
+                similarity_score = word2vec.similarity(base_target, other_target) # type: ignore
+                similarity_score_list.append(similarity_score)
+            except:
+                similarity_score = -100
             # save the similarity score
             d["similarity_score"] = similarity_score
             
@@ -318,7 +320,9 @@ class BaseDataset(Dataset):
         #assign a group to each data point based on the similarity score
         for d in self.full_data:
             similarity_score = d["similarity_score"]
-            if similarity_score < quartile_1:
+            if similarity_score == -100:
+                d["similarity_group"] = -100
+            elif similarity_score < quartile_1:
                 d["similarity_group"] = 4
             elif similarity_score < quartile_2:
                 d["similarity_group"] = 3
