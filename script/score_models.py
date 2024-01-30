@@ -25,8 +25,6 @@ from src.utils import check_dataset_and_sample  # noqa: E402
 import ipdb
 
 
-
-
 NUM_SAMPLES = 10
 FAMILY_NAME = "gpt2"
 
@@ -57,7 +55,7 @@ class LaunchConfig:
     hf_model_name: str
     similarity: bool
     interval: int
-    similarity_type: Literal["logit", "word2vec"]
+    similarity_type: Literal["logit", "word2vec", "self-similarity"]
     experiment: Literal["copyVSfact", "contextVSfact"]
     family_name: str
     premise: str = "Redefine"
@@ -88,6 +86,7 @@ def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None):
         )
 
     evaluator.evaluate_all()
+    return dataset, evaluator
 
 
 def init_evaluator(config: LaunchConfig, dataset: HFDataset):
@@ -160,13 +159,7 @@ def evaluate_premise(
                 premise=premise,
                 num_samples=NUM_SAMPLES,
             )
-            if dataset is None:
-                dataset = init_dataset(launch_config)
-                print("Dataset loaded")
-            if evaluator is None:
-                evaluator = init_evaluator(launch_config, dataset)
-                print("Evaluator loaded")
-            launch_evaluation(launch_config, dataset, evaluator)
+            dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator)
         dataset = None
         evaluator = None
 
@@ -188,13 +181,7 @@ def evaluate_similarity_default_premise(
                 family_name=FAMILY_NAME,
                 num_samples=NUM_SAMPLES,
             )
-            if dataset is None:
-                dataset = init_dataset(launch_config)
-                print("Dataset loaded")
-            if evaluator is None:
-                evaluator = init_evaluator(launch_config, dataset)
-                print("Evaluator loaded")
-            launch_evaluation(launch_config, dataset, evaluator)
+            dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator)
         dataset = None
         evaluator = None
 
@@ -218,13 +205,7 @@ def evaluate_similarity_all_premise(
                     premise=premise,
                     num_samples=NUM_SAMPLES,
                 )
-                if dataset is None:
-                    dataset = init_dataset(launch_config)
-                    print("Dataset loaded")
-                if evaluator is None:
-                    evaluator = init_evaluator(launch_config, dataset)
-                    print("Evaluator loaded")
-                launch_evaluation(launch_config, dataset, evaluator)
+                dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator)
         dataset = None
         evaluator = None
 

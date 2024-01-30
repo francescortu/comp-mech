@@ -7,7 +7,7 @@ import torch # noqa: F401
 from torch.utils.data import  DataLoader # noqa: F401
 from transformers import AutoTokenizer, AutoModelForCausalLM # noqa: E402
 from tqdm import tqdm # noqa: F401
-from typing import Optional, Tuple # noqa: F401
+from typing import Literal, Optional, Tuple # noqa: F401
 from dataclasses import dataclass # noqa: F401
 
 
@@ -27,7 +27,7 @@ class EvaluateMechanism:
         dataset: HFDataset,
         device="cpu",
         batch_size=100,
-        similarity:Tuple[bool, int, str] = (True, 3, "input"),
+        similarity:Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]] = (True, 4, "word2vec"),
         premise="Redefine",
         family_name: Optional[str] = None,
         num_samples=1,
@@ -51,7 +51,7 @@ class EvaluateMechanism:
     def update(
         self,
         dataset: HFDataset,
-        similarity: Tuple[bool, int, str],
+        similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]],
         premise: str):
         self.dataset = dataset
         self.similarity = similarity
@@ -130,12 +130,12 @@ class EvaluateMechanism:
         target_true, target_false, other = [], [], []
         print("SAMPLES", self.n_samples)
         for sample in tqdm(range(self.n_samples), total=self.n_samples, desc="Samples"):
-            self.dataset.reset()
+            self.dataset.reset(self.similarity)
             target_true_tmp, target_false_tmp, other_tmp = 0, 0, 0
             all_true_indices = []
             all_false_indices = []
             all_other_indices = []
-            for length in self.dataset.get_lengths():
+            for length in tqdm(self.dataset.get_lengths()):
                 result = self.evaluate(length)
                 target_true_tmp += result[0]
                 target_false_tmp += result[1]
