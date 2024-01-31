@@ -354,16 +354,15 @@ class BaseDataset(Dataset):
         # quartile_1, quartile_2, quartile_3 = torch.quantile(similarity_score_list, torch.tensor([0.25, 0.5, 0.75]))
 
         ticks = [
-            0.1,
+            0,
             0.15,
-            0.2,
             0.25,
-            0.3,
             0.35,
-            0.40,
+            #0.40,
             0.45,
+            #0.50,
             0.55,
-            0.6,
+            #0.6,
             0.65,
         ]
         

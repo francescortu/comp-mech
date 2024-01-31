@@ -46,7 +46,7 @@ class Options:
         default_factory=lambda: ["Redefine", "Assume", "Suppose", "Context"]
     )
     similarity: List[bool] = field(default_factory=lambda: [True, False])
-    interval: List[int] = field(default_factory=lambda: [11,10,9,8,7,6,5,4, 3, 2, 1, 0])
+    interval: List[int] = field(default_factory=lambda: [8, 7, 6, 5, 4, 3, 2, 1, 0])
 
 
 @dataclass
@@ -210,7 +210,9 @@ def evaluate_similarity_all_premise(
                     premise=premise,
                     num_samples=NUM_SAMPLES,
                 )
-                dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator)
+                dataset, evaluator = launch_evaluation(
+                    launch_config, dataset, evaluator
+                )
         dataset = None
         evaluator = None
 
