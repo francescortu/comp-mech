@@ -24,7 +24,6 @@ from typing import Tuple
 from functools import partial
 
 
-
 class BaseDataset(Dataset):
     def __init__(
         self,
@@ -33,7 +32,9 @@ class BaseDataset(Dataset):
         start: Optional[int] = None,
         experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
         premise: str = "Redefine:",
-        similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]] = (
+        similarity: Tuple[
+            bool, int, Literal["word2vec", "logit", "self-similarity"]
+        ] = (
             False,
             0,
             "logit",
@@ -79,7 +80,9 @@ class BaseDataset(Dataset):
                 else:
                     print("Similarity file not found, generating it")
                     self.similarity_path = similarity_path
-                    self.similarity_data = self.generate_similarity_dataset(similarity[2])
+                    self.similarity_data = self.generate_similarity_dataset(
+                        similarity[2]
+                    )
                     json.dump(self.full_data, open(similarity_path, "w"), indent=2)
             elif similarity[2] == "self-similarity":
                 self.similarity_data = self.generate_similarity_dataset(similarity[2])
@@ -96,7 +99,10 @@ class BaseDataset(Dataset):
         self.targets = []
         self.obj_pos = []
 
-    def reset(self, similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]]):
+    def reset(
+        self,
+        similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]],
+    ):
         if similarity is not None:
             self.similarity = similarity
             self.full_data = self.similarity_data
@@ -107,7 +113,9 @@ class BaseDataset(Dataset):
         self.obj_pos = []
 
     def update(
-        self, premise: str, similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]]
+        self,
+        premise: str,
+        similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]],
     ):
         print(
             f"Updating dataset from {self.premise} to {premise} and {self.similarity} to {similarity}"
@@ -128,7 +136,9 @@ class BaseDataset(Dataset):
         path: str,
         slice: Optional[int] = None,
         premise: str = "Redefine:",
-        similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]] = (
+        similarity: Tuple[
+            bool, int, Literal["word2vec", "logit", "self-similarity"]
+        ] = (
             False,
             0,
             "logit",
@@ -261,13 +271,14 @@ class BaseDataset(Dataset):
                 for d in self.full_data[:]:
                     if d["prompt"] == logdata["prompt"]:
                         self.full_data.remove(d)
-        
-        if self.similarity[2] == "self-similarity":
-            #remove the element in a different similarity group
-            self.full_data = [d for d in self.full_data if d["similarity_group"] == self.similarity[1]]
 
-       
-            #check if there are lenghts with zero elements
+        if self.similarity[2] == "self-similarity":
+            # remove the element in a different similarity group
+            self.full_data = [
+                d for d in self.full_data if d["similarity_group"] == self.similarity[1]
+            ]
+
+            # check if there are lenghts with zero elements
             for lenght in lenghts[:]:
                 if len([d for d in self.full_data if d["length"] == lenght]) == 0:
                     lenghts.remove(lenght)
@@ -287,7 +298,7 @@ class BaseDataset(Dataset):
             return self.generate_self_similarity_dataset()
         else:
             raise ValueError("method must be either 'word2vec' or 'logit'")
-    
+
     def generate_self_similarity_dataset(self) -> List[dict]:
         word2vec = api.load("word2vec-google-news-300")
         similarity_score_list = []
@@ -303,35 +314,67 @@ class BaseDataset(Dataset):
                 other_target = other_target[1:]
             if base_target[0] == " ":
                 base_target = base_target[1:]
-            
-            #compute similarity
+
+            # compute similarity
             try:
-                similarity_score = word2vec.similarity(base_target, other_target) # type: ignore
+                similarity_score = word2vec.similarity(base_target, other_target)  # type: ignore
                 similarity_score_list.append(similarity_score)
             except:
                 similarity_score = -100
             # save the similarity score
             d["similarity_score"] = similarity_score
-            
+
         # compute three thresholds based on the similarity score
         similarity_score_list = torch.tensor(similarity_score_list)
-        quartile_1, quartile_2, quartile_3 = torch.quantile(similarity_score_list, torch.tensor([0.25, 0.5, 0.75]))
-        
-        #assign a group to each data point based on the similarity score
+        # generate 5 groups based on the similarity score
+        (
+            quartile_1,
+            quartile_2,
+            quartile_3,
+            quartile_4,
+            quartile_5,
+            quartile_6,
+        ) = torch.quantile(
+            similarity_score_list, torch.tensor([0.2, 0.4, 0.6, 0.8, 0.9, 0.95])
+        )
+        # quartile_1, quartile_2, quartile_3 = torch.quantile(similarity_score_list, torch.tensor([0.25, 0.5, 0.75]))
+
+        # assign a group to each data point based on the similarity score
         for d in self.full_data:
             similarity_score = d["similarity_score"]
             if similarity_score == -100:
                 d["similarity_group"] = -100
             elif similarity_score < quartile_1:
-                d["similarity_group"] = 4
+                d["similarity_group"] = 6
             elif similarity_score < quartile_2:
-                d["similarity_group"] = 3
+                d["similarity_group"] = 5
             elif similarity_score < quartile_3:
+                d["similarity_group"] = 4
+            elif similarity_score < quartile_4:
+                d["similarity_group"] = 3
+            elif similarity_score < quartile_5:
                 d["similarity_group"] = 2
-            else:
+            elif similarity_score < quartile_6:
                 d["similarity_group"] = 1
+            else:
+                d["similarity_group"] = 0
         return self.full_data
-            
+
+        # #assign a group to each data point based on the similarity score
+        # for d in self.full_data:
+        #     similarity_score = d["similarity_score"]
+        #     if similarity_score == -100:
+        #         d["similarity_group"] = -100
+        #     elif similarity_score < quartile_1:
+        #         d["similarity_group"] = 4
+        #     elif similarity_score < quartile_2:
+        #         d["similarity_group"] = 3
+        #     elif similarity_score < quartile_3:
+        #         d["similarity_group"] = 2
+        #     else:
+        #         d["similarity_group"] = 1
+        # return self.full_data
+
     def generate_similarity_dataset_word2vec(self) -> List[dict]:
         word2vec = api.load("word2vec-google-news-300")
         for d in tqdm(
@@ -369,6 +412,7 @@ class BaseDataset(Dataset):
 
             # torch.save(self.similarity_score_dict, self.dict_path)
             # return self.full_data
+
             quartile_1, quartile_2, quartile_3, quartile_4, quartile_5 = torch.quantile(
                 similarity_score, torch.tensor([0.90, 0.92, 0.94, 0.96, 0.98])
             )
@@ -647,7 +691,9 @@ class TlensDataset(BaseDataset):
         slice: Optional[int] = None,
         start: Optional[int] = None,
         premise: str = "Redefine:",
-        similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]] = (
+        similarity: Tuple[
+            bool, int, Literal["word2vec", "logit", "self-similarity"]
+        ] = (
             False,
             0,
             "logit",
@@ -763,7 +809,9 @@ class HFDataset(BaseDataset):
         experiment: Literal["copyVSfact", "contextVSfact"],
         slice: Optional[int] = None,
         premise: str = "Redefine:",
-        similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]] = (
+        similarity: Tuple[
+            bool, int, Literal["word2vec", "logit", "self-similarity"]
+        ] = (
             False,
             0,
             "logit",
@@ -789,7 +837,12 @@ class HFDataset(BaseDataset):
             family_name=family_name,
         )
 
-    def reset(self, similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]] = None):
+    def reset(
+        self,
+        similarity: Tuple[
+            bool, int, Literal["word2vec", "logit", "self-similarity"]
+        ] = None,
+    ):
         super().reset(similarity=similarity)
 
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
