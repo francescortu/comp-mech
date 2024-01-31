@@ -353,21 +353,18 @@ class BaseDataset(Dataset):
         )
         # quartile_1, quartile_2, quartile_3 = torch.quantile(similarity_score_list, torch.tensor([0.25, 0.5, 0.75]))
 
-        
-
-
         ticks = [
             0.15,
             0.25,
             0.35,
-            #0.40,
+            # 0.40,
             0.45,
-            #0.50,
+            # 0.50,
             0.55,
-            #0.6,
+            # 0.6,
             0.65,
         ]
-        
+
         # divide the similarity in group tick
         for d in self.full_data:
             similarity_score = d["similarity_score"]
@@ -389,8 +386,6 @@ class BaseDataset(Dataset):
             else:
                 d["similarity_group"] = 6
 
-
-
         # # assign a group to each data point based on the similarity score
         # for d in self.full_data:
         #     similarity_score = d["similarity_score"]
@@ -410,8 +405,8 @@ class BaseDataset(Dataset):
         #         d["similarity_group"] = 1
         #     else:
         #         d["similarity_group"] = 0
-                
-        #for each group, random sample 400 data points and set the other to -100
+
+        # for each group, random sample 400 data points and set the other to -100
         # First, collect data points by their groups
         grouped_data_points = defaultdict(list)
         for index, d in enumerate(self.full_data):
@@ -419,19 +414,21 @@ class BaseDataset(Dataset):
 
         # Now, sample 400 data points from each group and mark the rest as -100
         for group, indices in grouped_data_points.items():
-            if group == -100:  # Skip if the group is already for error-handled data points
+            if (
+                group == -100
+            ):  # Skip if the group is already for error-handled data points
                 continue
 
             # Shuffle the indices to ensure randomness
             random.shuffle(indices)
 
             # If the group has more than 400 data points, sample 400, else take all
-            selected_indices = set(indices[:200])
+            selected_indices = set(indices[:400])
             # Update the groups for non-selected data points
             for index in indices:
                 if index not in selected_indices:
                     self.full_data[index]["similarity_group"] = -100
-                
+
         return self.full_data
 
         # #assign a group to each data point based on the similarity score
