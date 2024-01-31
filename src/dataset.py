@@ -70,14 +70,14 @@ class BaseDataset(Dataset):
                     )
 
         if similarity[0] is True:
+            similarity_path = (
+                path.split(".json")[0] + f"_similarity_{similarity[2]}.json"
+                if slice is None
+                else path.split(".json")[0]
+                + f"_similarity_{similarity[2]}_{slice}.json"
+            )
+            self.similarity_path = similarity_path
             if similarity[2] in ["word2vec", "logit"]:
-                similarity_path = (
-                    path.split(".json")[0] + f"_similarity_{similarity[2]}.json"
-                    if slice is None
-                    else path.split(".json")[0]
-                    + f"_similarity_{similarity[2]}_{slice}.json"
-                )
-                self.similarity_path = similarity_path
                 print("Search similarity path:", similarity_path)
                 if os.path.isfile(similarity_path):
                     print("Similarity file found, loading it")
