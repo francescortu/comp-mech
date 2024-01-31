@@ -68,7 +68,7 @@ class BaseDataset(Dataset):
                     raise ValueError(
                         "only self-similarity is supported for contextVSfact experiment"
                     )
-                    
+
         if similarity[0] is True:
             if similarity[2] in ["word2vec", "logit"]:
                 similarity_path = (
@@ -77,6 +77,7 @@ class BaseDataset(Dataset):
                     else path.split(".json")[0]
                     + f"_similarity_{similarity[2]}_{slice}.json"
                 )
+                self.similarity_path = similarity_path
                 print("Search similarity path:", similarity_path)
                 if os.path.isfile(similarity_path):
                     print("Similarity file found, loading it")
@@ -240,7 +241,10 @@ class BaseDataset(Dataset):
                     if obj_pos_indices.size(0) > 0:
                         d["obj_pos"] = obj_pos_indices[0].item()
                     else:
-                        if self.similarity[0] is True and self.experiment != "contextVSfact":
+                        if (
+                            self.similarity[0] is True
+                            and self.experiment != "contextVSfact"
+                        ):
                             continue  # Resample if similarity is true
                         else:
                             log_data.append(
@@ -330,6 +334,10 @@ class BaseDataset(Dataset):
 
         # compute three thresholds based on the similarity score
         similarity_score_list = torch.tensor(similarity_score_list)
+        # save the distribution of the similarity score
+        path = self.similarity_path.split(".json")[0] + ".pt"
+
+        torch.save(similarity_score_list, path)
         # generate 5 groups based on the similarity score
         (
             quartile_1,
