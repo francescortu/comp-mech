@@ -1,23 +1,19 @@
-
 import sys
-import os # noqa: F401
-import json # noqa:  F811
+import os  # noqa: F401
+import json  # noqa:  F811
 
-import torch # noqa: F401
-from torch.utils.data import  DataLoader # noqa: F401
-from transformers import AutoTokenizer, AutoModelForCausalLM # noqa: E402
-from tqdm import tqdm # noqa: F401
-from typing import Literal, Optional, Tuple # noqa: F401
-from dataclasses import dataclass # noqa: F401
+import torch  # noqa: F401
+from torch.utils.data import DataLoader  # noqa: F401
+from transformers import AutoTokenizer, AutoModelForCausalLM  # noqa: E402
+from tqdm import tqdm  # noqa: F401
+from typing import Literal, Optional, Tuple  # noqa: F401
+from dataclasses import dataclass  # noqa: F401
 
 
 sys.path.append("..")
 sys.path.append("../src")
 sys.path.append("../data")
-from src.dataset import HFDataset # noqa: E402
-
-
-
+from src.dataset import HFDataset  # noqa: E402
 
 
 class EvaluateMechanism:
@@ -27,7 +23,9 @@ class EvaluateMechanism:
         dataset: HFDataset,
         device="cpu",
         batch_size=100,
-        similarity:Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]] = (True, 4, "word2vec"),
+        similarity: Tuple[
+            bool, int, Literal["word2vec", "logit", "self-similarity"]
+        ] = (True, 4, "word2vec"),
         premise="Redefine",
         family_name: Optional[str] = None,
         num_samples=1,
@@ -52,7 +50,8 @@ class EvaluateMechanism:
         self,
         dataset: HFDataset,
         similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]],
-        premise: str):
+        premise: str,
+    ):
         self.dataset = dataset
         self.similarity = similarity
         self.premise = premise
@@ -69,7 +68,7 @@ class EvaluateMechanism:
         other_indices = []
         for i in range(num_samples):
             if torch.argmax(probs[i]) == target[i, 0]:
-                #print("DEBUG:", self.tokenizer.decode(target[i, 0]), self.tokenizer.decode(torch.argmax(probs[i])))
+                # print("DEBUG:", self.tokenizer.decode(target[i, 0]), self.tokenizer.decode(torch.argmax(probs[i])))
                 target_true += 1
                 target_true_indices.append(i)
             elif torch.argmax(probs[i]) == target[i, 1]:
@@ -162,7 +161,7 @@ class EvaluateMechanism:
         Target_false = target_false
         Other = other
         print("target true", Target_true)
-        
+
         target_true = torch.mean(torch.tensor(Target_true).float())
         target_false = torch.mean(torch.tensor(Target_false).float())
         other = torch.mean(torch.tensor(Other).float())
@@ -177,7 +176,7 @@ class EvaluateMechanism:
         print(
             f"Total: Target True std: {target_true_std}, Target False std: {target_false_std}, Other std: {other_std}"
         )
-        
+
         # index = torch.cat(index, dim=1)
 
         if len(self.model_name.split("/")) > 1:
@@ -188,7 +187,7 @@ class EvaluateMechanism:
             save_name += "similarity"
         # save results
 
-        filename = f"../results/{self.family_name}_evaluate_mechanism_NEW.csv"
+        filename = f"../results/{self.family_name}_evaluate_mechanism_NEW_NEW.csv"
         # if file not exists, create it and write the header
         if not os.path.isfile(filename):
             with open(filename, "w") as file:
@@ -246,9 +245,9 @@ class EvaluateMechanism:
         ) as file:
             json.dump(
                 {
-                    "target_true": all_true_indices, # type: ignore
-                    "target_false": all_false_indices, # type: ignore
-                    "other": all_other_indices, # type: ignore
+                    "target_true": all_true_indices,  # type: ignore
+                    "target_false": all_false_indices,  # type: ignore
+                    "other": all_other_indices,  # type: ignore
                 },
                 file,
             )

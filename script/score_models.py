@@ -111,7 +111,12 @@ def init_dataset(config: LaunchConfig):
         save_name = config.model_name.split("/")[1]
     else:
         save_name = config.model_name
-    dataset_path = f"../data/full_data_sampled_{save_name}.json"
+    if config.experiment == "copyVSfact":
+        dataset_path = f"../data/full_data_sampled_{save_name}.json"
+    elif config.experiment == "contextVSfact":
+        dataset_path = f"../data/context_dataset_{save_name}.json"
+    else:
+        raise ValueError("Experiment not recognized")
     check_dataset_and_sample(dataset_path, config.model_name, config.hf_model_name)
 
     return HFDataset(

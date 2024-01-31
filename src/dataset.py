@@ -62,9 +62,13 @@ class BaseDataset(Dataset):
                 self.similarity_score_dict = {}
         if self.experiment == "contextVSfact":
             if self.similarity[0] is True:
-                raise ValueError(
-                    "similarity cannot be true for contextVSfact experiment"
-                )
+                if self.similarity[2] == "self-similarity":
+                    pass
+                else:
+                    raise ValueError(
+                        "only self-similarity is supported for contextVSfact experiment"
+                    )
+                    
         if similarity[0] is True:
             if similarity[2] in ["word2vec", "logit"]:
                 similarity_path = (
@@ -236,7 +240,7 @@ class BaseDataset(Dataset):
                     if obj_pos_indices.size(0) > 0:
                         d["obj_pos"] = obj_pos_indices[0].item()
                     else:
-                        if self.similarity[0] is True:
+                        if self.similarity[0] is True and self.experiment != "contextVSfact":
                             continue  # Resample if similarity is true
                         else:
                             log_data.append(
@@ -413,17 +417,38 @@ class BaseDataset(Dataset):
             # torch.save(self.similarity_score_dict, self.dict_path)
             # return self.full_data
 
-            quartile_1, quartile_2, quartile_3, quartile_4, quartile_5 = torch.quantile(
-                similarity_score, torch.tensor([0.90, 0.92, 0.94, 0.96, 0.98])
+            (
+                quartile_1,
+                quartile_2,
+                quartile_3,
+                quartile_4,
+                quartile_5,
+                quartile_6,
+                quartile_7,
+            ) = torch.quantile(
+                similarity_score, torch.tensor([0.25, 0.5, 0.75, 0.85, 0.9, 0.95, 0.98])
             )
+
+            # use fixed thresholds between -0.5 and 0.9
+            (
+                quartile_1,
+                quartile_2,
+                quartile_3,
+                quartile_4,
+                quartile_5,
+                quartile_6,
+                quartile_7,
+            ) = -0.2, 0, 0.2, 0.3, 0.4, 0.5, 0.6
 
             # Creating masks for each group
             masks = {
-                4: (similarity_score > quartile_1) & (similarity_score < quartile_2),
-                3: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
-                2: (similarity_score >= quartile_3) & (similarity_score < quartile_4),
-                1: (similarity_score >= quartile_4) & (similarity_score < quartile_5),
-                0: similarity_score >= quartile_5,
+                6: (similarity_score > quartile_1) & (similarity_score < quartile_2),
+                5: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
+                4: (similarity_score >= quartile_3) & (similarity_score < quartile_4),
+                3: (similarity_score >= quartile_4) & (similarity_score < quartile_5),
+                2: (similarity_score >= quartile_5) & (similarity_score < quartile_6),
+                1: (similarity_score >= quartile_6) & (similarity_score < quartile_7),
+                0: similarity_score >= quartile_7,
             }
 
             # Grouping tokens based on masks
