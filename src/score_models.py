@@ -188,7 +188,7 @@ class EvaluateMechanism:
             save_name += "similarity"
         # save results
 
-        filename = f"../results/{self.family_name}_evaluate_mechanism_NEW.csv"
+        filename = f"../results/{self.family_name}_evaluate_mechanism_NEWNEW.csv"
         # if file not exists, create it and write the header
         if not os.path.isfile(filename):
             with open(filename, "w") as file:
