@@ -353,8 +353,10 @@ class BaseDataset(Dataset):
         )
         # quartile_1, quartile_2, quartile_3 = torch.quantile(similarity_score_list, torch.tensor([0.25, 0.5, 0.75]))
 
+        
+
+
         ticks = [
-            0,
             0.15,
             0.25,
             0.35,
@@ -372,14 +374,20 @@ class BaseDataset(Dataset):
             if similarity_score == -100:
                 d["similarity_group"] = -100
                 continue
-            group = None
-            for i, tick in enumerate(ticks):
-                if similarity_score < tick:
-                    group = i
-                    break
-            if group is None:
-                group = len(ticks)
-            d["similarity_group"] = group
+            if similarity_score < ticks[0]:
+                d["similarity_group"] = 0
+            elif similarity_score < ticks[1]:
+                d["similarity_group"] = 1
+            elif similarity_score < ticks[2]:
+                d["similarity_group"] = 2
+            elif similarity_score < ticks[3]:
+                d["similarity_group"] = 3
+            elif similarity_score < ticks[4]:
+                d["similarity_group"] = 4
+            elif similarity_score < ticks[5]:
+                d["similarity_group"] = 5
+            else:
+                d["similarity_group"] = 6
 
 
 
