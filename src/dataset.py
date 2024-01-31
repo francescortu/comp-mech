@@ -353,30 +353,58 @@ class BaseDataset(Dataset):
         )
         # quartile_1, quartile_2, quartile_3 = torch.quantile(similarity_score_list, torch.tensor([0.25, 0.5, 0.75]))
 
-        # quartile_1, quartile_2, quartile_3, quartile_4, quartile_5, quartile_6 = (
-        #     0.2, 0.4, 0.4, 0.5, 0.6, 0.7
-
-
-
-        # assign a group to each data point based on the similarity score
+        ticks = [
+            -1,
+            0.1,
+            0.15,
+            0.2,
+            0.25,
+            0.3,
+            0.35,
+            0.40,
+            0.45,
+            0.55,
+            0.6,
+            0.65,
+            0.7
+        ]
+        
+        # divide the similarity in group tick
         for d in self.full_data:
             similarity_score = d["similarity_score"]
             if similarity_score == -100:
                 d["similarity_group"] = -100
-            elif similarity_score < quartile_1:
-                d["similarity_group"] = 6
-            elif similarity_score < quartile_2:
-                d["similarity_group"] = 5
-            elif similarity_score < quartile_3:
-                d["similarity_group"] = 4
-            elif similarity_score < quartile_4:
-                d["similarity_group"] = 3
-            elif similarity_score < quartile_5:
-                d["similarity_group"] = 2
-            elif similarity_score < quartile_6:
-                d["similarity_group"] = 1
-            else:
-                d["similarity_group"] = 0
+                continue
+            group = None
+            for i, tick in enumerate(ticks):
+                if similarity_score < tick:
+                    group = i
+                    break
+            if group is None:
+                group = len(ticks)
+            d["similarity_group"] = group
+
+
+
+        # # assign a group to each data point based on the similarity score
+        # for d in self.full_data:
+        #     similarity_score = d["similarity_score"]
+        #     if similarity_score == -100:
+        #         d["similarity_group"] = -100
+        #     elif similarity_score < quartile_1:
+        #         d["similarity_group"] = 6
+        #     elif similarity_score < quartile_2:
+        #         d["similarity_group"] = 5
+        #     elif similarity_score < quartile_3:
+        #         d["similarity_group"] = 4
+        #     elif similarity_score < quartile_4:
+        #         d["similarity_group"] = 3
+        #     elif similarity_score < quartile_5:
+        #         d["similarity_group"] = 2
+        #     elif similarity_score < quartile_6:
+        #         d["similarity_group"] = 1
+        #     else:
+        #         d["similarity_group"] = 0
                 
         #for each group, random sample 400 data points and set the other to -100
         # First, collect data points by their groups
@@ -393,7 +421,7 @@ class BaseDataset(Dataset):
             random.shuffle(indices)
 
             # If the group has more than 400 data points, sample 400, else take all
-            selected_indices = set(indices[:400])
+            selected_indices = set(indices[:200])
 
             # Update the groups for non-selected data points
             for index in indices:
