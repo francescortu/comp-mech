@@ -56,7 +56,7 @@ class BaseDataset(Dataset):
             self.dict_path = f"../data/similarity_score_{family_name}_w2v.pt"
 
         # if the file exist, load it
-        if self.similarity[0]:
+        if self.similarity[0] and self.similarity[2] != "self-similarity":
             print(f"Loading similarity score dict {self.dict_path}")
             if os.path.isfile(self.dict_path):
                 self.similarity_score_dict = torch.load(self.dict_path)
@@ -354,7 +354,6 @@ class BaseDataset(Dataset):
         # quartile_1, quartile_2, quartile_3 = torch.quantile(similarity_score_list, torch.tensor([0.25, 0.5, 0.75]))
 
         ticks = [
-            -1,
             0.1,
             0.15,
             0.2,
@@ -366,7 +365,6 @@ class BaseDataset(Dataset):
             0.55,
             0.6,
             0.65,
-            0.7
         ]
         
         # divide the similarity in group tick
@@ -422,7 +420,6 @@ class BaseDataset(Dataset):
 
             # If the group has more than 400 data points, sample 400, else take all
             selected_indices = set(indices[:200])
-
             # Update the groups for non-selected data points
             for index in indices:
                 if index not in selected_indices:
