@@ -338,12 +338,14 @@ class BaseDataset(Dataset):
         similarity_score_list = torch.tensor(similarity_score_list)
         # save the distribution of the similarity score
         path = self.similarity_path.split(".json")[0] + ".pt"
-        
+
         similarity_score_list = similarity_score_list.sort(descending=False).values
         # divide the similarity score in group of 1000 values each
         num_of_samples = len(similarity_score_list)
         num_of_group = num_of_samples // 1000
-        group_intervals = [similarity_score_list[(i) * 1000] for i in range(num_of_group)]
+        group_intervals = [
+            similarity_score_list[(i + 1) * 1000] for i in range(num_of_group)
+        ]
         print("DEBUG: group interval", group_intervals)
         for d in self.full_data:
             similarity_score = d["similarity_score"]
@@ -351,7 +353,7 @@ class BaseDataset(Dataset):
                 d["similarity_group"] = -100
                 continue
             for i in range(num_of_group, -1, -1):
-                if similarity_score >= group_intervals[i-1]:
+                if similarity_score >= group_intervals[i - 1]:
                     d["similarity_group"] = i
                     break
         return self.full_data
@@ -538,7 +540,7 @@ class BaseDataset(Dataset):
                 # 0.6,
                 0.65,
             ]
-            
+
             mask = {
                 0: (similarity_score < ticks[0]),
                 1: (similarity_score > ticks[0]) & (similarity_score < ticks[1]),
