@@ -339,7 +339,7 @@ class BaseDataset(Dataset):
         # save the distribution of the similarity score
         path = self.similarity_path.split(".json")[0] + ".pt"
         
-        similarity_score_list = similarity_score_list.sort(descending=True).values
+        similarity_score_list = similarity_score_list.sort(descending=False).values
         # divide the similarity score in group of 1000 values each
         num_of_samples = len(similarity_score_list)
         num_of_group = num_of_samples // 1000
@@ -351,7 +351,7 @@ class BaseDataset(Dataset):
                 d["similarity_group"] = -100
                 continue
             for i in range(num_of_group, -1, -1):
-                if similarity_score >= group_intervals[i]:
+                if similarity_score >= group_intervals[i-1]:
                     d["similarity_group"] = i
                     break
         return self.full_data
