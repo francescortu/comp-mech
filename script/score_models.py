@@ -54,7 +54,7 @@ class Options:
         default_factory=lambda: ["Redefine", "Assume", "Suppose", "Context"]
     )
     similarity: List[bool] = field(default_factory=lambda: [True, False])
-    interval: List[int] = field(default_factory=lambda: [6, 5, 4, 3, 2, 1, 0])
+    interval: List[int] = field(default_factory=lambda: [9,8,7, 6, 5, 4, 3, 2, 1, 0])
 
 
 @dataclass

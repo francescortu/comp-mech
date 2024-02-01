@@ -182,6 +182,7 @@ def logit_lens(model, dataset, config, args):
         logit_lens_plot(config, data_slice_name)
         
 def logit_lens_plot(config, data_slice_name):
+        print("Plotting from source:", f"../results/{config.mech_fold}/logit_lens/{config.model_name}_{data_slice_name}")
         subprocess.run(
             [
                 "Rscript",
@@ -266,6 +267,7 @@ def ablate(model, dataset, config, args):
         
 def ablate_plot(config, data_slice_name):
     data_slice_name = f"{data_slice_name}_total_effect" if config.total_effect else data_slice_name
+    print("plotting from source: ",  f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}")
     subprocess.run(
         [
             "Rscript",
