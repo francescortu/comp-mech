@@ -484,43 +484,55 @@ class BaseDataset(Dataset):
             # torch.save(self.similarity_score_dict, self.dict_path)
             # return self.full_data
 
-            (
-                quartile_1,
-                quartile_2,
-                quartile_3,
-                quartile_4,
-                quartile_5,
-                quartile_6,
-                quartile_7,
-            ) = torch.quantile(
-                similarity_score, torch.tensor([0.25, 0.5, 0.75, 0.85, 0.9, 0.95, 0.98])
-            )
+            # (
+            #     quartile_1,
+            #     quartile_2,
+            #     quartile_3,
+            #     quartile_4,
+            #     quartile_5,
+            #     quartile_6,
+            #     quartile_7,
+            # ) = torch.quantile(
+            #     similarity_score, torch.tensor([0.25, 0.5, 0.75, 0.85, 0.9, 0.95, 0.98])
+            # )
+            # # Creating masks for each group
+            # masks = {
+            #     6: (similarity_score > quartile_1) & (similarity_score < quartile_2),
+            #     5: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
+            #     4: (similarity_score >= quartile_3) & (similarity_score < quartile_4),
+            #     3: (similarity_score >= quartile_4) & (similarity_score < quartile_5),
+            #     2: (similarity_score >= quartile_5) & (similarity_score < quartile_6),
+            #     1: (similarity_score >= quartile_6) & (similarity_score < quartile_7),
+            #     0: similarity_score >= quartile_7,
+            # }
 
-            # use fixed thresholds between -0.5 and 0.9
-            (
-                quartile_1,
-                quartile_2,
-                quartile_3,
-                quartile_4,
-                quartile_5,
-                quartile_6,
-                quartile_7,
-            ) = -0.2, 0, 0.2, 0.3, 0.4, 0.5, 0.6
+            # # Grouping tokens based on masks
+            # for i in range(5):
+            #     d[f"similar_tokens_{i}"] = [tokens[j] for j in torch.where(masks[i])[0]]
 
-            # Creating masks for each group
-            masks = {
-                6: (similarity_score > quartile_1) & (similarity_score < quartile_2),
-                5: (similarity_score >= quartile_2) & (similarity_score < quartile_3),
-                4: (similarity_score >= quartile_3) & (similarity_score < quartile_4),
-                3: (similarity_score >= quartile_4) & (similarity_score < quartile_5),
-                2: (similarity_score >= quartile_5) & (similarity_score < quartile_6),
-                1: (similarity_score >= quartile_6) & (similarity_score < quartile_7),
-                0: similarity_score >= quartile_7,
+            ticks = [
+                0.15,
+                0.25,
+                0.35,
+                # 0.40,
+                0.45,
+                # 0.50,
+                0.55,
+                # 0.6,
+                0.65,
+            ]
+            
+            mask = {
+                0: (similarity_score < ticks[0]),
+                1: (similarity_score > ticks[0]) & (similarity_score < ticks[1]),
+                2: (similarity_score > ticks[1]) & (similarity_score < ticks[2]),
+                3: (similarity_score > ticks[2]) & (similarity_score < ticks[3]),
+                4: (similarity_score > ticks[3]) & (similarity_score < ticks[4]),
+                5: (similarity_score > ticks[4]) & (similarity_score < ticks[5]),
+                6: similarity_score > ticks[5],
             }
-
-            # Grouping tokens based on masks
-            for i in range(5):
-                d[f"similar_tokens_{i}"] = [tokens[j] for j in torch.where(masks[i])[0]]
+            for i in range(len(ticks)):
+                d[f"similar_tokens_{i}"] = [tokens[j] for j in torch.where(mask[i])[0]]
 
         torch.save(self.similarity_score_dict, self.dict_path)
         return self.full_data
