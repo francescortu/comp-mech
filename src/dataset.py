@@ -343,11 +343,9 @@ class BaseDataset(Dataset):
         # divide the similarity score in group of 1000 values each
         num_of_samples = len(similarity_score_list)
         num_of_group = num_of_samples // 1000
-        print("DEBUG: Num_samples", num_of_samples)
         group_intervals = [
-            similarity_score_list[(i + 1) * 1000] for i in range(num_of_group)
+            similarity_score_list[(i) * 1000] for i in range(num_of_group)
         ]
-        print("DEBUG: group interval", group_intervals)
         for d in self.full_data:
             similarity_score = d["similarity_score"]
             if similarity_score == -100:
@@ -355,7 +353,6 @@ class BaseDataset(Dataset):
                 continue
             for i in range(num_of_group, -1, -1):
                 if similarity_score >= group_intervals[i - 1]:
-                    print("DEBUG: similarity score", similarity_score, "group", i, "interval", group_intervals[i - 1])
                     d["similarity_group"] = i
                     break
         return self.full_data
