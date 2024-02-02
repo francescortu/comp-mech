@@ -335,38 +335,25 @@ class BaseDataset(Dataset):
             # save the similarity score
             d["similarity_score"] = similarity_score
 
-        # compute three thresholds based on the similarity score
-        similarity_score_list = torch.tensor(similarity_score_list)
-        # save the distribution of the similarity score
-        path = self.similarity_path.split(".json")[0] + ".pt"
-
-        similarity_score_list = similarity_score_list.sort(descending=False).values
-        # divide the similarity score in group of 1000 values each
-        num_of_samples = len(similarity_score_list)
-        print(num_of_samples, len(similarity_score_list))
-        num_of_group = num_of_samples // 1000
-        print(num_of_group, num_of_samples // 1000, num_of_samples)
-        group_intervals = [
-            similarity_score_list[(i) * 1000] for i in range(num_of_group)
+        # sort full data by similarity score
+        self.full_data = sorted(self.full_data, key=lambda x: x["similarity_score"])
+        # split into bins
+        similarity_score_bins = [
+            self.full_data[i : i + 1000] for i in range(0, len(self.full_data), 1000)
         ]
-        count_out = 0
-        #print("DEBUG: group_intervals", group_intervals)
-        #print("DEBUGDEBUG", similarity_score_list[group_intervals[-1].item():])
-        #print("DEBUG", torch.sum(similarity_score_list > group_intervals[-1]))
+        #assign similarity_group to each data point based on the bin it falls into
+        for i, bin in enumerate(similarity_score_bins):
+            for d in bin:
+                d["similarity_group"] = i
+                
+        #count the number of points in each group in full data
+        similarity_group_count = {}
         for d in self.full_data:
-            similarity_score = d["similarity_score"]
-            if similarity_score == -100:
-                d["similarity_group"] = -100
-                count_out += 1
-                continue
-            for i in range(num_of_group - 1, -1, -1):
-                if similarity_score >= group_intervals[i]:
-                    d["similarity_group"] = i
-                    break
-
-        #print("DEBUG: count_out", count_out)
+            similarity_group_count[d["similarity_group"]] = similarity_group_count.get(
+                d["similarity_group"], 0
+            ) + 1
+        print(similarity_group_count)
         return self.full_data
-
         # torch.save(similarity_score_list, path)
         # # generate 5 groups based on the similarity score
         # (
