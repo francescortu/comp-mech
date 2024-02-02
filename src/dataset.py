@@ -351,8 +351,8 @@ class BaseDataset(Dataset):
             if similarity_score == -100:
                 d["similarity_group"] = -100
                 continue
-            for i in range(num_of_group, -1, -1):
-                if similarity_score >= group_intervals[i - 1]:
+            for i in range(num_of_group - 1, -1, -1):
+                if similarity_score >= group_intervals[i]:
                     d["similarity_group"] = i
                     break
         return self.full_data
