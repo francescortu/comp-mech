@@ -342,6 +342,8 @@ class BaseDataset(Dataset):
 
         similarity_score_list = similarity_score_list.sort(descending=False).values
         # divide the similarity score in group of 1000 values each
+        from ipdb import set_trace
+        set_trace()
         num_of_samples = len(similarity_score_list)
         num_of_group = num_of_samples // 1000
         group_intervals = [
