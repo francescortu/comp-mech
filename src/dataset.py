@@ -343,12 +343,16 @@ class BaseDataset(Dataset):
         similarity_score_list = similarity_score_list.sort(descending=False).values
         # divide the similarity score in group of 1000 values each
         num_of_samples = len(similarity_score_list)
+        print(num_of_samples, len(similarity_score_list))
         num_of_group = num_of_samples // 1000
+        print(num_of_group, num_of_samples // 1000, num_of_samples)
         group_intervals = [
             similarity_score_list[(i) * 1000] for i in range(num_of_group)
         ]
         count_out = 0
-        print("DEBUG: group_intervals", group_intervals)
+        #print("DEBUG: group_intervals", group_intervals)
+        #print("DEBUGDEBUG", similarity_score_list[group_intervals[-1].item():])
+        #print("DEBUG", torch.sum(similarity_score_list > group_intervals[-1]))
         for d in self.full_data:
             similarity_score = d["similarity_score"]
             if similarity_score == -100:
@@ -360,7 +364,7 @@ class BaseDataset(Dataset):
                     d["similarity_group"] = i
                     break
 
-        print("DEBUG: count_out", count_out)
+        #print("DEBUG: count_out", count_out)
         return self.full_data
 
         # torch.save(similarity_score_list, path)
