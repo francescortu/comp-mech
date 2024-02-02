@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from genericpath import isfile
+from itertools import count
 from math import log
 
 from gensim.models import Word2Vec
@@ -346,15 +347,20 @@ class BaseDataset(Dataset):
         group_intervals = [
             similarity_score_list[(i) * 1000] for i in range(num_of_group)
         ]
+        count_out = 0
+        print("DEBUG: group_intervals", group_intervals)
         for d in self.full_data:
             similarity_score = d["similarity_score"]
             if similarity_score == -100:
                 d["similarity_group"] = -100
+                count_out += 1
                 continue
             for i in range(num_of_group - 1, -1, -1):
                 if similarity_score >= group_intervals[i]:
                     d["similarity_group"] = i
                     break
+
+        print("DEBUG: count_out", count_out)
         return self.full_data
 
         # torch.save(similarity_score_list, path)
