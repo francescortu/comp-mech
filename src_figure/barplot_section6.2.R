@@ -3,14 +3,14 @@ library(readr)
 library(dplyr)
 
 # Load the DataFrame
-df <- read_csv("gpt2_evaluate_mechanism.csv")
+df <- read_csv("gpt2_evaluate_mechanism_NEW.csv")
 
 
 #filter per similarity type
-df <- df %>% filter(similarity_type == "logit")
+df <- df %>% filter(similarity_type == "word2vec")
 df <- df %>% filter(premise == "Redefine")
-# df <- df %>% filter(orthogonalize == "TRUE")
-# df <- df %>% filter(interval != 0)
+df <- df %>% filter(orthogonalize == "TRUE")
+#df <- df %>% filter(interval != 0)
 data <- df %>%
       group_by(model_name, interval) %>%
   summarize(total_true = sum(target_true), 
@@ -21,7 +21,7 @@ data <- df %>%
 
 # Convert interval to a factor
 data$interval <- as.factor(data$interval)
-data$model_name <- factor(data$model_name, levels = c("gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl"))
+data$model_name <- factor(data$model_name, levels = c("gpt2", "gpt2-medium", "gpt2-large", "gpt2-xl", "EleutherAI/pythia-6.9b"))
 
 # ggplot(data, aes(x=model_name, y= percentage_true, fill=interval)) +
 #   geom_bar(stat = "identity", position ="dodge", size=0.5, colour="black")+
@@ -58,16 +58,16 @@ p <-  ggplot(data, aes(x = as.factor(interval), y = percentage_true, group = mod
     geom_errorbar(aes(ymin = percentage_true - percentage_true_std, 
                       ymax = percentage_true + percentage_true_std), width = 0.2) +
     theme_minimal() +
-    labs(title = "Logit Factual Mechanism strength across Models",
+    labs(title = "Word2vec Mechanism strength across Models",
          x = "Similarity Interval (1 = most similar, 4 = less similar)",
          y = "Percentage True",
          color = "Model Name") +
     # change 1 tick mark at a time
     scale_color_brewer(palette = "Set1")
-  for(i in 1:nrow(original_data)) {
-    p <- p + geom_hline(yintercept = original_data$percentage_true[i], linetype = "dashed",
-                        color = scales::hue_pal()(nrow(original_data))[i], alpha = 0.5)
-  }  
+ for(i in 1:nrow(original_data)) {
+  p <- p + geom_hline(yintercept = original_data$percentage_true[i], linetype = "dashed",
+                      color = scales::hue_pal()(nrow(original_data))[i], alpha = 0.5)
+ }
 p
 
   ggsave("PaperPlot/score_model_w2v.pdf", width = 7, height = 4, units = "in") 

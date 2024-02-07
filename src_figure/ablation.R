@@ -34,11 +34,11 @@ mlp_out <- function(data) {
   data_mlp_out$position <- factor(data_mlp_out$position, levels = c(0:max_position))
   
   ####### mem
-  p_mem <- create_heatmap(data_mlp_out, "position", "layer", "mem", "MLP out ablation - mem")
+#  p_mem <- create_heatmap(data_mlp_out, "position", "layer", "mem", "MLP out ablation - mem")
   ###### cp
-  p_cp <- create_heatmap(data_mlp_out, "position", "layer", "cp", "MLP out ablation - cp")
+#  p_cp <- create_heatmap(data_mlp_out, "position", "layer", "cp", "MLP out ablation - cp")
   ###### mem - cp
-  p_diff <- create_heatmap(data_mlp_out, "position", "layer", "diff", "MLP out ablation - diff")
+  p <- create_heatmap(data_mlp_out, "position", "layer", "diff", "MLP out ablation - diff")
   
   if (std_dev == 1) {
     p_mem_std <- create_heatmap(data_mlp_out, "position", "layer", "mem_std", "MLP out ablation - mem std")
@@ -48,7 +48,7 @@ mlp_out <- function(data) {
     p <- ggarrange(p_mem, p_cp, p_diff, p_mem_std, p_cp_std, p_diff_std, nrow = 3, ncol = 2)
     ggsave(paste(folder_name, "mlp_out_ablation.pdf", sep = "/"), p, width = 15, height = 10, units = "in", dpi = 300)
   } else {
-    p <- ggarrange(p_mem, p_cp, p_diff, nrow = 3)
+    #p <- ggarrange(p_mem, p_cp, p_diff, nrow = 3)
     ggsave(paste(folder_name, "mlp_out_ablation.pdf", sep = "/"), p, width = 10, height = 10, units = "in", dpi = 300)
   }
 }
@@ -61,9 +61,9 @@ attn_out <- function(data) {
   data_attn_out$position <- factor(data_attn_out$position, levels = c(0:max_position))
   
   ####### mem
-  p_mem <- create_heatmap(data_attn_out, "position", "layer", "mem", "Attn out ablation - mem")
-  p_cp <- create_heatmap(data_attn_out, "position", "layer", "cp", "Attn out ablation - cp")
-  p_diff <- create_heatmap(data_attn_out, "position", "layer", "diff", "Attn out ablation - diff")
+ # p_mem <- create_heatmap(data_attn_out, "position", "layer", "mem", "Attn out ablation - mem")
+  #p_cp <- create_heatmap(data_attn_out, "position", "layer", "cp", "Attn out ablation - cp")
+  p <- create_heatmap(data_attn_out, "position", "layer", "diff", "Attn out ablation - diff")
   
   if (std_dev == 1) {
     p_mem_std <- create_heatmap(data_attn_out, "position", "layer", "mem_std", "Attn out ablation - mem std")
@@ -73,7 +73,7 @@ attn_out <- function(data) {
     p <- ggarrange(p_mem, p_cp, p_diff, p_mem_std, p_cp_std, p_diff_std, nrow = 3, ncol = 2)
     ggsave(paste(folder_name, "attn_out_ablation.pdf", sep = "/"), p, width = 15, height = 10, units = "in", dpi = 300)
   } else {
-    p <- ggarrange(p_mem, p_cp, p_diff, nrow = 3)
+    #p <- ggarrange(p_mem, p_cp, p_diff, nrow = 3)
     ggsave(paste(folder_name, "attn_out_ablation.pdf", sep = "/"), p, width = 10, height = 10, units = "in", dpi = 300)
   }
 }
@@ -88,9 +88,9 @@ resid_pre <- function(data) {
   data_resid_pre$position <- factor(data_resid_pre$position, levels = c(0:max_position))
   
   ####### mem
-  p_mem <- create_heatmap(data_resid_pre, "position", "layer", "mem", "Resid pre ablation - mem")
-  p_cp <- create_heatmap(data_resid_pre, "position", "layer", "cp", "Resid pre ablation - cp")
-  p_diff <- create_heatmap(data_resid_pre, "position", "layer", "diff", "Resid pre ablation - diff")
+#  p_mem <- create_heatmap(data_resid_pre, "position", "layer", "mem", "Resid pre ablation - mem")
+ # p_cp <- create_heatmap(data_resid_pre, "position", "layer", "cp", "Resid pre ablation - cp")
+  p <- create_heatmap(data_resid_pre, "position", "layer", "diff", "Resid pre ablation - diff")
   
   if (std_dev == 1) {
     p_mem_std <- create_heatmap(data_resid_pre, "position", "layer", "mem_std", "Resid pre ablation - mem std")
@@ -100,7 +100,7 @@ resid_pre <- function(data) {
     p <- ggarrange(p_mem, p_cp, p_diff, p_mem_std, p_cp_std, p_diff_std, nrow = 3, ncol = 2)
     ggsave(paste(folder_name, "resid_pre_ablation.pdf", sep = "/"), p, width = 15, height = 10, units = "in", dpi = 300)
   } else {
-    p <- ggarrange(p_mem, p_cp, p_diff, nrow = 3)
+    #p <- ggarrange(p_mem, p_cp, p_diff, nrow = 3)
     ggsave(paste(folder_name, "resid_pre_ablation.pdf", sep = "/"), p, width = 10, height = 10, units = "in", dpi = 300)
   }
 }
@@ -115,9 +115,9 @@ head <- function(data) {
   data_head$layer <- factor(data_head$layer, levels = c(0:max_layer))
   data_head$head <- factor(data_head$head, levels = c(0:max_head))
   
-  p_mem <- create_heatmap(data_head, "head", "layer", "mem", "Head ablation - mem")
-  p_cp <- create_heatmap(data_head, "head", "layer", "cp", "Head ablation - cp")
-  p_diff <- create_heatmap(data_head, "head", "layer", "diff", "Head ablation - diff")
+  #p_mem <- create_heatmap(data_head, "head", "layer", "mem", "Head ablation - mem")
+  #p_cp <- create_heatmap(data_head, "head", "layer", "cp", "Head ablation - cp")
+  p <- create_heatmap(data_head, "head", "layer", "diff", "Head ablation - diff")
   
   if (std_dev == 1) {
     p_mem_std <- create_heatmap(data_head, "head", "layer", "mem_std", "Head ablation - mem std")
@@ -127,7 +127,7 @@ head <- function(data) {
     p <- ggarrange(p_mem, p_cp, p_diff, p_mem_std, p_cp_std, p_diff_std, nrow = 3, ncol = 2)
     ggsave(paste(folder_name, "head_ablation.pdf", sep = "/"), p, width = 15, height = 10, units = "in", dpi = 300)
   } else {
-    p <- ggarrange(p_mem, p_cp, p_diff, nrow = 3)
+    #p <- ggarrange(p_mem, p_cp, p_diff, nrow = 3)
     ggsave(paste(folder_name, "head_ablation.pdf", sep = "/"), p, width = 10, height = 10, units = "in", dpi = 300)
   }
 }
@@ -142,7 +142,9 @@ if (length(args) == 0) {
 folder_name <- args[1]
 std_dev <- as.numeric(args[2])
 #std_dev <- as.numeric(args[2])
-folder_name <- "~/Repository/Competition_of_Mechanisms/results/ablation/pythia-6.9b_full_total_effect"
+folder_name <- "~/Repository/Competition_of_Mechanisms/results/copyVSfact/ablation/pythia-6.9b_2500"
+std_dev <- 0
+#folder_name <- "~/Repository/Competition_of_Mechanisms/results/ablation/pythia-6.9b_full_total_effect"
 #get list of files in folder
 #get just the file names
 files <- list.files(path = folder_name, pattern = "*.csv", full.names = FALSE)

@@ -9,11 +9,12 @@ if (length(args) == 0) {
   stop("No file name provided. Usage: Rscript script_name.R <filename>")
 }
 folder_name <- args[1]
+folder_name <- "results/copyVSfact/logit_lens/gpt2_full"
 #std_dev <- as.numeric(args[2])
 
 data <- read.csv(paste(folder_name, "logit_lens_data.csv", sep = "/"))
 #data <- read.csv("logit_lens_data.csv")
-data <- read.csv("logit_lens_data.csv")
+# data <- read.csv("logit_lens_data.csv")
 number_of_position <- max(as.numeric(data$position))
 ########################### resid_post ########################################
 data_resid_post <- data %>% filter(grepl("resid_post", component))

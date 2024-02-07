@@ -1,3 +1,4 @@
+import re
 from git import Union
 import torch
 from torch.utils.data import DataLoader
@@ -305,6 +306,10 @@ class LogitLens(BaseExperiment):
 
         data = []
         for layer in range(self.model.cfg.n_layers):
+            #compute the avarage over the layers
+            mem_avg_layer = result[0][layer].mean()
+            cp_avg_layer = result[1][layer].mean()
+            diff_avg_layer = (result[0][layer] - result[1][layer]).mean()
             for position in range(result[0][layer].shape[0]):
                 if component in self.valid_heads:
                     for head in range(self.model.cfg.n_heads):
@@ -328,13 +333,23 @@ class LogitLens(BaseExperiment):
                             }
                         )
                 else:
+                    mem_perc = 100 * (result[0][layer][position].mean().item() - mem_avg_layer) / mem_avg_layer
+                    cp_perc = 100 * (result[1][layer][position].mean().item() - cp_avg_layer) / cp_avg_layer
+                    diff_perc = (result[0][layer][position] - result[1][layer][position]).mean()
+                    diff_perc = 100 * (diff - diff_avg_layer) / diff_avg_layer
+                    
+                    
                     data.append(
                         {
                             "component": f"{component}",
                             "layer": layer,
                             "position": position,
                             "mem": result[0][layer][position].mean().item(),
-                            "cp": result[1][layer][position].mean().item(),
+                            "cp": result[0][layer][position].mean().item() ,
+                            "diff": (result[0][layer][position] - result[1][layer][position]).mean().item(),
+                            "mem_perc": mem_perc.item(),
+                            "cp_perc": cp_perc.item(),
+                            "diff_perc": diff_perc.item(),
                             "mem_std": result[0][layer][position].std().item(),
                             "cp_std": result[1][layer][position].std().item(),
                             "mem_idx": None
