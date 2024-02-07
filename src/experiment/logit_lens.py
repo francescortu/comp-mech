@@ -336,7 +336,7 @@ class LogitLens(BaseExperiment):
                     mem_perc = 100 * (result[0][layer][position].mean().item() - mem_avg_layer) / mem_avg_layer
                     cp_perc = 100 * (result[1][layer][position].mean().item() - cp_avg_layer) / cp_avg_layer
                     diff_perc = (result[0][layer][position] - result[1][layer][position]).mean()
-                    diff_perc = 100 * (diff - diff_avg_layer) / diff_avg_layer
+                    diff_perc = 100 * (diff_perc - diff_avg_layer) / diff_avg_layer
                     
                     
                     data.append(
