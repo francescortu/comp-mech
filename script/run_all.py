@@ -59,7 +59,7 @@ class Config:
     dataset_slice: Optional[int] = None
     dataset_start: Optional[int] = None
     produce_plots: bool = True
-    normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
+    normalize_logit: Literal["none", "softmax", "log_softmax"] = "softmax"
     std_dev: int = 1  # 0 False, 1 True
     total_effect: bool = False
     up_to_layer: Union[int, str] = "all"
