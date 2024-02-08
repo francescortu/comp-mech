@@ -173,10 +173,10 @@ class LogitLens(BaseExperiment):
         ), f"component_cached.shape[2] = {component_cached.shape[2]}, self.model.cfg.d_model = {self.model.cfg.d_model}"
 
         for position in range(length):
+            component_cached = self.model.ln_final(component_cached)
             logit = einops.einsum(
                 self.model.W_U, component_cached[:, position, :], "d d_v, b d -> b d_v"
             )
-            logit = self.model.ln_final(logit)
             yield logit
 
     def project_length(
