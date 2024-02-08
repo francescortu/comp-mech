@@ -345,7 +345,7 @@ class LogitLens(BaseExperiment):
                             "layer": layer,
                             "position": position,
                             "mem": result[0][layer][position].mean().item(),
-                            "cp": result[0][layer][position].mean().item() ,
+                            "cp": result[1][layer][position].mean().item() ,
                             "diff": (result[0][layer][position] - result[1][layer][position]).mean().item(),
                             "mem_perc": mem_perc.item(),
                             "cp_perc": cp_perc.item(),

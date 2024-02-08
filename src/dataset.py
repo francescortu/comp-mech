@@ -111,10 +111,10 @@ class BaseDataset(Dataset):
         self,
         similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]],
     ):
-        if similarity is not None:
-            if similarity[0] == True:
-                self.similarity = similarity
-                self.full_data = self.similarity_data
+        if similarity is not None and similarity[0] is True:
+            self.similarity = similarity
+            self.full_data = self.similarity_data
+
         self.lengths = self._get_lenghts_and_tokenize()
         self.prompts = []
         self.tokenized_prompts = []
@@ -205,7 +205,7 @@ class BaseDataset(Dataset):
                         )
                 else:
                     target_new = d["target_new"]
-                if self.experiment == "copyVSfact":
+                if self.experiment == "copyVSfact" or "copyVSfact" in self.experiment:
                     prompt = d["template"].format(self.premise, target_new)
                 elif self.experiment == "contextVSfact":
                     if d["prompt"][0] == " ":

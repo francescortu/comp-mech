@@ -51,7 +51,7 @@ def get_hf_model_name(model_name):
 
 @dataclass
 class Config:
-    mech_fold: Literal["copyVSfact", "contextVSfact"] = "copyVSfact"
+    mech_fold: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual", "copyVSfact_copy"] = "copyVSfact"
     model_name: str = "gpt2"
     hf_model_name: str = "gpt2"
     batch_size: int = 10
@@ -86,6 +86,10 @@ def get_dataset_path(args):
         return f"../data/full_data_sampled_{args.model_name}.json"
     elif args.folder == "contextVSfact":
         return f"../data/context_dataset_{args.model_name}.json"
+    elif args.folder == "copyVSfact_factual":
+        return f"../data/factual_data_sampled_{args.model_name}.json"
+    elif args.folder == "copyVSfact_copy":
+        return f"../data/copy_data_sampled_{args.model_name}.json"
     else:
         raise ValueError("No dataset path found for folder: ", args.folder)
 @dataclass
