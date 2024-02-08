@@ -106,9 +106,9 @@ class HeadPatternStorage():
 
         length = pattern.shape[-1]
 
-        if self.experiment == "contextVSfact":
+        if "contextVSfact" in self.experiment:
             return self._aggregate_pattern_contextVSfact(pattern, object_position, length, **kwargs)
-        elif self.experiment == "copyVSfact":
+        elif "copyVSfact" in self.experiment:
             return self._aggregate_pattern_copyVSfact(pattern, object_position, length, **kwargs)
         else:
             raise NotImplementedError("Only copyVSfact and contextVSfact are supported")
@@ -189,9 +189,9 @@ class HeadPattern(BaseExperiment):
             for layer in range(self.model.cfg.n_layers):
                 for head in range(self.model.cfg.n_heads):
                     pattern = self._extract_pattern(cache, layer, head)
-                    if self.experiment == "contextVSfact":
+                    if  "contextVSfact" in self.experiment:
                         storage.store(layer, head, pattern.cpu(), batch["obj_pos"], subj_position=batch["subj_pos"])
-                    elif self.experiment == "copyVSfact":
+                    elif  "copyVSfact" in self.experiment:
                         storage.store(layer, head, pattern.cpu(), object_position)
                     else:
                         raise NotImplementedError("Only copyVSfact and contextVSfact are supported")
@@ -210,9 +210,9 @@ class HeadPattern(BaseExperiment):
         patter_all_heads = self.extract()
         
         data = []
-        if self.experiment == "contextVSfact":
+        if "contextVSfact" in self.experiment:
             n_grid = 9
-        elif self.experiment == "copyVSfact":
+        elif  "copyVSfact" in self.experiment:
             n_grid = 13
         else:
             raise NotImplementedError("Only copyVSfact and contextVSfact are supported")

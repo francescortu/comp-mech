@@ -17,12 +17,12 @@ class AttributeStorage:
     Class to store the attributes of the logit attribution
     """
 
-    def __init__(self, experiment: Literal["copyVSfact", "contextVSfact"]):
+    def __init__(self, experiment: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual"]):
         self.mem_attribute = []
         self.cp_attribute = []
         self.diff_attribute = []
         self.labels = None
-        self.experiment: Literal["copyVSfact", "contextVSfact"] = experiment
+        self.experiment: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual"] = experiment
 
     def append(
         self,
@@ -155,7 +155,7 @@ class LogitAttribution(BaseExperiment):
             diff_attribute = cache.logit_attrs(
                 stack_of_component, tokens=target_mem, incorrect_tokens=target_cp
             )  # (component, batch, position)
-            if self.experiment == "copyVSfact":
+            if  "copyVSfact" in self.experiment:
                 object_position = self.dataset.obj_pos[0]
                 storage.append(
                     mem_attribute.cpu(),
@@ -164,7 +164,7 @@ class LogitAttribution(BaseExperiment):
                     labels,
                     object_position,
                 )
-            elif self.experiment == "contextVSfact":
+            elif "contextVSfact" in self.experiment:
                 for h in range(batch["subj_pos"].shape[0]):
                     if batch["subj_pos"][h] <= batch["obj_pos"][h]:
                         print("Error is coming")

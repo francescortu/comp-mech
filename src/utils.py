@@ -156,8 +156,8 @@ def dict_of_lists_to_dict_of_tensors(dict_of_lists):
         dict_of_tensors[key] = torch.stack(tensor_list)
     return dict_of_tensors
 
-def get_aggregator(experiment: Literal["copyVSfact", "contextVSfact"]):
-    if experiment == "copyVSfact":
+def get_aggregator(experiment: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual"]):
+    if "copyVSfact" in experiment:
         return aggregate_result_copyVSfact
     if experiment == "contextVSfact":
         return aggregate_result_contextVSfact
