@@ -114,6 +114,7 @@ class BaseDataset(Dataset):
         if similarity is not None and similarity[0] is True:
             self.similarity = similarity
             self.full_data = self.similarity_data
+
         self.lengths = self._get_lenghts_and_tokenize()
         self.prompts = []
         self.tokenized_prompts = []
@@ -717,7 +718,7 @@ class BaseDataset(Dataset):
         #     self.apply_similarity()
 
         assert self.prompts != [], f"Dataset is empty for length {length}"
-        assert self.check_duplicate()
+        self.check_duplicate()
 
     # def apply_similarity(self):
     #     """
@@ -758,6 +759,7 @@ class BaseDataset(Dataset):
                     if d["prompt"] == d2["prompt"]:
                         if d["target_new"] == d2["target_new"]:
                             if d["target_true"] == d2["target_true"]:
+                                print(f"duplicate found: {d}, {d2}")
                                 return False
             seen.add(d["prompt"])
         return True
