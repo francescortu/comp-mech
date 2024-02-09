@@ -84,7 +84,7 @@ class LogitStorage:
 
     def get_logit(self):
         shape = (self.n_layers, self.length, -1)
-        if self.logits["mem_winners"][0] = []:
+        if self.logits["mem_winners"][0] == []:
             return tuple(
                 self._reshape_logits(self.logits[key], shape) for key in self.logits if key != "mem_winners" and key != "cp_winners"
             )
