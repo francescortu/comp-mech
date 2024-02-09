@@ -1,6 +1,4 @@
 from math import isnan
-from git import Union
-from more_itertools import prepend
 from tomlkit import value
 import torch
 from torch.utils.data import DataLoader
