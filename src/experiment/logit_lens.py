@@ -6,7 +6,7 @@ from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment, to_logit_token
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, Union
 from src.utils import get_aggregator
 
 
@@ -238,9 +238,9 @@ class LogitLens(BaseExperiment):
                             return_index=return_index,
                         )
                         logit_token_mem = logit_token[0] #! MEAN
-                        logit_token_mem = (logit_token[0].cpu() - logit.mean(-1)) / logit.mean(-1) #! MEAN
+                        logit_token_mem = (logit_token[0].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
                         logit_token_cp = logit_token[1] #! MEAN
-                        logit_token_cp = (logit_token[1].cpu() - logit.mean(-1)) / logit.mean(-1) #! MEAN
+                        logit_token_cp = (logit_token[1].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
                         storer.store( #! MEAN
                             layer=layer,
                             position=position,
