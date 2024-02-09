@@ -244,7 +244,7 @@ class LogitLens(BaseExperiment):
                         storer.store( #! MEAN
                             layer=layer,
                             position=position,
-                            logit=(logit_token_mem, logit_token_cp),
+                            logit=(logit_token_mem, logit_token_cp, None, None),
                         )
                         #storer.store(layer=layer, position=position, logit=logit_token)  # type: ignore
                 elif component in self.valid_heads:
