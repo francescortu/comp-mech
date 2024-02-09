@@ -84,6 +84,10 @@ class LogitStorage:
 
     def get_logit(self):
         shape = (self.n_layers, self.length, -1)
+        if self.logits["mem_winners"][0] = []:
+            return tuple(
+                self._reshape_logits(self.logits[key], shape) for key in self.logits if key != "mem_winners" and key != "cp_winners"
+            )
         return tuple(
             self._reshape_logits(self.logits[key], shape) for key in self.logits
         )
@@ -237,14 +241,14 @@ class LogitLens(BaseExperiment):
                             normalize=normalize_logit,
                             return_index=return_index,
                         )
-                        #logit_token = list(logit_token)
-                        #logit_token[0] = (logit_token[0].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
-                        #logit_token[1] = (logit_token[1].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
+                        logit_token = list(logit_token)
+                        logit_token[0] = (logit_token[0].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
+                        logit_token[1] = (logit_token[1].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
                         storer.store( #! MEAN
                             layer=layer,
                             position=position,
-                            #logit=tuple(logit_token),  # type: ignore
-                            logit=logit_token,  # type: ignore
+                            logit=tuple(logit_token),  # type: ignore
+                            #logit=logit_token,  # type: ignore
                         )
                         #storer.store(layer=layer, position=position, logit=logit_token)  # type: ignore
                 elif component in self.valid_heads:
