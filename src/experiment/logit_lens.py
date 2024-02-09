@@ -1,5 +1,4 @@
 import re
-from git import Union
 import torch
 from torch.utils.data import DataLoader
 import einops
