@@ -10,8 +10,8 @@ torch.set_grad_enabled(False)
 
 
 def to_logit_token(
-    logit, target, normalize="logsoftmax", return_index=False
-) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
+    logit, target, normalize="none", return_index=False, return_winners=False
+) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor], Optional[int], Optional[int]]:
     assert (
         len(logit.shape) in [2, 3]
     ), "logit should be of shape (batch_size, d_vocab) or (batch_size, seq_len, d_vocab)"
@@ -36,13 +36,25 @@ def to_logit_token(
     # batch_indices = torch.arange(target.shape[0])
     # logit_mem = logit[batch_indices, target[:, 0]]
     # logit_cp = logit[batch_indices, target[:, 1]]
+    logit_argmaxs = torch.argmax(logit, dim=-1)
+    mem_winners = torch.zeros(target.shape[0])
+    cp_winners = torch.zeros(target.shape[0])
     for i in range(target.shape[0]):
         logit_mem[i] = logit[i, target[i, 0]]
         # save the position of target[i, 0] in the logit sorted
         # index_mem[i] = torch.argsort(logit[i], descending=True).tolist().index(target[i, 0])
         logit_cp[i] = logit[i, target[i, 1]]
+        if return_winners:
+            if (logit_argmaxs[i] == target[i, 0]):
+                mem_winners[i] = 1
+            
+            if (logit_argmaxs[i] == target[i, 1]):
+                cp_winners[i] = 1
         # index_cp[i] = torch.argsort(logit[i], descending=True).tolist().index(target[i, 1])
-
+    if return_winners:
+        if return_index:
+            return logit_mem, logit_cp, index_mem, index_cp, mem_winners, cp_winners
+        return logit_mem, logit_cp, None, None, mem_winners, cp_winners
     if return_index:
         return logit_mem, logit_cp, index_mem, index_cp
     return logit_mem, logit_cp, None, None
@@ -86,7 +98,7 @@ class BaseExperiment:
             if num_batches == 0:
                 continue
             for batch in dataloader:
-                logit, _ = self.model.run_with_cache(batch["prompt"])
+                logit, _ = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
                 logit = logit[:, -1, :]  # type: ignore
                 logit_mem, logit_cp, _, _ = to_logit_token(logit, batch["target"], normalize=normalize_logit)
                 logit_mem_list.append(logit_mem)

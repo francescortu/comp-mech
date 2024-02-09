@@ -1,5 +1,6 @@
 from math import isnan
 from git import Union
+from more_itertools import prepend
 from tomlkit import value
 import torch
 from torch.utils.data import DataLoader
@@ -41,7 +42,10 @@ class HeadPatternStorage():
         if i == 3:
             return subject_1_3
         if i == 4:
-            return slice(subject_1_3 + 1, object_positions_pre)
+            if object_positions_pre > subject_1_3 + 1:
+                return slice(subject_1_3 + 1, object_positions_pre)
+            else:
+                return subject_1_3
         if i == 5:
             return object_positions_pre
         if i == 6:
@@ -55,14 +59,17 @@ class HeadPatternStorage():
         if i == 10:
             return subject_2_3
         if i == 11:
-            return slice(subject_2_3 + 1, last_position)
+            if last_position > subject_2_3 +1:
+                return slice(subject_2_3 + 1, last_position)
+            else:
+                return subject_2_3
         if i == 12:
             return last_position
         
     def _get_position_to_aggregate_contextVSfact(self, i:int, object_position:int, length:int, subj_position:int):
         subject_1 = subj_position
-        subject_2 = subj_position + 1 if (length - subj_position) > 15 else subject_1
-        subject_3 = subj_position + 2 if (length - subj_position) > 17 else subject_2
+        subject_2 = subj_position + 1 if (length - subj_position) > 14 else subject_1
+        subject_3 = subj_position + 2 if (length - subj_position) > 16 else subject_2
         subject_pos_pre = subj_position - 1 
         last_position = length - 1
         
@@ -185,7 +192,7 @@ class HeadPattern(BaseExperiment):
     
         object_position = self.dataset.obj_pos[0]
         for batch in tqdm(dataloader, total=len(dataloader)):
-            _, cache = self.model.run_with_cache(batch["prompt"])
+            _, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
             for layer in range(self.model.cfg.n_layers):
                 for head in range(self.model.cfg.n_heads):
                     pattern = self._extract_pattern(cache, layer, head)

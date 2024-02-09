@@ -27,7 +27,10 @@ class LogitStorage:
         self.logits = {
             "mem_logit": [[] for _ in range(self.size)],
             "cp_logit": [[] for _ in range(self.size)],
+            "mem_winners": [[] for _ in range(self.size)],
+            "cp_winners": [[] for _ in range(self.size)],
         }
+
 
     def _get_index(self, layer: int, position: int, head: int = 0):
         return (layer * self.length + position) * self.n_heads + head
@@ -62,12 +65,18 @@ class LogitStorage:
             torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]
         ],
         head: int = 0,
+        mem_winners: Optional[torch.Tensor] = None,
+        cp_winners: Optional[torch.Tensor] = None,
     ):
         mem_logit, cp_logit, _, _ = logit
         mem_logit, cp_logit = mem_logit.to("cpu"), cp_logit.to("cpu")
         index = self._get_index(layer, position, head)
         self.logits["mem_logit"][index].append(mem_logit)
         self.logits["cp_logit"][index].append(cp_logit)
+        if mem_winners is not None:
+            self.logits["mem_winners"][index].append(mem_winners)
+        if cp_winners is not None:
+            self.logits["cp_winners"][index].append(cp_winners)
 
     def _reshape_logits(self, logits_list, shape):
         return torch.stack([torch.cat(logits, dim=0) for logits in logits_list]).view(
@@ -105,6 +114,8 @@ class IndexLogitStorage(LogitStorage):
         position: int,
         logit: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
         head: int = 0,
+        mem_winners: Optional[torch.Tensor] = None,
+        cp_winners: Optional[torch.Tensor] = None,
     ):
         mem_logit, cp_logit, mem_logit_idx, cp_logit_idx = logit
         if mem_logit_idx is not None:
@@ -122,6 +133,10 @@ class IndexLogitStorage(LogitStorage):
         self.logits["cp_logit_idx"][index].append(
             cp_logit_idx if cp_logit_idx is not None else torch.tensor([])
         )
+        if mem_winners is not None:
+            self.logits["mem_winners"][index].append(mem_winners)
+        if cp_winners is not None:
+            self.logits["cp_winners"][index].append(cp_winners)
 
 
 class HeadLogitStorage(IndexLogitStorage, LogitStorage):
@@ -162,6 +177,7 @@ class LogitLens(BaseExperiment):
         super().__init__(dataset, model, batch_size, experiment)
         self.valid_blocks = ["mlp_out", "resid_pre", "resid_post", "attn_out"]
         self.valid_heads = ["head"]
+        self.mean_logit_per_layer = None
 
     def project_per_position(self, component_cached: torch.Tensor, length: int):
         # assert that the activation name is a f-string with a single placeholder for the layer
@@ -207,7 +223,7 @@ class LogitLens(BaseExperiment):
         subject_positions = []
         object_positions = []
         for batch in dataloader:
-            _, cache = self.model.run_with_cache(batch["prompt"])
+            _, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
             subject_positions.append(batch["subj_pos"])
             object_positions.append(batch["obj_pos"])
             for layer in range(self.model.cfg.n_layers):
@@ -222,7 +238,16 @@ class LogitLens(BaseExperiment):
                             normalize=normalize_logit,
                             return_index=return_index,
                         )
-                        storer.store(layer=layer, position=position, logit=logit_token)  # type: ignore
+                        logit_token_mem = logit_token[0] #! MEAN
+                        logit_token_mem = (logit_token[0] - logit.mean(-1)) / logit.mean(-1) #! MEAN
+                        logit_token_cp = logit_token[1] #! MEAN
+                        logit_token_cp = (logit_token[1] - logit.mean(-1)) / logit.mean(-1) #! MEAN
+                        storer.store( #! MEAN
+                            layer=layer,
+                            position=position,
+                            logit=(logit_token_mem, logit_token_cp),
+                        )
+                        #storer.store(layer=layer, position=position, logit=logit_token)  # type: ignore
                 elif component in self.valid_heads:
                     cached_component = cache[f"blocks.{layer}.attn.hook_z"]
                     for head in range(self.model.cfg.n_heads):

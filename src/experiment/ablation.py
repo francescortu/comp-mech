@@ -1,3 +1,4 @@
+from more_itertools import first, prepend
 from regex import F
 import torch
 from torch.utils.data import DataLoader
@@ -5,22 +6,27 @@ from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment, to_logit_token
-from typing import Optional,  Tuple,  Dict, Any, Literal, Union, List
+from typing import Optional, Tuple, Dict, Any, Literal, Union, List
 import pandas as pd
 from src.experiment import LogitStorage, HeadLogitStorage
 from functools import partial
 from copy import deepcopy
 
 
-
 class Ablate(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
+        self,
+        dataset: TlensDataset,
+        model: WrapHookedTransformer,
+        batch_size: int,
+        experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
     ):
         super().__init__(dataset, model, batch_size, experiment)
-        self.position_component = ["mlp_out", "attn_out"]
+        self.position_component = ["mlp_out", "attn_out", "attn_out_pattern"]
         # self.position_component = ["attn_out", "resid_pre", "mlp_out", "resid_pre"]
-        self.head_component = ["head"]
+        self.head_component = ["head", "head_object_pos"]
+        self.first_mech_winners = 0
+        self.second_mech_winners = 0
 
     def _get_freezed_attn(self, cache) -> Dict[str, Tuple[torch.Tensor, Any]]:
         """
@@ -73,12 +79,24 @@ class Ablate(BaseExperiment):
         freezed_attn: Dict[str, Tuple[torch.Tensor, Any]],
         head: Optional[int] = None,
         position: Optional[int] = None,
+        object_position: Optional[torch.Tensor] = None,
     ):
         """
         Apply the ablation pattern to the model
         """
         hooks = deepcopy(freezed_attn)
         if component in self.position_component:
+            if component == "attn_out_pattern":
+                hooks = []
+                def head_ablation_hook(activation, hook, head):
+                    activation[:, head, -1, position] = 0
+                    return activation
+                
+                for head in range(self.model.cfg.n_heads):
+                    hooks.append(
+                        (f"blocks.{layer}.attn.hook_pattern", partial(head_ablation_hook, head=head))
+                    )
+                return hooks
             hook_name = f"blocks.{layer}.hook_{component}"
 
             def pos_ablation_hook(activation, hook, position):
@@ -89,10 +107,16 @@ class Ablate(BaseExperiment):
 
         if component in self.head_component:
             hook_name = f"blocks.{layer}.attn.hook_pattern"
-
-            def head_ablation_hook(activation, hook, head):
-                activation[:, head, -1, :] = 0
-                return activation
+            if component == "head_object_pos":
+                object_position= object_position[0]
+                def head_ablation_hook(activation, hook, head):
+                    activation[:, head, -1, object_position] = 0
+                    return activation
+            
+            else:
+                def head_ablation_hook(activation, hook, head):
+                    activation[:, head, -1, :] = 0
+                    return activation
 
             new_hook = (hook_name, partial(head_ablation_hook, head=head))
 
@@ -100,7 +124,6 @@ class Ablate(BaseExperiment):
 
         list_hooks = list(hooks.values())
         return list_hooks
-
 
     def _run_with_hooks(self, batch, hooks):
         """
@@ -110,27 +133,51 @@ class Ablate(BaseExperiment):
         with torch.no_grad():
             logit = self.model.run_with_hooks(
                 batch["prompt"],
+                prepend_bos=False,
                 fwd_hooks=hooks,
             )
         return logit[:, -1, :]  # type: ignore
 
-
     def _process_model_run(
-        self, layer, position, head, component, batch, freezed_attn, storage, normalize_logit
+        self,
+        layer,
+        position,
+        head,
+        component,
+        batch,
+        freezed_attn,
+        storage,
+        normalize_logit,
+        object_position=None,
     ):
         """
         run the model with the given hooks and store the logit in the storage
         """
         hooks = self._get_current_hooks(
-            layer, component, freezed_attn, head=head, position=position
+            layer, component, freezed_attn, head=head, position=position, object_position=object_position
         )
-        logit = self._run_with_hooks(batch, hooks) #!more performance
-        logit_token = to_logit_token(logit, batch["target"], normalize=normalize_logit)
-        if component in self.position_component:
-            storage.store(layer=layer, position=position, logit=logit_token)
-        if component in self.head_component:
-            storage.store(layer=layer, position=0, head=head, logit=logit_token)
+        logit = self._run_with_hooks(batch, hooks)  #!more performance
+        logit_token = to_logit_token(
+            logit, batch["target"], normalize=normalize_logit, return_winners=True
+        )
 
+        if component in self.position_component:
+            storage.store(
+                layer=layer,
+                position=position,
+                logit=(logit_token[0], logit_token[1], logit_token[2], logit_token[3]),
+                mem_winners=logit_token[4],
+                cp_winners=logit_token[5],
+            )
+        if component in self.head_component:
+            storage.store(
+                layer=layer,
+                position=0,
+                head=head,
+                logit=(logit_token[0], logit_token[1], logit_token[2], logit_token[3]),
+                mem_winners=logit_token[4],
+                cp_winners=logit_token[5],
+            )
 
     def ablate_single_len(
         self,
@@ -151,7 +198,11 @@ class Ablate(BaseExperiment):
             return None
 
         if component in self.position_component:
-            storage = LogitStorage(n_layers=self.model.cfg.n_layers, length=length, experiment=self.experiment)
+            storage = LogitStorage(
+                n_layers=self.model.cfg.n_layers,
+                length=length,
+                experiment=self.experiment,
+            )
         elif component in self.head_component:
             storage = HeadLogitStorage(
                 n_layers=self.model.cfg.n_layers,
@@ -166,8 +217,12 @@ class Ablate(BaseExperiment):
         for batch in tqdm(dataloader, total=num_batches):
             subject_positions.append(batch["subj_pos"])
             object_position.append(batch["obj_pos"])
-            _, cache = self.model.run_with_cache(batch["prompt"])
-            if component == "mlp_out" or component == "attn_out" and total_effect is False:
+            _, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
+            if (
+                component == "mlp_out"
+                or component == "attn_out"
+                and total_effect is False
+            ):
                 freezed_attn = self._get_freezed_attn_pattern(cache)
             elif component == "head" and total_effect is False:
                 freezed_attn = self._get_freezed_attn(cache)
@@ -192,9 +247,17 @@ class Ablate(BaseExperiment):
                 if component in self.head_component:
                     for head in range(self.model.cfg.n_heads):
                         self._process_model_run(
-                            layer, None, head, component, batch, freezed_attn, storage, normalize_logit
+                            layer,
+                            None,
+                            head,
+                            component,
+                            batch,
+                            freezed_attn,
+                            storage,
+                            normalize_logit,
+                            batch["obj_pos"]
                         )
-                        
+
                 if f"L{layer}" in freezed_attn:
                     freezed_attn.pop(
                         f"L{layer}"
@@ -204,7 +267,11 @@ class Ablate(BaseExperiment):
             if self.experiment == "contextVSfact":
                 subject_positions = torch.cat(subject_positions, dim=0)
                 object_position = torch.cat(object_position, dim=0)
-                return storage.get_aggregate_logit(object_position=object_position, subj_positions=subject_positions, batch_dim=0)
+                return storage.get_aggregate_logit(
+                    object_position=object_position,
+                    subj_positions=subject_positions,
+                    batch_dim=0,
+                )
             return storage.get_aggregate_logit(object_position=self.dataset.obj_pos[0])
 
         if component in self.head_component:
@@ -214,7 +281,7 @@ class Ablate(BaseExperiment):
         self,
         component: str,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
-        **kwargs
+        **kwargs,
     ):
         """
         Ablate the model by ablating each position in the sequence
@@ -224,7 +291,9 @@ class Ablate(BaseExperiment):
             lengths.remove(11)
         result = {}
         for length in tqdm(lengths, desc=f"Ablating {component}", total=len(lengths)):
-            result[length] = self.ablate_single_len(length, component, normalize_logit, **kwargs)
+            result[length] = self.ablate_single_len(
+                length, component, normalize_logit, **kwargs
+            )
 
         tuple_shape = len(result[lengths[0]])
         aggregated_result = [
@@ -239,8 +308,8 @@ class Ablate(BaseExperiment):
         component: str,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
         total_effect: bool = False,
-        load_from_pt:Optional[str] = None,
-    )-> Tuple[pd.DataFrame, Dict[str, torch.Tensor]]:
+        load_from_pt: Optional[str] = None,
+    ) -> Tuple[pd.DataFrame, Dict[str, torch.Tensor]]:
         """
         Run ablation for a specific component
         """
@@ -256,7 +325,7 @@ class Ablate(BaseExperiment):
             result = (result_dict["mem"], result_dict["cp"])
             base_logit_mem = result_dict["base_mem"]
             base_logit_cp = result_dict["base_cp"]
-            
+
         import pandas as pd
 
         if component in self.position_component:
@@ -276,6 +345,8 @@ class Ablate(BaseExperiment):
                             )
                             .mean()
                             .item(),
+                            "mem_sum": result[2][layer][position].sum().item(),
+                            "cp_sum": result[3][layer][position].sum().item(),
                             "mem_std": result[0][layer][position].std().item(),
                             "cp_std": result[1][layer][position].std().item(),
                             "diff_std": (
@@ -304,6 +375,8 @@ class Ablate(BaseExperiment):
                             )
                             .mean()
                             .item(),
+                            "mem_sum": result[2][layer, 0, head, :].sum().item(),
+                            "cp_sum": result[3][layer, 0, head, :].sum().item(),
                             "mem_std": result[0][layer, 0, head, :].std().item(),
                             "cp_std": result[1][layer, 0, head, :].std().item(),
                             "diff_std": (
@@ -332,11 +405,20 @@ class Ablate(BaseExperiment):
             }
         )
 
-        return pd.DataFrame(data), {"mem": result[0], "cp": result[1], "base_mem": base_logit_mem, "base_cp": base_logit_cp}
+
+        return pd.DataFrame(data), {
+            "mem": result[0],
+            "cp": result[1],
+            "base_mem": base_logit_mem,
+            "base_cp": base_logit_cp,
+        }
 
     def run_all(
-        self, normalize_logit: Literal["none", "softmax", "log_softmax"] = "none", load_from_pt:Optional[str] = None, **kwargs
-    ) -> Tuple[pd.DataFrame, Dict[str, Union[List[torch.Tensor],torch.Tensor]]]:
+        self,
+        normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
+        load_from_pt: Optional[str] = None,
+        **kwargs,
+    ) -> Tuple[pd.DataFrame, Dict[str, Union[List[torch.Tensor], torch.Tensor]]]:
         """
         Run ablation for all components
         """
@@ -344,12 +426,13 @@ class Ablate(BaseExperiment):
         tuple_results_cat = {"mem": [], "cp": [], "base_mem": [], "base_cp": []}
         for component in self.position_component + self.head_component:
             print(f"Running ablation for {component}")
-            dataset, tuple_results = self.run(component, normalize_logit, load_from_pt=load_from_pt, **kwargs)
+            dataset, tuple_results = self.run(
+                component, normalize_logit, load_from_pt=load_from_pt, **kwargs
+            )
             dataframe_list.append(dataset)
             tuple_results_cat["mem"].append(tuple_results["mem"])
             tuple_results_cat["cp"].append(tuple_results["cp"])
             tuple_results_cat["base_mem"].append(tuple_results["base_mem"])
             tuple_results_cat["base_cp"].append(tuple_results["base_cp"])
-            
-            
+
         return pd.concat(dataframe_list), tuple_results_cat

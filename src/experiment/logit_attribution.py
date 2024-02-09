@@ -132,7 +132,7 @@ class LogitAttribution(BaseExperiment):
             #         batch["prompt"], hooks=hooks, return_cache=True
             #     )
             # else:
-            logits, cache = self.model.run_with_cache(batch["prompt"])
+            logits, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
 
             if normalize_logit != "none":
                 raise NotImplementedError
@@ -188,7 +188,7 @@ class LogitAttribution(BaseExperiment):
         storage = AttributeStorage(self.experiment)
         lengths = self.dataset.get_lengths()
         for length in tqdm(lengths, desc="Attributing"):
-            if length == 11:
+            if length == 10:
                 continue
             self.attribute_single_len(
                 length, storage, "logit", apply_ln=apply_ln, **kwargs

@@ -217,7 +217,7 @@ class BaseDataset(Dataset):
                         f"experiment must be either 'copyVSfact' or 'contextVSfact' while it is {self.experiment}"
                     )
                 d["prompt"] = prompt
-                d["tokenized_prompt"] = self._tokenize_prompt(prompt, True)  # ( L)
+                d["tokenized_prompt"] = self._tokenize_prompt(prompt, prepend_bos=False)  # ( L)
                 target_new_token = self._tokenize_target(
                     target_new, False
                 ).cuda()  # (1)
@@ -776,7 +776,7 @@ class BaseDataset(Dataset):
         return string_token
 
     @abstractmethod
-    def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
+    def _tokenize_prompt(self, prompt: str, prepend_bos: bool = False) -> torch.Tensor:
         pass
 
     @abstractmethod
@@ -827,7 +827,7 @@ class TlensDataset(BaseDataset):
         self.model.eval()
         super().__init__(path, slice, start, experiment, premise, similarity)
 
-    def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
+    def _tokenize_prompt(self, prompt: str, prepend_bos: bool= False) -> torch.Tensor:
         tokens = self.model.to_tokens(prompt, prepend_bos).squeeze(0)
         assert len(tokens.shape) == 1
         return tokens
@@ -967,9 +967,9 @@ class HFDataset(BaseDataset):
         super().reset(similarity=similarity)
 
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
-        bos_token = self.tokenizer.bos_token
-        if prepend_bos:
-            prompt = bos_token + prompt
+        # bos_token = self.tokenizer.bos_token
+        # if prepend_bos:
+        #     prompt = bos_token + prompt
         tokens = self.tokenizer.encode(
             prompt, return_tensors="pt", add_special_tokens=True
         ).squeeze(0)

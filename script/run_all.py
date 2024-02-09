@@ -152,7 +152,7 @@ def logit_attribution_plot(config, dataset_slice_name):
             [
                 "Rscript",
                 "../src_figure/logit_attribution.R",
-                f"../results/{config.mech_fold}/logit_attribution/{config.model_name}_{dataset_slice_name}",
+                f"../results/{config.mech_fold}{config.flag}/logit_attribution/{config.model_name}_{dataset_slice_name}",
                 f"{config.std_dev}",
             ]
         )
@@ -194,7 +194,7 @@ def logit_lens_plot(config, data_slice_name):
             [
                 "Rscript",
                 "../src_figure/logit_lens.R",
-                f"../results/{config.mech_fold}/logit_lens/{config.model_name}_{data_slice_name}",
+                f"../results/{config.mech_fold}{config.flag}/logit_lens/{config.model_name}_{data_slice_name}",
             ]
         )
 
@@ -230,7 +230,7 @@ def ov_difference_plot(config, data_slice_name):
             [
                 "Rscript",
                 "../src_figure/ov_difference.R",
-                f"../results/{config.mech_fold}/ov_difference/{config.model_name}_{data_slice_name}",
+                f"../results/{config.mech_fold}{config.flag}/ov_difference/{config.model_name}_{data_slice_name}",
             ]
         )
 
@@ -258,7 +258,7 @@ def ablate(model, dataset, config, args):
             "ablation_data",
             dataframe,
         )
-        torch.save(tuple_results, f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}/ablation_data.pt")
+        torch.save(tuple_results, f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}/ablation_data.pt")
     else:
         dataframe, tuple_results = ablator.run(args.ablate_component, normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
         save_dataframe(
@@ -266,7 +266,7 @@ def ablate(model, dataset, config, args):
             f"ablation_data_{args.ablate_component}",
             dataframe,
         )
-        torch.save(dataframe, f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}/ablation_data_{args.ablate_component}.pt")
+        torch.save(dataframe, f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}/ablation_data_{args.ablate_component}.pt")
 
     if config.produce_plots:
         # run the R script
@@ -279,7 +279,7 @@ def ablate_plot(config, data_slice_name):
         [
             "Rscript",
             "../src_figure/ablation.R",
-            f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}",
+            f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}",
             f"{config.std_dev}",
         ]
     )
@@ -314,7 +314,7 @@ def pattern_plot(config, data_slice_name):
             [
                 "Rscript",
                 "../src_figure/head_pattern.R",
-                f"../results/{config.mech_fold}/head_pattern/{config.model_name}_{data_slice_name}",
+                f"../results/{config.mech_fold}{config.flag}/head_pattern/{config.model_name}_{data_slice_name}",
             ]
         )
 
