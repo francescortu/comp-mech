@@ -6,7 +6,7 @@ from tqdm import tqdm
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 from src.base_experiment import BaseExperiment, to_logit_token
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, Union
 from src.utils import get_aggregator
 
 
