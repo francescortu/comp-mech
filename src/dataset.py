@@ -807,7 +807,7 @@ class TlensDataset(BaseDataset):
     def __init__(
         self,
         path: str,
-        experiment: Literal["copyVSfact", "contextVSfact"],
+        experiment: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual"],
         model: Union[WrapHookedTransformer, str, HookedTransformer],
         slice: Optional[int] = None,
         start: Optional[int] = None,
@@ -967,6 +967,9 @@ class HFDataset(BaseDataset):
         super().reset(similarity=similarity)
 
     def _tokenize_prompt(self, prompt: str, prepend_bos: bool) -> torch.Tensor:
+        bos_token = self.tokenizer.bos_token
+        if prepend_bos:
+            prompt = bos_token + prompt
         tokens = self.tokenizer.encode(
             prompt, return_tensors="pt", add_special_tokens=True
         ).squeeze(0)

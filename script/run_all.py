@@ -2,6 +2,7 @@
 from json import load
 import sys
 import os
+
 sys.path.append(os.path.abspath(os.path.join("..")))
 sys.path.append(os.path.abspath(os.path.join("../src")))
 sys.path.append(os.path.abspath(os.path.join("../data")))
@@ -51,7 +52,7 @@ def get_hf_model_name(model_name):
 
 @dataclass
 class Config:
-    mech_fold: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual", "copyVSfact_copy"] = "copyVSfact"
+    mech_fold: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual"] = "copyVSfact"
     model_name: str = "gpt2"
     hf_model_name: str = "gpt2"
     batch_size: int = 10
@@ -64,6 +65,7 @@ class Config:
     total_effect: bool = False
     up_to_layer: Union[int, str] = "all"
     ablate_component:str = "all"
+    flag: str = ""
 
     @classmethod
     def from_args(cls, args):
@@ -79,6 +81,7 @@ class Config:
             total_effect=args.total_effect if args.total_effect else False,
             hf_model_name= get_hf_model_name(args.model_name),
             ablate_component=args.ablate_component,
+            flag = args.flag
         )
 
 def get_dataset_path(args):
@@ -135,7 +138,7 @@ def logit_attribution(model, dataset, config, args):
     attributor = LogitAttribution(dataset, model, config.batch_size // 5, config.mech_fold)
     dataframe = attributor.run(normalize_logit=config.normalize_logit, up_to_layer=config.up_to_layer)
     save_dataframe(
-        f"../results/{config.mech_fold}/logit_attribution/{config.model_name}_{dataset_slice_name}",
+        f"../results/{config.mech_fold}{config.flag}/logit_attribution/{config.model_name}_{dataset_slice_name}",
         "logit_attribution_data",
         dataframe,
     )
@@ -176,7 +179,7 @@ def logit_lens(model, dataset, config, args):
         normalize_logit=config.normalize_logit,
     )
     save_dataframe(
-        f"../results/{config.mech_fold}/logit_lens/{config.model_name}_{data_slice_name}",
+        f"../results/{config.mech_fold}{config.flag}/logit_lens/{config.model_name}_{data_slice_name}",
         "logit_lens_data",
         dataframe,
     )
@@ -212,7 +215,7 @@ def ov_difference(model, dataset, config, args):
     ov = OV(dataset, model, config.batch_size, config.mech_fold)
     dataframe = ov.run(normalize_logit=config.normalize_logit)
     save_dataframe(
-        f"../results/{config.mech_fold}/ov_difference/{config.model_name}_{data_slice_name}",
+        f"../results/{config.mech_fold}{config.flag}/ov_difference/{config.model_name}_{data_slice_name}",
         "ov_difference_data",
         dataframe,
     )
@@ -251,7 +254,7 @@ def ablate(model, dataset, config, args):
     if args.ablate_component == "all":
         dataframe, tuple_results = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
         save_dataframe(
-            f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}",
+            f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}",
             "ablation_data",
             dataframe,
         )
@@ -259,7 +262,7 @@ def ablate(model, dataset, config, args):
     else:
         dataframe, tuple_results = ablator.run(args.ablate_component, normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
         save_dataframe(
-            f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}",
+            f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}",
             f"ablation_data_{args.ablate_component}",
             dataframe,
         )
@@ -296,7 +299,7 @@ def pattern(model, dataset, config, args):
     pattern = HeadPattern(dataset, model, config.batch_size, config.mech_fold)
     dataframe = pattern.run()
     save_dataframe(
-        f"../results/{config.mech_fold}/head_pattern/{config.model_name}_{data_slice_name}",
+        f"../results/{config.mech_fold}{config.flag}/head_pattern/{config.model_name}_{data_slice_name}",
         "head_pattern_data",
         dataframe,
     )
@@ -428,6 +431,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", action="store_true", default=False)
     parser.add_argument("--ablate-component", type=str, default="all")
     parser.add_argument("--folder", type=str, default="")
+    parser.add_argument("--flag", type=str, default="")
     
     args = parser.parse_args()
     main(args)
