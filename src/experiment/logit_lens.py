@@ -239,9 +239,9 @@ class LogitLens(BaseExperiment):
                             return_index=return_index,
                         )
                         logit_token_mem = logit_token[0] #! MEAN
-                        logit_token_mem = (logit_token[0] - logit.mean(-1)) / logit.mean(-1) #! MEAN
+                        logit_token_mem = (logit_token[0].cpu() - logit.mean(-1)) / logit.mean(-1) #! MEAN
                         logit_token_cp = logit_token[1] #! MEAN
-                        logit_token_cp = (logit_token[1] - logit.mean(-1)) / logit.mean(-1) #! MEAN
+                        logit_token_cp = (logit_token[1].cpu() - logit.mean(-1)) / logit.mean(-1) #! MEAN
                         storer.store( #! MEAN
                             layer=layer,
                             position=position,
