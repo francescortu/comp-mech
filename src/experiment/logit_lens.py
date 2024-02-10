@@ -73,9 +73,9 @@ class LogitStorage:
         self.logits["mem_logit"][index].append(mem_logit)
         self.logits["cp_logit"][index].append(cp_logit)
         if mem_winners is not None:
-            self.logits["mem_winners"][index].append(mem_winners)
+            self.logits["mem_winners"][index].append(mem_winners.cpu())
         if cp_winners is not None:
-            self.logits["cp_winners"][index].append(cp_winners)
+            self.logits["cp_winners"][index].append(cp_winners.cpu())
 
     def _reshape_logits(self, logits_list, shape):
         return torch.stack([torch.cat(logits, dim=0) for logits in logits_list]).view(
