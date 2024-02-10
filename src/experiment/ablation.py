@@ -201,13 +201,13 @@ class Ablate(BaseExperiment):
 
         if component in self.position_component:
             storage = LogitStorage(
-                n_layers=self.model.cfg.n_layers,
+                n_layers=self.model.cfg.n_layers-1,
                 length=length,
                 experiment=self.experiment,
             )
         elif component in self.head_component:
             storage = HeadLogitStorage(
-                n_layers=self.model.cfg.n_layers ,
+                n_layers=self.model.cfg.n_layers -1,
                 length=1,
                 n_heads=self.model.cfg.n_heads,
                 experiment=self.experiment,
@@ -332,7 +332,7 @@ class Ablate(BaseExperiment):
 
         if component in self.position_component:
             data = []
-            for layer in range(self.model.cfg.n_layers):
+            for layer in range(self.model.cfg.n_layers - 1):
                 for position in range(result[0][layer].shape[0]):
                     data.append(
                         {
@@ -361,7 +361,7 @@ class Ablate(BaseExperiment):
 
         elif component in self.head_component:
             data = []
-            for layer in range(self.model.cfg.n_layers):
+            for layer in range(self.model.cfg.n_layers - 1):
                 for head in range(self.model.cfg.n_heads):
                     data.append(
                         {
