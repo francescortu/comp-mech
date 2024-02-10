@@ -313,7 +313,7 @@ class Ablate(BaseExperiment):
                     if position != self.dataset.obj_pos[0]:
                         place_holder_tensor = torch.zeros_like(batch["input_ids"])
                         storage.store(
-                            layer=layer,
+                            layer=layer // 4,
                             position=position,
                             logit=(place_holder_tensor, place_holder_tensor, place_holder_tensor, place_holder_tensor),
                             mem_winners=place_holder_tensor,
@@ -342,7 +342,7 @@ class Ablate(BaseExperiment):
                             logit, batch["target"], normalize=normalize_logit, return_winners=True
                         )
                         storage.store(
-                            layer=layer,
+                            layer=layer // 4,
                             position=position,
                             logit=(logit_token[0], logit_token[1], logit_token[2], logit_token[3]),
                             mem_winners=logit_token[4],
