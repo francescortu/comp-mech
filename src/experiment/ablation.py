@@ -94,6 +94,9 @@ class Ablate(BaseExperiment):
                     hooks.append(
                         (f"blocks.{layer}.attn.hook_pattern", partial(head_ablation_hook, head=head))
                     )
+                    hooks.append(
+                        (f"blocks.{layer + 1}.attn.hook_pattern", partial(head_ablation_hook, head=head))
+                    )
                 return hooks
             hook_name = f"blocks.{layer}.hook_{component}"
 
@@ -230,7 +233,7 @@ class Ablate(BaseExperiment):
             else:
                 raise ValueError(f"component {component} not supported")
 
-            for layer in range(self.model.cfg.n_layers):
+            for layer in range(self.model.cfg.n_layers - 1):
                 if component in self.position_component:
                     for position in range(length):
                         self._process_model_run(

@@ -240,10 +240,7 @@ class LogitLens(BaseExperiment):
                             batch["target"],
                             normalize=normalize_logit,
                             return_index=return_index,
-                            return_rank=True,
                         )
-                        mem_rank = logit_token[4]
-                        cp_rank = logit_token[5]
                         # logit_token = list(logit_token)
                         # logit_mean = logit.mean(-1).cpu()
                         # logit_token[0] = (logit_token[0].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
@@ -252,9 +249,7 @@ class LogitLens(BaseExperiment):
                             layer=layer,
                             position=position,
                             #logit=tuple(logit_token),  # type: ignore
-                            logit=logit_token[0:4],  # type: ignore
-                            mem_winners=mem_rank,
-                            cp_winners=cp_rank,
+                            logit=logit_token,  # type: ignore
                         )
                         #storer.store(layer=layer, position=position, logit=logit_token)  # type: ignore
                 elif component in self.valid_heads:
@@ -360,10 +355,10 @@ class LogitLens(BaseExperiment):
                                 "cp_std": result[1][layer][head][position].std().item(),
                                 "mem_idx": None
                                 if not return_index
-                                else result[2][layer][head][position].argmax().item(),
+                                else result[2][layer][head][position].mean().item(),
                                 "cp_idx": None
                                 if not return_index
-                                else result[3][layer][head][position].argmin().item(),
+                                else result[3][layer][head][position].mean().item(),
                             }
                         )
                 else:
@@ -388,10 +383,10 @@ class LogitLens(BaseExperiment):
                             "cp_std": result[1][layer][position].std().item(),
                             "mem_idx": None
                             if not return_index
-                            else result[2][layer][position].argmax().item(),
+                            else result[2][layer][position].mean().item(),
                             "cp_idx": None
                             if not return_index
-                            else result[3][layer][position].argmin().item(),
+                            else result[3][layer][position].mean().item(),
                         }
                     )
 
