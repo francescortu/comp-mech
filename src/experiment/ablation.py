@@ -37,7 +37,7 @@ class Ablate(BaseExperiment):
 
         hooks = {}
 
-        for layer in range(self.model.cfg.n_layers):
+        for layer in range(self.model.cfg.n_layers - 1 ):
             hooks[f"L{layer}"] = (
                 f"blocks.{layer}.hook_attn_out",
                 partial(
@@ -233,7 +233,7 @@ class Ablate(BaseExperiment):
             else:
                 raise ValueError(f"component {component} not supported")
 
-            for layer in range(self.model.cfg.n_layers):
+            for layer in range(self.model.cfg.n_layers - 1):
                 if component in self.position_component:
                     for position in range(length):
                         self._process_model_run(
