@@ -311,7 +311,7 @@ class Ablate(BaseExperiment):
             for layer in range(0, self.model.cfg.n_layers, 4):
                 for position in range(length):
                     if position != self.dataset.obj_pos[0]:
-                        place_holder_tensor = torch.zeros_like(batch["tokenized_prompt"])
+                        place_holder_tensor = torch.zeros_like(batch["input_ids"])
                         storage.store(
                             layer=layer,
                             position=position,
