@@ -1,3 +1,4 @@
+from re import sub
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -279,6 +280,77 @@ class Ablate(BaseExperiment):
         if component in self.head_component:
             return storage.get_logit()
 
+    def ablate_single_len_component_attn_pythia(
+        self,
+        length: int,
+        component:str,
+        normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
+        total_effect: bool = False,
+    ):
+        self.set_len(length, slice_to_fit_batch=False)
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
+        num_batches = len(dataloader)
+        
+        if num_batches == 0:
+            return None
+        
+        if component in self.position_component:
+            storage = LogitStorage(
+                n_layers=8,
+                length=length,
+                experiment=self.experiment,
+            )
+
+        subject_positions = []
+        object_position = []
+        for batch in tqdm(dataloader, total=num_batches):
+            subject_positions.append(batch["subj_pos"])
+            object_position.append(batch["obj_pos"])
+            _, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
+            
+            for layer in range(0, self.model.cfg.n_layers, 4):
+                for position in range(length):
+                    if position != object_position[-1]:
+                        storage.store(
+                            layer=layer,
+                            position=position,
+                            logit=(torch.tensor([0]), torch.tensor([0]), torch.tensor([0]), torch.tensor([0])),
+                            mem_winners=torch.tensor([0]),
+                            cp_winners=torch.tensor([0]),
+                        )
+                    else:
+                        def head_ablation_hook(activation, hook, head):
+                            activation[:, head, -1, position ] = 0
+                            return activation
+                        hooks = []
+                        for head in range(self.model.cfg.n_heads):
+                            hooks.append(
+                                (f"blocks.{layer}.attn.hook_pattern", partial(head_ablation_hook, head=head))
+                            )
+                            hooks.append(
+                                (f"blocks.{layer + 1}.attn.hook_pattern", partial(head_ablation_hook, head=head))
+                            )
+                            hooks.append(
+                                (f"blocks.{layer + 2}.attn.hook_pattern", partial(head_ablation_hook, head=head))
+                            )
+                            hooks.append(
+                                (f"blocks.{layer + 3}.attn.hook_pattern", partial(head_ablation_hook, head=head))
+                            )
+                        logit = self._run_with_hooks(batch, hooks)
+                        logit_token = to_logit_token(
+                            logit, batch["target"], normalize=normalize_logit, return_winners=True
+                        )
+                        storage.store(
+                            layer=layer,
+                            position=position,
+                            logit=(logit_token[0], logit_token[1], logit_token[2], logit_token[3]),
+                            mem_winners=logit_token[4],
+                            cp_winners=logit_token[5],
+                        )
+        return storage.get_aggregate_logit(object_position=self.dataset.obj_pos[0])
+                            
+                        
+
     def ablate(
         self,
         component: str,
@@ -293,7 +365,7 @@ class Ablate(BaseExperiment):
             lengths.remove(11)
         result = {}
         for length in tqdm(lengths, desc=f"Ablating {component}", total=len(lengths)):
-            result[length] = self.ablate_single_len(
+            result[length] = self.ablate_single_len_component_attn_pythia(
                 length, component, normalize_logit, **kwargs
             )
 
