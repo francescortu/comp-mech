@@ -201,13 +201,13 @@ class Ablate(BaseExperiment):
 
         if component in self.position_component:
             storage = LogitStorage(
-                n_layers=self.model.cfg.n_layers -1,
+                n_layers=self.model.cfg.n_layers,
                 length=length,
                 experiment=self.experiment,
             )
         elif component in self.head_component:
             storage = HeadLogitStorage(
-                n_layers=self.model.cfg.n_layers - 1,
+                n_layers=self.model.cfg.n_layers ,
                 length=1,
                 n_heads=self.model.cfg.n_heads,
                 experiment=self.experiment,
@@ -233,7 +233,7 @@ class Ablate(BaseExperiment):
             else:
                 raise ValueError(f"component {component} not supported")
 
-            for layer in range(self.model.cfg.n_layers - 1):
+            for layer in range(self.model.cfg.n_layers):
                 if component in self.position_component:
                     for position in range(length):
                         self._process_model_run(
