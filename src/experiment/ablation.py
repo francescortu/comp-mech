@@ -310,7 +310,7 @@ class Ablate(BaseExperiment):
             
             for layer in range(0, self.model.cfg.n_layers, 4):
                 for position in range(length):
-                    if position != object_position[-1]:
+                    if position != self.dataset.obj_pos[0]:
                         storage.store(
                             layer=layer,
                             position=position,
