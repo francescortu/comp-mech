@@ -296,7 +296,7 @@ class Ablate(BaseExperiment):
         
         if component in self.position_component:
             storage = LogitStorage(
-                n_layers=8,
+                n_layers=self.model.cfg.n_layers//4,
                 length=length,
                 experiment=self.experiment,
             )
@@ -312,7 +312,7 @@ class Ablate(BaseExperiment):
                 for position in range(length):
                     if position != self.dataset.obj_pos[0]:
                         
-                        place_holder_tensor = torch.zeros_like(batch["input_ids"][0])
+                        place_holder_tensor = torch.zeros_like(batch["input_ids"][:,0])
                         storage.store(
                             layer=layer // 4,
                             position=position,
