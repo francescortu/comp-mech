@@ -34,7 +34,7 @@ class BaseDataset(Dataset):
         slice: Optional[int] = None,
         start: Optional[int] = None,
         experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",
-        premise: str = "Redefine:",
+        premise: str = "Redefine",
         similarity: Tuple[
             bool, int, Literal["word2vec", "logit", "self-similarity"]
         ] = (
@@ -144,7 +144,7 @@ class BaseDataset(Dataset):
         cls,
         path: str,
         slice: Optional[int] = None,
-        premise: str = "Redefine:",
+        premise: str = "Redefine",
         similarity: Tuple[
             bool, int, Literal["word2vec", "logit", "self-similarity"]
         ] = (
@@ -811,7 +811,7 @@ class TlensDataset(BaseDataset):
         model: Union[WrapHookedTransformer, str, HookedTransformer],
         slice: Optional[int] = None,
         start: Optional[int] = None,
-        premise: str = "Redefine:",
+        premise: str = "Redefine",
         similarity: Tuple[
             bool, int, Literal["word2vec", "logit", "self-similarity"]
         ] = (

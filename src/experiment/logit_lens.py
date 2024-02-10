@@ -240,15 +240,21 @@ class LogitLens(BaseExperiment):
                             batch["target"],
                             normalize=normalize_logit,
                             return_index=return_index,
+                            return_rank=True,
                         )
-                        logit_token = list(logit_token)
-                        logit_token[0] = (logit_token[0].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
-                        logit_token[1] = (logit_token[1].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
+                        mem_rank = logit_token[4]
+                        cp_rank = logit_token[5]
+                        # logit_token = list(logit_token)
+                        # logit_mean = logit.mean(-1).cpu()
+                        # logit_token[0] = (logit_token[0].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
+                        # logit_token[1] = (logit_token[1].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
                         storer.store( #! MEAN
                             layer=layer,
                             position=position,
-                            logit=tuple(logit_token),  # type: ignore
-                            #logit=logit_token,  # type: ignore
+                            #logit=tuple(logit_token),  # type: ignore
+                            logit=logit_token[0:4],  # type: ignore
+                            mem_winners=mem_rank,
+                            cp_winners=cp_rank,
                         )
                         #storer.store(layer=layer, position=position, logit=logit_token)  # type: ignore
                 elif component in self.valid_heads:

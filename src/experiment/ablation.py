@@ -128,6 +128,7 @@ class Ablate(BaseExperiment):
         launch the model with the given hooks
         """
         self.model.reset_hooks()
+        # hooks = []
         with torch.no_grad():
             logit = self.model.run_with_hooks(
                 batch["prompt"],
