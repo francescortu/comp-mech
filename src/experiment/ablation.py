@@ -311,12 +311,13 @@ class Ablate(BaseExperiment):
             for layer in range(0, self.model.cfg.n_layers, 4):
                 for position in range(length):
                     if position != self.dataset.obj_pos[0]:
+                        place_holder_tensor = torch.zeros_like(batch["tokenized_prompt"])
                         storage.store(
                             layer=layer,
                             position=position,
-                            logit=(torch.tensor([0]), torch.tensor([0]), torch.tensor([0]), torch.tensor([0])),
-                            mem_winners=torch.tensor([0]),
-                            cp_winners=torch.tensor([0]),
+                            logit=(place_holder_tensor, place_holder_tensor, place_holder_tensor, place_holder_tensor),
+                            mem_winners=place_holder_tensor,
+                            cp_winners=place_holder_tensor,
                         )
                     else:
                         def head_ablation_hook(activation, hook, head):
