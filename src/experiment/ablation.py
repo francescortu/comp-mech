@@ -296,7 +296,7 @@ class Ablate(BaseExperiment):
         
         if component in self.position_component:
             storage = LogitStorage(
-                n_layers=self.model.cfg.n_layers//4,
+                n_layers=self.model.cfg.n_layers//2,
                 length=length,
                 experiment=self.experiment,
             )
@@ -308,13 +308,13 @@ class Ablate(BaseExperiment):
             object_position.append(batch["obj_pos"])
             _, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
             
-            for layer in range(0, self.model.cfg.n_layers, 4):
+            for layer in range(0, self.model.cfg.n_layers, 2):
                 for position in range(length):
                     if position != self.dataset.obj_pos[0]:
                         
                         place_holder_tensor = torch.zeros_like(batch["input_ids"][:,0]).cpu()
                         storage.store(
-                            layer=layer // 4,
+                            layer=layer // 2,
                             position=position,
                             logit=(place_holder_tensor, place_holder_tensor, place_holder_tensor, place_holder_tensor),
                             mem_winners=place_holder_tensor,
@@ -332,18 +332,18 @@ class Ablate(BaseExperiment):
                             hooks.append(
                                 (f"blocks.{layer + 1}.attn.hook_pattern", partial(head_ablation_hook, head=head))
                             )
-                            hooks.append(
-                                (f"blocks.{layer + 2}.attn.hook_pattern", partial(head_ablation_hook, head=head))
-                            )
-                            hooks.append(
-                                (f"blocks.{layer + 3}.attn.hook_pattern", partial(head_ablation_hook, head=head))
-                            )
+                            # hooks.append(
+                            #     (f"blocks.{layer + 2}.attn.hook_pattern", partial(head_ablation_hook, head=head))
+                            # )
+                            # hooks.append(
+                            #     (f"blocks.{layer + 3}.attn.hook_pattern", partial(head_ablation_hook, head=head))
+                            # )
                         logit = self._run_with_hooks(batch, hooks)
                         logit_token = to_logit_token(
                             logit, batch["target"], normalize=normalize_logit, return_winners=True
                         )
                         storage.store(
-                            layer=layer // 4,
+                            layer=layer // 2,
                             position=position,
                             logit=(logit_token[0], logit_token[1], logit_token[2], logit_token[3]),
                             mem_winners=logit_token[4],
@@ -406,7 +406,7 @@ class Ablate(BaseExperiment):
 
         if component in self.position_component:
             data = []
-            for layer in range(0,self.model.cfg.n_layers//4):
+            for layer in range(0,self.model.cfg.n_layers//2):
                 for position in range(result[0][layer].shape[0]):
                     data.append(
                         {
@@ -435,7 +435,7 @@ class Ablate(BaseExperiment):
 
         elif component in self.head_component:
             data = []
-            for layer in range(self.model.cfg.n_layers//4):
+            for layer in range(self.model.cfg.n_layers//2):
                 for head in range(self.model.cfg.n_heads):
                     data.append(
                         {
