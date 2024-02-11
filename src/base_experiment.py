@@ -1,17 +1,30 @@
-
 from src.dataset import TlensDataset
 from src.model import WrapHookedTransformer
 import torch
 from torch.utils.data import DataLoader
-from typing import Optional,  Literal
+from typing import Optional, Literal
+# from line_profiler import profile
 
 
 torch.set_grad_enabled(False)
 
 
+# @profile
 def to_logit_token(
-    logit, target, normalize="none", return_index=False, return_winners=False, return_rank=False
-) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor], Optional[int], Optional[int]]:
+    logit,
+    target,
+    normalize="none",
+    return_index=False,
+    return_winners=False,
+    return_rank=False,
+) -> tuple[
+    torch.Tensor,
+    torch.Tensor,
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
+    Optional[int],
+    Optional[int],
+]:
     assert (
         len(logit.shape) in [2, 3]
     ), "logit should be of shape (batch_size, d_vocab) or (batch_size, seq_len, d_vocab)"
@@ -25,8 +38,8 @@ def to_logit_token(
         pass
     logit_mem = torch.zeros(target.shape[0])
     logit_cp = torch.zeros(target.shape[0])
-    index_mem = torch.zeros(target.shape[0])
-    index_cp = torch.zeros(target.shape[0])
+    index_mem = torch.zeros(target.shape[0], dtype=torch.float32)
+    index_cp = torch.zeros(target.shape[0], dtype=torch.float32)
 
     if return_index:
         sorted_indices = torch.argsort(logit, descending=True)
@@ -34,8 +47,8 @@ def to_logit_token(
     # logit_mem = logit[batch_indices, target[:, 0]]
     # logit_cp = logit[batch_indices, target[:, 1]]
     logit_argmaxs = torch.argmax(logit, dim=-1)
-    mem_winners = torch.zeros(target.shape[0])
-    cp_winners = torch.zeros(target.shape[0])
+    mem_winners = torch.zeros(target.shape[0], dtype=torch.float32)
+    cp_winners = torch.zeros(target.shape[0], dtype=torch.float32)
 
     for i in range(target.shape[0]):
         logit_mem[i] = logit[i, target[i, 0]]
@@ -43,14 +56,20 @@ def to_logit_token(
         # index_mem[i] = torch.argsort(logit[i], descending=True).tolist().index(target[i, 0])
         logit_cp[i] = logit[i, target[i, 1]]
         if return_winners:
-            if (logit_argmaxs[i] == target[i, 0]):
+            if logit_argmaxs[i] == target[i, 0]:
                 mem_winners[i] = 1
-            
-            if (logit_argmaxs[i] == target[i, 1]):
+
+            if logit_argmaxs[i] == target[i, 1]:
                 cp_winners[i] = 1
         if return_index:
-            index_mem[i] = sorted_indices[i].tolist().index(target[i, 0])
-            index_cp[i] = sorted_indices[i].tolist().index(target[i, 1])
+            target_expanded_0 = target[:, 0].unsqueeze(1) == sorted_indices
+            target_expanded_1 = target[:, 1].unsqueeze(1) == sorted_indices
+            index_mem = target_expanded_0.nonzero()[
+                :, 1
+            ]  # Select column index for matches of target[:, 0]
+            index_cp = target_expanded_1.nonzero()[
+                :, 1
+            ]  # Select column index for matches of target[:, 1]
         # index_cp[i] = torch.argsort(logit[i], descending=True).tolist().index(target[i, 1])
 
     if return_winners:
@@ -77,7 +96,7 @@ class BaseExperiment:
         self.batch_size = batch_size
         self.filter_outliers = filter_outliers
         self.experiment: Literal["copyVSfact", "contextVSfact"] = experiment
-        #requires grad to false
+        # requires grad to false
         torch.set_grad_enabled(False)
         # if self.model.cfg.model_name != self.dataset.model.cfg.model_name:
         #     raise ValueError("Model and dataset should have the same model_name, found {} and {}".format(
@@ -88,7 +107,7 @@ class BaseExperiment:
 
     def get_basic_logit(
         self, normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
-    ) -> tuple[torch.Tensor, torch.Tensor]: # type: ignore
+    ) -> tuple[torch.Tensor, torch.Tensor]:  # type: ignore
         lengths = self.dataset.get_lengths()
         for length in lengths:
             self.set_len(length, slice_to_fit_batch=False)
@@ -102,7 +121,9 @@ class BaseExperiment:
             for batch in dataloader:
                 logit, _ = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
                 logit = logit[:, -1, :]  # type: ignore
-                logit_mem, logit_cp, _, _ = to_logit_token(logit, batch["target"], normalize=normalize_logit)
+                logit_mem, logit_cp, _, _ = to_logit_token(
+                    logit, batch["target"], normalize=normalize_logit
+                )
                 logit_mem_list.append(logit_mem)
                 logit_cp_list.append(logit_cp)
 
@@ -127,7 +148,7 @@ class BaseExperiment:
         self.set_len(len, **kwargs)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         return next(iter(dataloader))
-    
+
     def get_position(self, resid_pos: str):
         if self.experiment == "copyVSfact":
             return self.__get_position_copyVSfact__(resid_pos)
@@ -159,8 +180,10 @@ class BaseExperiment:
             return self.__aggregate_result_copyVSfact__(**args)
         elif self.experiment == "contextVSfact":
             return self.__aggregate_result_contextVSfact__(**args)
-        
-    def __aggregate_result_contextVSfact__(self, object_positions: int, pattern: torch.Tensor, length: int, dim: int = -1) -> torch.Tensor:
+
+    def __aggregate_result_contextVSfact__(
+        self, object_positions: int, pattern: torch.Tensor, length: int, dim: int = -1
+    ) -> torch.Tensor:
         raise NotImplementedError
 
     def __aggregate_result_copyVSfact__(

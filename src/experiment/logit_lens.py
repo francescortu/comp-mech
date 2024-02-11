@@ -1,4 +1,5 @@
 import re
+from numpy import dtype
 import torch
 from torch.utils.data import DataLoader
 import einops
@@ -80,7 +81,7 @@ class LogitStorage:
     def _reshape_logits(self, logits_list, shape):
         return torch.stack([torch.cat(logits, dim=0) for logits in logits_list]).view(
             shape
-        )
+        ).to(torch.float32)
 
     def get_logit(self):
         shape = (self.n_layers, self.length, -1)

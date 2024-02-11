@@ -406,7 +406,7 @@ class Ablate(BaseExperiment):
 
         if component in self.position_component:
             data = []
-            for layer in range(self.model.cfg.n_layers - 1):
+            for layer in range(0,self.model.cfg.n_layers, 4):
                 for position in range(result[0][layer].shape[0]):
                     data.append(
                         {
