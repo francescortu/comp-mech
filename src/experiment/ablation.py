@@ -297,7 +297,7 @@ class Ablate(BaseExperiment):
         
         if component in self.position_component:
             storage = LogitStorage(
-                n_layers=self.model.cfg.n_layers//WINDOW,
+                n_layers=self.model.cfg.n_layers,
                 length=length,
                 experiment=self.experiment,
             )
@@ -309,13 +309,13 @@ class Ablate(BaseExperiment):
             object_position.append(batch["obj_pos"])
             _, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
             
-            for layer in range(0, self.model.cfg.n_layers, WINDOW):
+            for layer in range(0, self.model.cfg.n_layers, 1):
                 for position in range(length):
                     if position != self.dataset.obj_pos[0]:
                         
                         place_holder_tensor = torch.zeros_like(batch["input_ids"][:,0]).cpu()
                         storage.store(
-                            layer=layer // WINDOW,
+                            layer=layer ,
                             position=position,
                             logit=(place_holder_tensor, place_holder_tensor, place_holder_tensor, place_holder_tensor),
                             mem_winners=place_holder_tensor,
@@ -337,7 +337,7 @@ class Ablate(BaseExperiment):
                             logit, batch["target"], normalize=normalize_logit, return_winners=True
                         )
                         storage.store(
-                            layer=layer // WINDOW,
+                            layer=layer,
                             position=position,
                             logit=(logit_token[0], logit_token[1], logit_token[2], logit_token[3]),
                             mem_winners=logit_token[4],
@@ -400,7 +400,7 @@ class Ablate(BaseExperiment):
 
         if component in self.position_component:
             data = []
-            for layer in range(0,self.model.cfg.n_layers//WINDOW):
+            for layer in range(0,self.model.cfg.n_layers):
                 for position in range(result[0][layer].shape[0]):
                     data.append(
                         {
@@ -429,7 +429,7 @@ class Ablate(BaseExperiment):
 
         elif component in self.head_component:
             data = []
-            for layer in range(self.model.cfg.n_layers//WINDOW):
+            for layer in range(self.model.cfg.n_layers):
                 for head in range(self.model.cfg.n_heads):
                     data.append(
                         {
