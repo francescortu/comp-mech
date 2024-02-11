@@ -309,7 +309,7 @@ class Ablate(BaseExperiment):
             object_position.append(batch["obj_pos"])
             _, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
             
-            for layer in range(0, self.model.cfg.n_layers, 1):
+            for layer in range(0, self.model.cfg.n_layers-1, 1):
                 for position in range(length):
                     if position != self.dataset.obj_pos[0]:
                         
