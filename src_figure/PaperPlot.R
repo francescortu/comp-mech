@@ -2,22 +2,29 @@ library(ggplot2)
 library(readr)
 library(dplyr)
 library(binom)
+library(tidyr)
+library(ggpubr)
 setwd("/home/francesco/Repository/Competition_of_Mechanisms/results")
 
-
+palette <- c("#D5008F", "#19A974", "#A463F2", "#FFB700", "#FF6300")
+#define the color palette
 
 ################################## EXPERIMENT CONFIGS ########################################
 experiment <- "copyVSfact"
 n_positions <- 12
-positions_name <- c("-", "1st subject", "2nd subject", "3rd subject", "-", "last", "object", "-", "1st subject", "2nd subject", "3nd subject", "-", "last")
+positions_name <- c("-", "Subject", "2nd Subject", "3rd Subject", "Relation", "Relation Last", "Attribute*", "-", "Subject Repeat", "2nd Subject repeat", "3nd Subject repeat", "Relation repeat", "Last")
+relevant_position <- c("Subject", "Relation", "Relation Last", "Attribute*", "Subject repeat", "Relation repeat", "Last")
+n_relevant_position <- 7
 #GPT2
-layer_pattern <- c(11,10,10,10)
-head_pattern <- c(10,0,7,10)
+layer_pattern <- c(11,10,10,10,9,9)
+head_pattern <- c(10,0,7,10,6,9)
 #Pythia-6.9b
 #layer_pattern <- c(21,20,20,19)
 #head_pattern <- c(8,2,18,31)
   
 #experiment <- "contextVSfact"
+#n_positions <- 8
+#positions_name <- c("-", "object", "-", "last", "1st subject", "2nd subject", "3rd subject", "-", "last")
 
 ################################ MODEL CONFIGS ################################################
 model <- "gpt2"
@@ -35,22 +42,89 @@ AXIS_TITLE_SIZE <- 60
 AXIS_TEXT_SIZE <- 40
 HEATMAP_SIZE <- 10
 
-
 ###################################### functions ############################################
-create_heatmap_base <- function(data, x, y, fill) {
+create_heatmap_base <- function(data, x, y, fill, midpoint = 0, text=FALSE) {
   # Convert strings to symbols for tidy evaluation
   x_sym <- rlang::sym(x)
   y_sym <- rlang::sym(y)
   fill_sym <- rlang::sym(fill)
-  
+  if (text==TRUE){
+    p<- ggplot(data, aes(!!x_sym, !!y_sym, fill = !!fill_sym)) +
+      geom_tile() +
+      #scale_fill_gradient2(low = "#1a80bb", mid = "white", high = "#a00000", midpoint = midpoint) +
+      theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust=1)) +
+      geom_text(aes(label = sprintf("%.2f", !!fill_sym)), color = "black", size = HEATMAP_SIZE)+
+      labs(x = x, y = y)
+  }else{
   p<- ggplot(data, aes(!!x_sym, !!y_sym, fill = !!fill_sym)) +
     geom_tile() +
-    scale_fill_gradient2(low = "#1a80bb", mid = "white", high = "#a00000", midpoint = 0) +
+   # scale_fill_gradient2(low = "#1a80bb", mid = "white", high = "#a00000") +
     theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust=1)) +
-    labs(x = x, y = y) +
-    geom_text(aes(label = sprintf("%.2f", !!fill_sym)), color = "black", size = HEATMAP_SIZE)
+   # geom_text(aes(label = sprintf("%.2f", !!fill_sym)), color = "black", size = HEATMAP_SIZE)+
+    labs(x = x, y = y) 
+  }
   return(p)
 }
+
+#################################################################################################################
+################################################### Ablation ####################################################
+#################################################################################################################
+experiment <- "copyVSfact"
+model_folder <- "gpt2_full_total_effect"
+data <- read.csv(sprintf("%s/ablation/%s/ablation_data_attn_out_pattern_double.csv", experiment, model_folder))
+data <- data %>% filter(grepl("6", position))
+data$layer <- as.numeric(data$layer)
+data$mem_perc <- (data$mem_sum / 10000) * 100
+data$cp_perc <- (data$cp_sum / 10000) * 100
+ggplot(data)+
+  geom_line(aes(x = layer, y = mem_perc))+
+  geom_point(aes(x = layer, y = mem_perc))
+library(tidyr) # For pivoting the data into a long format
+
+ggplot(data)+
+  geom_bar(aes(x = layer, y = mem_perc), stat="identity", fill="#a00000")+
+  scale_x_discrete(limits = c(0,1,2,3,4,5,6,7,8,9,10), labels=c("0-1","1-2","2-3","3-4","4-5","5-6","6-7","7-8","8-9","9-10","10-11"))+
+  #geom_hline(yintercept = 4.13, linetype="dashed", color = "red")+
+  #add title and labels
+  labs(x = "Layer", y = "Percentage", title = "Percentage of wins for the factual mechanism \nwhen the altered token position is ablated in the Attention Pattern.")
+
+  
+experiment <- "copyVSfact_factual_prova"
+model_folder <- "gpt2_0_full_total_effect"
+data <- read.csv(sprintf("%s/ablation/%s/ablation_data_attn_out_pattern.csv", experiment, model_folder))
+data <- data %>% filter(grepl("6", position))
+data$layer <- as.numeric(data$layer)
+data$mem_perc <- (data$mem_sum / 10000) * 100
+data$cp_perc <- (data$cp_sum / 10000) * 100
+
+
+ggplot(data)+
+  geom_bar(aes(x = layer, y = cp_perc), stat="identity", fill="#a00000")+
+  #geom_hline(yintercept = 4.13, linetype="dashed", color = "red")+
+  #add title and labels
+  labs(x = "Layer", y = "Percentage", title = "Percentage of wins for the factual mechanism \nwhen the altered token position is ablated in the Attention Pattern.")
+
+experiment <- "copyVSfact"
+model_folder <- "gpt2_full_total_effect"
+data <- read.csv(sprintf("%s/ablation/%s/ablation_data_attn_out_pattern.csv", experiment, model_folder))
+data <- data %>% filter(grepl("6", position))
+data$layer <- as.numeric(data$layer)
+data$mem_perc <- (data$mem_sum / 10000) * 100
+data$cp_perc <- (data$cp_sum / 10000) * 100
+
+ggplot(data)+
+  geom_bar(aes(x = layer, y = cp_perc), stat="identity", fill="#a00000")+
+  #geom_hline(yintercept = 4.13, linetype="dashed", color = "red")+
+  #add title and labels
+  labs(x = "Layer", y = "Percentage", title = "Percentage of wins for the factual mechanism \nwhen the altered token position is ablated in the Attention Pattern.")
+
+data_long <- tidyr::pivot_longer(data, cols = c(cp_perc, mem_perc), names_to = "variable", values_to = "value")
+ggplot(data_long, aes(x = layer, y = value, fill = variable)) +
+  geom_bar(stat="identity", position=position_dodge(width=0.7)) +
+  geom_hline(yintercept = 4.13, linetype="dashed", color = "red") +
+  scale_fill_manual(values = c("cp_perc" = "#1a80bb", "mem_perc" = "#a00000")) +
+  labs(x = "Layer", y = "Percentage", title = "Percentage of wins for the factual mechanism \nwhen the altered token position is ablated in the Attention Pattern.") +
+  theme_minimal()
 
 #################################################################################################################
 ##################################### LOGIT LENS ################################################################
@@ -60,38 +134,141 @@ create_heatmap_base <- function(data, x, y, fill) {
 
 create_heatmap <- function(data, x, y, fill, high_color) {
   p <- create_heatmap_base(data, x, y, fill) +
-    scale_fill_gradient2(low = "black", mid = "white", high = high_color, midpoint = 0) +
+    #scale_fill_gradient2(low = "black", mid = "white", high = high_color, limits = c(0,31), name = "Logit") +
+    #scale_fill_gradient2(low = "black", mid = "white", high = high_color, name = "Logit") +
+    scale_fill_gradient2(low = high_color, mid= high_color, high = "white", name = "Logit") +
+    
     theme_minimal() +
     #addforce to have all the labels
-    scale_y_continuous(breaks = seq(0,n_layers,1)) +
-    scale_x_continuous(breaks = seq(0,n_positions,1), labels = positions_name) +
-    labs(x = "Position", y = "Layer")+
+    scale_x_continuous(breaks = seq(0,n_layers - 1,1)) +
+    scale_y_continuous(breaks = seq(0,n_relevant_position -1,1), labels = relevant_position) +
+    scale_y_reverse(breaks = seq(0,n_relevant_position -1,1), labels = relevant_position)+
+    labs(x = "Layer", y = "Position")+
+    #fix intenxity of fill
     theme(
-      axis.text.x = element_text(size=AXIS_TEXT_SIZE, angle = 90),
-      axis.text.y = element_text(size=AXIS_TEXT_SIZE),
+      axis.text.x = element_text(size=AXIS_TEXT_SIZE),
+      axis.text.y = element_text(size=AXIS_TEXT_SIZE,),
       #remove background grid
       panel.grid.major = element_blank(),
       panel.grid.minor = element_blank(),
       axis.title.x = element_text(size = AXIS_TITLE_SIZE),
       axis.title.y = element_text(size = AXIS_TITLE_SIZE),
       legend.text = element_text(size = 30),
-      legend.title = element_text(size = 50),
+      legend.title = element_text(size = AXIS_TEXT_SIZE),
       #remove the legend\
-      legend.position = "none",
+      legend.position = "bottom",
+      #increase the legend size
+      legend.key.size = unit(2, "cm"),
       # move the y ticks to the right
-    )
+    ) 
   return(p)
 }
 
-
+experiment <- "copyVSfact_logit_index"
+model_folder <- "gpt2_full"
 data <- read.csv(sprintf("%s/logit_lens/%s/logit_lens_data.csv", experiment, model_folder))
 number_of_position <- max(as.numeric(data$position))
 data_resid_post <- data %>% filter(grepl("resid_post", component))
-p <- create_heatmap(data_resid_post, "position", "layer", "mem",  "#E31B23")
-ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_mem.pdf", model, experiment), p, width = 50, height = 50, units = "cm")
+data_resid_post$position_name <- positions_name[data_resid_post$position + 1]
+#filter just the relevant positions
+data_resid_post <- data_resid_post %>% filter(position == 1 | position==4 | position == 5 | position== 6 | position==8 |  position == 11 | position== 12)
+unique_positions <- unique(data_resid_post$position)
+position_mapping <- setNames(seq(0, length(unique_positions) - 1), unique_positions)
+# Apply the mapping to create a new column
+data_resid_post$mapped_position <- unname(position_mapping[as.character(data_resid_post$position)])
 
-p <- create_heatmap(data_resid_post, "position", "layer", "cp",  "#005CAB")
-ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_cp.pdf", model, experiment), p, width = 50, height = 50, units = "cm")
+#rename the columns name of data_resid_post$mem
+
+
+p <- create_heatmap(data_resid_post, "layer","mapped_position", "mem_idx",  "#E31B23")
+p
+ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_mem.pdf", model, experiment), p, width = 50, height = 30, units = "cm")
+
+p <- create_heatmap(data_resid_post, "layer", "mapped_position", "cp_idx",  "#005CAB")
+p
+ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_cp.pdf", model, experiment), p, width = 50, height = 30, units = "cm")
+
+data_resid_post$ratio<- data_resid_post$cp / data_resid_post$mem 
+
+p <- create_heatmap(data_resid_post, "layer", "mapped_position", "ratio",  "darkgreen")
+p
+ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_cp.pdf", model, experiment), p, width = 50, height = 30, units = "cm")
+
+
+
+
+
+
+library(ggplot2)
+library(patchwork)
+
+# First Plot for 'mem'
+p1 <- ggplot(data = data_resid_post, aes(x = layer, y = mem, group = position_name, color = position_name)) + 
+  geom_line(size=2) +
+  geom_point(size=5) + # Optional, adds points to the lines
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(0,n_layers,1)) +
+  labs(
+       x = "Layer",
+       y = "Logit for Factual Token",
+       color = "Position") +
+  #ylim(0, 8)+
+  scale_color_discrete(name = "Position") + 
+  theme(
+    axis.text.x = element_text(size=30),
+    axis.text.y = element_text(size=30),
+    #remove background grid
+    axis.title.x = element_text(size = 35 ),
+    axis.title.y = element_text(size = 35 ),
+    legend.text = element_text(size = 30),
+    legend.title = element_text(size = 35),
+    #remove the legend\
+    legend.position = "bottom",
+    # move the y ticks to the right
+  ) +
+  #two lines legend
+  guides(color = guide_legend(ncol = 2))
+
+data_resid_post <- data_resid_post %>% filter(position_name == "Subject" |
+                                              position_name == "Relation Last" |
+                                              position_name == "Attribute*" |
+                                              position_name == "Subject Repeat"|
+                                              position_name == "Last")
+
+
+# Second Plot for 'cp'
+p2 <- ggplot(data = data_resid_post, aes(x = layer, y = diff, group = position_name, color = position_name)) + 
+  geom_line(size=2) +
+  geom_point(size=4) + # Optional, adds points to the lines
+  geom_hline(yintercept = 0, linetype="dashed", color = "red", size=2) +
+  #add notation
+  annotate("text", x = 11, y = 1.2, label = "Competition Threshold", color = "red", size = 8, hjust = 1) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(0,n_layers,1)) +
+  labs(x = "Layer",
+       y = "Logit for Altered Token", # And the y-axis label change
+       color = "Position") +
+  #ylim(0, 8)+
+  scale_color_discrete(name = "Position") +
+  theme(
+      axis.text.x = element_text(size=30),
+      axis.text.y = element_text(size=30),
+      #remove background grid
+      axis.title.x = element_text(size = 35 ),
+      axis.title.y = element_text(size = 35 ),
+      legend.text = element_text(size = 30),
+      legend.title = element_text(size = 35),
+      #remove the legend\
+      legend.position = "bottom",
+      # move the y ticks to the right
+  ) +
+  #two lines legend
+  guides(color = guide_legend(ncol = 2)) 
+p2
+
+#ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_mem.pdf", model, experiment), p1, width = 40, height = 35, units = "cm")
+ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_diff.pdf", model, experiment), p2, width = 40, height = 35, units = "cm")
+
 
 
 
@@ -114,7 +291,7 @@ create_heatmap <- function(data, x, y, fill, head=FALSE) {
     #addforce to have all the labels
     scale_y_discrete(breaks = seq(0,n_layers,1)) +
     scale_x +
-    #labs(fill = "% difference") +
+    labs(fill = "Logit Diff") +
     theme(
       axis.text.x = element_text(size=AXIS_TEXT_SIZE, angle = angle),
       axis.text.y = element_text(size=AXIS_TEXT_SIZE),
@@ -124,9 +301,11 @@ create_heatmap <- function(data, x, y, fill, head=FALSE) {
       axis.title.x = element_text(size = AXIS_TITLE_SIZE),
       axis.title.y = element_text(size = AXIS_TITLE_SIZE),
       legend.text = element_text(size = 30),
-      legend.title = element_text(size = AXIS_TITLE_SIZE),
+      legend.title = element_text(size = 30),
       #remove the legend\
-      legend.position = "none",
+      legend.position = "bottom",
+      # increase the size of the legend
+      legend.key.size = unit(2, "cm"),
       # move the y ticks to the right
     )
   return(p)
@@ -151,9 +330,97 @@ data_head_$layer <- factor(data_head_$layer, levels = c(0:max_layer))
 data_head_$head <- factor(data_head_$head, levels = c(0:max_head))
 colnames(data_head_)[1] <- "Layer"
 colnames(data_head_)[2] <- "Head"
-p <- create_heatmap(data_head_, "Head", "Layer", "diff_mean", head=TRUE)
-ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attribution_head_position%s.pdf", model, experiment, number_of_position), p, width = 50, height = 50, units = "cm")
+p <- create_heatmap(data_head_, "Layer", "Head", "diff_mean", head=TRUE)
+p
+ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attribution_head_position%s.pdf", model, experiment, number_of_position), p, width = 50, height = 40, units = "cm")
 
+
+############ ATtn MLP lineplot ########################
+data_mlp <- data %>% filter(grepl("^[0-9]+_mlp_out$", label))
+data_mlp <- data_mlp %>% separate(label, c("layer"), sep = "_mlp_out")
+data_attn <- data %>% filter(grepl("^[0-9]+_attn_out$", label))
+data_attn <- data_attn %>% separate(label, c("layer"), sep = "_attn_out")
+max_position <- max(as.numeric(data_mlp$position))
+#take just the last position
+data_mlp <- data_mlp %>% filter(position == max_position)
+data_attn <- data_attn %>% filter(position == max_position)
+
+#merge the two dataframe
+data_mlp$attn <- data_attn$diff_mean
+
+library(ggplot2)
+library(ggsci)
+#rename "Diff Mean" to MLP Block an "Attn" to Attention Block
+data_mlp <- data_mlp %>% rename("MLP Block" = diff_mean)
+data_mlp <- data_mlp %>% rename("Attention Block" = attn)
+
+# Plot using ggplot2
+# Corrected Plot using ggplot2
+ggplot(data_mlp, aes(x = as.numeric(layer))) +  # Ensure layer is treated as numeric
+  geom_line(aes(y = `MLP Block`, colour = "MLP Block"), group=1, size = 2) +  
+  geom_point(aes(y = `MLP Block`, colour = "MLP Block"), size = 5) +
+  geom_line(aes(y = `Attention Block`, colour = "Attention Block"), group=1, size = 2) +  
+  geom_point(aes(y = `Attention Block`, colour = "Attention Block"), size = 5) +
+  #scale_colour_manual("", values = c("MLP Block" = "blue", "Attention Block" = "red")) +
+  geom_hline(yintercept = 0, linetype="dashed", color = "#E7040F", size=2) +
+  annotate("text", x = 2, y = -0.05, label = "Competition Threshold", color = "#E7040F", size = 8, hjust = 1) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(0,n_layers,1)) +
+  labs(x = "Layer",
+       y = "Logit difference", # And the y-axis label change
+       color = "Component:") +
+  #ylim(0, 8)+
+  scale_color_discrete(name = "Position" ) +
+  scale_color_manual(values = c(palette[4], palette[3])) +
+  # use UChicago palette
+  #scale_color_npg()+
+  theme(
+    axis.text.x = element_text(size=30),
+    axis.text.y = element_text(size=30),
+    #remove background grid
+    axis.title.x = element_text(size = 35 ),
+    axis.title.y = element_text(size = 35 ),
+    legend.text = element_text(size = 30),
+    legend.title = element_text(size = 35),
+    #remove the legend\
+    legend.position = "bottom",
+    # move the y ticks to the right
+  ) +
+  #two lines legend
+  guides(color = guide_legend(ncol = 2)) 
+ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attn_mlp_position%s.pdf", model, experiment, max_position), width = 50, height = 40, units = "cm")
+
+library(ggplot2)
+library(tidyr)  # For pivoting data
+
+# Assuming data_mlp is your dataframe and it has columns: layer, diff_mean (for MLP), attn (for Attention)
+data_mlp_long <- pivot_longer(data_mlp, cols = c(`MLP Block`, `Attention Block`), names_to = "Block", values_to = "Value")
+#Rename diff_mean to MLP Block and attn to Attention Block in the Block column
+data_mlp_long$Block <- gsub("diff_mean", "MLP Block", data_mlp_long$Block)
+data_mlp_long$Block <- gsub("attn", "Attention Block", data_mlp_long$Block)
+
+ggplot(data_mlp_long, aes(x = as.numeric(layer), y = Value, fill = Block)) +
+  geom_col(position = position_dodge()) +  # Use geom_col for bar plots; position_dodge for side by side
+  geom_hline(yintercept = 0, linetype = "dashed", color = "#E7040F", size = 2) +
+  annotate("text", x = 2, y = -0.05, label = "Competition Threshold", color = "#E7040F", size = 8, hjust = 1) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(0, max(data_mlp$layer), 1)) +
+  scale_fill_manual(values = c(palette[4], palette[3])) +
+  labs(x = "Layer", y = "Logit Difference", fill = "Component:") +
+  theme(
+    axis.text.x = element_text(size = 30),
+    axis.text.y = element_text(size = 30),
+    axis.title.x = element_text(size = 35),
+    axis.title.y = element_text(size = 35),
+    legend.text = element_text(size = 30),
+    legend.title = element_text(size = 35),
+    legend.position = "bottom"
+  ) +
+  guides(fill = guide_legend(ncol = 2))
+ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attn_mlp_position%s_hist.pdf", model, experiment, max_position), width = 50, height = 40, units = "cm")
+
+
+########################## APPENDIX #######################################################
 ######## mlp out #######
 data_mlp <- data %>% filter(grepl("^[0-9]+_mlp_out$", label))
 data_mlp <- data_mlp %>% separate(label, c("layer"), sep = "_mlp_out")
@@ -187,77 +454,20 @@ p <- create_heatmap(data_attn, "Position", "Layer", "diff_mean")
 ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attribution_attn_out.pdf", model, experiment), p, width = 50, height = 50, units = "cm")
 
 
-############################################################################################################
-######################################## HEAD PATTERN  #####################################################
-############################################################################################################
-
-create_heatmap <- function(data, x, y, fill, head=FALSE) {
-  p <- create_heatmap_base(data, x, y, fill) +
-    theme_minimal() +
-    #addforce to have all the labels
-    scale_y_discrete(breaks = seq(0, n_positions,1), labels = positions_name) +
-    scale_x_discrete(breaks = seq(0, n_positions,1), labels = positions_name) +
-    #labs(fill = "% difference") +
-    theme(
-      axis.text.x = element_text(size=AXIS_TEXT_SIZE, angle = 90),
-      axis.text.y = element_text(size=AXIS_TEXT_SIZE),
-      #remove background grid
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank(),
-      axis.title.x = element_text(size = AXIS_TITLE_SIZE),
-      axis.title.y = element_text(size = AXIS_TITLE_SIZE),
-      legend.text = element_text(size = 30),
-      legend.title = element_text(size = 50),
-      #remove the legend\
-      legend.position = "none",
-      # move the y ticks to the right
-    )
-  return(p)
-}
-
-
-plot_pattern <- function(l, h, data){
-  selected_layer <- l
-  selected_head <- h
-  data_head <- data %>% filter(layer == selected_layer & head == selected_head)
-  max_source_position <- max(as.numeric(data_head$source_position))
-  max_dest_position <- max(as.numeric(data_head$dest_position))
-  data_head$source_position <- factor(data_head$source_position, levels = c(0:max_source_position))
-  data_head$dest_position <- factor(data_head$dest_position, levels = c(0:max_dest_position))
-  
-  #reorder the source_position and dest_position contrary to the order of the factor
-  data_head$source_position <- factor(data_head$source_position, levels = rev(levels(data_head$source_position)))
-  
-  p <- create_heatmap(data_head, "dest_position", "source_position", "value", paste("Layer", selected_layer, "Head", selected_head, sep = " "))
-  return(p)
-}
-
-
-data <- read.csv(sprintf("%s/head_pattern/%s/head_pattern_data.csv", experiment, model_folder))
-#data <- read.csv("head_pattern_data.csv")
-
-number_of_layers <- max(as.numeric(data$layer))
-number_of_heads <- max(as.numeric(data$head))
-for (i in c(1:4)){
-    l <- layer_pattern[i]
-    h <- head_pattern[i]
-    p <- plot_pattern(l, h, data)
-    ggsave(sprintf("PaperPlot/%s_%s_heads_pattern/head_pattern_layer_%s_head_%s.pdf", model, experiment, l,h), p, width = 50, height = 50, units = "cm")
-}
-
 
 ########################################################################################################################
 ######################################## HEAD PATTERN modificated  #####################################################
 ########################################################################################################################
 
 # Load your data
+experiment <- "copyVSfactNoBos"
 data <- read.csv(sprintf("%s/head_pattern/%s/head_pattern_data.csv", experiment, model_folder))
 create_heatmap <- function(data, x, y, fill) {
   p <- create_heatmap_base(data, x, y, fill) +
     theme_minimal() +
     #addforce to have all the labels
     scale_fill_gradient2(low = "lightgray" , high = "#1f6f6f", midpoint = 0) +
-    scale_x_continuous(breaks = seq(0, n_positions,1), labels = positions_name) +
+    scale_x_continuous(breaks = seq(0, length(relevant_position) - 1,1), labels = relevant_position) +
     labs(x = "Position", y = "Heads") +
     theme(
       axis.text.x = element_text(size=30, angle = 90),
@@ -288,16 +498,143 @@ data_final <- data_filtered %>%
 
 # Step 3: Prepare the data for plotting
 data_final$y_label <- paste("Layer", data_final$layer, "| Head", data_final$head)
-
+#filter just the relevant positions
+data_final <- data_final %>% filter(dest_position == 1 | dest_position==4 | dest_position == 5 | dest_position== 6 | dest_position==8 |  dest_position == 11 | dest_position== 12)
+unique_positions <- unique(data_final$dest_position)
+position_mapping <- setNames(seq(0, length(unique_positions) - 1), unique_positions)
+# Apply the mapping to create a new column
+data_final$mapped_position <- unname(position_mapping[as.character(data_final$dest_position)])
 # Create and plot the heatmap
-heatmap_plot <- create_heatmap(data_final, "dest_position", "y_label", "value")
-ggsave(sprintf("PaperPlot/%s_%s_heads_pattern/head_pattern_layer.pdf", model, experiment), heatmap_plot, width = 50, height = 20, units = "cm")
+heatmap_plot <- create_heatmap(data_final, "mapped_position", "y_label", "value")
+experiment <- "copyVSfact"
+ggsave(sprintf("PaperPlot/%s_%s_heads_pattern/head_pattern_layer.pdf", model, experiment), heatmap_plot, width = 50, height = 40, units = "cm")
 
 ##################################################################################################################
 ########################################### ABLATION #############################################################
 ##################################################################################################################
+create_heatmap <- function(data, x, y, fill, head=FALSE) {
+  if(head){
+    scale_x <- scale_x_discrete(breaks = seq(0,n_layers,1)) 
+    angle = 0
+  } else {
+    scale_x <- scale_x_discrete(breaks = seq(0, n_positions,1), labels = positions_name)
+    angle = 90
+  }
+  print(n_positions)
+  p <- create_heatmap_base(data, x, y, fill, midpoint = -4.10) +
+    theme_minimal() +
+    #addforce to have all the labels
+    scale_y_discrete(breaks = seq(0,n_layers,1)) +
+    scale_x +
+    #labs(fill = "% difference") +
+    theme(
+      axis.text.x = element_text(size=AXIS_TEXT_SIZE, angle = angle),
+      axis.text.y = element_text(size=AXIS_TEXT_SIZE),
+      #remove background grid
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.title.x = element_text(size = AXIS_TITLE_SIZE),
+      axis.title.y = element_text(size = AXIS_TITLE_SIZE),
+      legend.text = element_text(size = 30),
+      legend.title = element_text(size = AXIS_TITLE_SIZE),
+      #remove the legend\
+      legend.position = "none",
+      # move the y ticks to the right
+    )
+  return(p)
+}
+############################ mlp_out ########################################
+mlp_out <- function(data) {
+  # base_diff <- data %>% filter(component == "base")
+  # base_diff <- base_diff %>% select(diff)
+  # base_diff <- base_diff[1,1]
+  
+  data_mlp_out <- data %>% filter(grepl("mlp_out", component))
+  max_layer <- max(as.numeric(data_mlp_out$layer))
+  max_position <- max(as.numeric(data_mlp_out$position))
+  data_mlp_out$layer <- factor(data_mlp_out$layer, levels = c(0:max_layer))
+  data_mlp_out$position <- factor(data_mlp_out$position, levels = c(0:max_position))
+  
+  #base_diff as the avarage across all the layers and positions
+  # base_diff <- mean(data_mlp_out$diff)
+  # 
+  # data_mlp_out$diff <- (base_diff - data_mlp_out$diff)
+  
+  ####### mem
+  #  p_mem <- create_heatmap(data_mlp_out, "position", "layer", "mem", "MLP out ablation - mem")
+  ###### cp
+  #  p_cp <- create_heatmap(data_mlp_out, "position", "layer", "cp", "MLP out ablation - cp")
+  ###### mem - cp
+  colnames(data_mlp_out)[colnames(data_mlp_out) == "position"] <- "Position"
+  colnames(data_mlp_out)[colnames(data_mlp_out) == "layer"] <- "Layer"
+  p <- create_heatmap(data_mlp_out, "Position", "Layer", "diff")
+  ggsave(sprintf("PaperPlot/%s_%s_ablation/mlp_out.pdf", model, experiment), p, width = 50, height = 50, units = "cm")
+}
+############################ attn_out ########################################
+attn_out <- function(data) {
+  data_attn_out <- data %>% filter(grepl("attn_out", component))
+  max_layer <- max(as.numeric(data_attn_out$layer))
+  max_position <- max(as.numeric(data_attn_out$position))
+  data_attn_out$layer <- factor(data_attn_out$layer, levels = c(0:max_layer))
+  data_attn_out$position <- factor(data_attn_out$position, levels = c(0:max_position))
+  # base_diff <- mean(data_attn_out$diff)
+  # data_attn_out$diff <- ( data_attn_out$diff )
+  ####### mem
+  # p_mem <- create_heatmap(data_attn_out, "position", "layer", "mem", "Attn out ablation - mem")
+  #p_cp <- create_heatmap(data_attn_out, "position", "layer", "cp", "Attn out ablation - cp")
+  colnames(data_attn_out)[colnames(data_attn_out) == "position"] <- "Position"
+  colnames(data_attn_out)[colnames(data_attn_out) == "layer"] <- "Layer"
+  p <- create_heatmap(data_attn_out, "Position", "Layer", "diff")
+  ggsave(sprintf("PaperPlot/%s_%s_ablation/attn_out.pdf", model, experiment), p, width = 50, height = 50, units = "cm")
+}
+
+############################## HEAD ##########################################
+head <- function(data) {
+  data_head <- data %>% filter(grepl("head", component))
+  max_layer <- max(as.numeric(data_head$layer))
+  max_head <- max(as.numeric(data_head$head))
+  data_head$layer <- factor(data_head$layer, levels = c(0:max_layer))
+  data_head$head <- factor(data_head$head, levels = c(0:max_head))
+  base_diff <- mean(data_head$diff)
+  data_head$diff <- (base_diff - data_head$diff)
+  #p_mem <- create_heatmap(data_head, "head", "layer", "mem", "Head ablation - mem")
+  #p_cp <- create_heatmap(data_head, "head", "layer", "cp", "Head ablation - cp")
+  colnames(data_head)[colnames(data_head) == "head"] <- "Head"
+  colnames(data_head)[colnames(data_head) == "layer"] <- "Layer"
+  p <- create_heatmap(data_head, "Head", "Layer", "diff", TRUE)
+  ggsave(sprintf("PaperPlot/%s_%s_ablation/head.pdf", model, experiment), p, width = 50, height = 50, units = "cm")
+}
 
 
+
+folder_name <- sprintf("~/Repository/Competition_of_Mechanisms/results/%s/ablation/%s_total_effect", experiment, model_folder_abl)
+files <- list.files(path = folder_name, pattern = "*.csv", full.names = FALSE)
+print(files)
+#check if "ablation_data.csv" is in the list
+if (!("ablation_data.csv" %in% files)) {
+  if ("ablation_data_attn_out.csv" %in% files) {
+    data <- read.csv(paste(folder_name, "ablation_data_attn_out.csv", sep = "/"))
+    attn_out(data)
+  }
+  if ("ablation_data_mlp_out.csv" %in% files) {
+    data <- read.csv(paste(folder_name, "ablation_data_mlp_out.csv", sep = "/"))
+    mlp_out(data)
+  }
+  if ("ablation_data_head.csv" %in% files) {
+    data <- read.csv(paste(folder_name, "ablation_data_head.csv", sep = "/"))
+    head(data)
+  }
+  if ("ablation_data_resid_pre.csv" %in% files) {
+    data <- read.csv(paste(folder_name, "ablation_data_resid_pre.csv", sep = "/"))
+    resid_pre(data)
+  }
+} else {
+  data <- read.csv(paste(folder_name, "ablation_data.csv", sep = "/"))
+  mlp_out(data)
+  attn_out(data)
+  head(data)
+  resid_pre(data)
+}
 
 ############################################################################################################
 ########################################## SELF-SIMILARITY #############################################
@@ -306,6 +643,7 @@ ggsave(sprintf("PaperPlot/%s_%s_heads_pattern/head_pattern_layer.pdf", model, ex
 
 # Load the DataFrame
 originaldf <- read_csv(sprintf("%s/evaluate_mechanism_fix_partition.csv", experiment))
+originaldf <- read_csv(sprintf("%s/gpt2_evaluate_mechanism_ss_fixed_partition.csv", experiment))
 
 # Filtering and calculating percentages for self-similarity
 df <- originaldf %>% 
@@ -369,3 +707,74 @@ ggplot() +
                                                                                               linetype = guide_legend(nrow = 1, title.position = "top", title.hjust = 0.5))
   #save plot
 ggsave("results/PaperPlot/copyVSfact_self_similarity.pdf", width = 14, height = 18, units = "cm")
+
+
+
+
+
+
+
+
+
+
+
+
+############################################### OLD OLD OLD OLD ###########################################################
+# 
+# ############################################################################################################
+# ######################################## HEAD PATTERN  #####################################################
+# ############################################################################################################
+# 
+# create_heatmap <- function(data, x, y, fill, head=FALSE) {
+#   p <- create_heatmap_base(data, x, y, fill) +
+#     theme_minimal() +
+#     #addforce to have all the labels
+#     scale_y_discrete(breaks = seq(0, n_positions,1), labels = positions_name) +
+#     scale_x_discrete(breaks = seq(0, n_positions,1), labels = positions_name) +
+#     #labs(fill = "% difference") +
+#     theme(
+#       axis.text.x = element_text(size=AXIS_TEXT_SIZE, angle = 90),
+#       axis.text.y = element_text(size=AXIS_TEXT_SIZE),
+#       #remove background grid
+#       panel.grid.major = element_blank(),
+#       panel.grid.minor = element_blank(),
+#       axis.title.x = element_text(size = AXIS_TITLE_SIZE),
+#       axis.title.y = element_text(size = AXIS_TITLE_SIZE),
+#       legend.text = element_text(size = 30),
+#       legend.title = element_text(size = 50),
+#       #remove the legend\
+#       legend.position = "none",
+#       # move the y ticks to the right
+#     )
+#   return(p)
+# }
+# 
+# 
+# plot_pattern <- function(l, h, data){
+#   selected_layer <- l
+#   selected_head <- h
+#   data_head <- data %>% filter(layer == selected_layer & head == selected_head)
+#   max_source_position <- max(as.numeric(data_head$source_position))
+#   max_dest_position <- max(as.numeric(data_head$dest_position))
+#   data_head$source_position <- factor(data_head$source_position, levels = c(0:max_source_position))
+#   data_head$dest_position <- factor(data_head$dest_position, levels = c(0:max_dest_position))
+#   
+#   #reorder the source_position and dest_position contrary to the order of the factor
+#   data_head$source_position <- factor(data_head$source_position, levels = rev(levels(data_head$source_position)))
+#   
+#   p <- create_heatmap(data_head, "dest_position", "source_position", "value", paste("Layer", selected_layer, "Head", selected_head, sep = " "))
+#   return(p)
+# }
+# 
+# 
+# data <- read.csv(sprintf("%s/head_pattern/%s/head_pattern_data.csv", experiment, model_folder))
+# #data <- read.csv("head_pattern_data.csv")
+# 
+# number_of_layers <- max(as.numeric(data$layer))
+# number_of_heads <- max(as.numeric(data$head))
+# for (i in c(1:4)){
+#     l <- layer_pattern[i]
+#     h <- head_pattern[i]
+#     p <- plot_pattern(l, h, data)
+#     ggsave(sprintf("PaperPlot/%s_%s_heads_pattern/head_pattern_layer_%s_head_%s.pdf", model, experiment, l,h), p, width = 50, height = 50, units = "cm")
+# }
