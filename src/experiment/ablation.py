@@ -297,7 +297,7 @@ class Ablate(BaseExperiment):
         
         if component in self.position_component:
             storage = LogitStorage(
-                n_layers=self.model.cfg.n_layers,
+                n_layers=self.model.cfg.n_layers-1,
                 length=length,
                 experiment=self.experiment,
             )
