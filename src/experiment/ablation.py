@@ -61,7 +61,7 @@ class Ablate(BaseExperiment):
 
         hooks = {}
 
-        for layer in range(self.model.cfg.n_layers):
+        for layer in range(self.model.cfg.n_layers - 1):
             hooks[f"L{layer}"] = (
                 f"blocks.{layer}.attn.hook_pattern",
                 partial(
@@ -400,7 +400,7 @@ class Ablate(BaseExperiment):
 
         if component in self.position_component:
             data = []
-            for layer in range(0,self.model.cfg.n_layers):
+            for layer in range(0,self.model.cfg.n_layers-1):
                 for position in range(result[0][layer].shape[0]):
                     data.append(
                         {
@@ -429,7 +429,7 @@ class Ablate(BaseExperiment):
 
         elif component in self.head_component:
             data = []
-            for layer in range(self.model.cfg.n_layers):
+            for layer in range(self.model.cfg.n_layers-1):
                 for head in range(self.model.cfg.n_heads):
                     data.append(
                         {
