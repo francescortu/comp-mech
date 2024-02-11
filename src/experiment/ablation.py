@@ -11,7 +11,7 @@ from src.experiment import LogitStorage, HeadLogitStorage
 from functools import partial
 from copy import deepcopy
 
-WINDOW = 4
+WINDOW = 2
 
 class Ablate(BaseExperiment):
     def __init__(
