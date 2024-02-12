@@ -179,7 +179,7 @@ class LogitLens(BaseExperiment):
         self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"],
     ):
         super().__init__(dataset, model, batch_size, experiment)
-        self.valid_blocks = ["mlp_out", "resid_pre", "resid_post", "attn_out"]
+        self.valid_blocks = ["mlp_out", "resid_pre", "resid_post","resid_mid", "attn_out"]
         self.valid_heads = ["head"]
         self.mean_logit_per_layer = None
 

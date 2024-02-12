@@ -212,10 +212,7 @@ class LogitAttribution(BaseExperiment):
         data = []
         for i, label in enumerate(labels):  # type: ignore
             for position in range(mem.shape[-1]):
-                if position == 2:
-                    print(mem[i, :, position].mean(-1))
-                    print(mem[i, :, position].shape)
-                    print(torch.isnan(mem[i, :, position]).any())
+                
                 data.append(
                     {
                         "label": label,
@@ -228,4 +225,60 @@ class LogitAttribution(BaseExperiment):
                         "diff_std": diff[i, :, position].std().item(),
                     }
                 )
+        # index of head 
+        head_indexes = [i for i, label in enumerate(labels) if "H" in label]
+        #sum all the head at position 12
+        mem_all = mem[head_indexes, :, 12].mean()
+        cp_all = cp[head_indexes, :, 12].mean()
+        mem_all_std = mem[head_indexes, :, 12].std()
+        cp_all_std = cp[head_indexes, :, 12].std()
+        data.append(
+            {
+                "label": "all_heads",
+                "position": 12,
+                "mem_mean": mem_all.item(),
+                "cp_mean": cp_all.item(),
+                "diff_mean": 0,
+                "mem_std": mem_all_std.item(),
+                "cp_std": cp_all_std.item(),
+                "diff_std": 0,
+            }
+        )
+        #doing the same but just for layer 10 and 11
+        head_indexes = [i for i, label in enumerate(labels) if ("H" in label and "L10" in label)]
+        mem_all = mem[head_indexes, :, 12].mean()
+        cp_all = cp[head_indexes, :, 12].mean()
+        mem_all_std = mem[head_indexes, :, 12].std()
+        cp_all_std = cp[head_indexes, :, 12].std()
+        data.append(
+            {
+                "label": "all_heads_L10",
+                "position": 12,
+                "mem_mean": mem_all.item(),
+                "cp_mean": cp_all.item(),
+                "diff_mean": 0,
+                "mem_std": mem_all_std.item(),
+                "cp_std": cp_all_std.item(),
+                "diff_std": 0,
+            }
+        )
+        # doing the same but just for layer 11
+        head_indexes = [i for i, label in enumerate(labels) if ("H" in label and "L11" in label)]
+        mem_all = mem[head_indexes, :, 12].mean()
+        cp_all = cp[head_indexes, :, 12].mean()
+        mem_all_std = mem[head_indexes, :, 12].std()
+        cp_all_std = cp[head_indexes, :, 12].std()
+        data.append(
+            {
+                "label": "all_heads_L11",
+                "position": 12,
+                "mem_mean": mem_all.item(),
+                "cp_mean": cp_all.item(),
+                "diff_mean": 0,
+                "mem_std": mem_all_std.item(),
+                "cp_std": cp_all_std.item(),
+                "diff_std": 0,
+            }
+        )
+        
         return pd.DataFrame(data)
