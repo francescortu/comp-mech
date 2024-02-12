@@ -131,7 +131,8 @@ class BaseDataset(Dataset):
         )
         self.similarity = similarity
         self.premise = premise
-        self.full_data = self.similarity_data
+        if similarity[0] is True:
+            self.full_data = self.similarity_data
         self.prompts = []
         self.tokenized_prompts = []
         self.targets = []
