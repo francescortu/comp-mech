@@ -11,7 +11,7 @@ from src.experiment import LogitStorage, HeadLogitStorage
 from functools import partial
 from copy import deepcopy
 
-WINDOW = 2
+WINDOW = 4
 
 class Ablate(BaseExperiment):
     def __init__(
@@ -297,7 +297,7 @@ class Ablate(BaseExperiment):
         
         if component in self.position_component:
             storage = LogitStorage(
-                n_layers=self.model.cfg.n_layers-1,
+                n_layers=self.model.cfg.n_layers-WINDOW+1,
                 length=length,
                 experiment=self.experiment,
             )
@@ -309,7 +309,7 @@ class Ablate(BaseExperiment):
             object_position.append(batch["obj_pos"])
             _, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
             
-            for layer in range(0, self.model.cfg.n_layers-1, 1):
+            for layer in range(0, self.model.cfg.n_layers+1-WINDOW, 1):
                 for position in range(length):
                     if position != self.dataset.obj_pos[0]:
                         
@@ -400,7 +400,7 @@ class Ablate(BaseExperiment):
 
         if component in self.position_component:
             data = []
-            for layer in range(0,self.model.cfg.n_layers-1):
+            for layer in range(0,self.model.cfg.n_layers+1-WINDOW):
                 for position in range(result[0][layer].shape[0]):
                     data.append(
                         {
@@ -429,7 +429,7 @@ class Ablate(BaseExperiment):
 
         elif component in self.head_component:
             data = []
-            for layer in range(self.model.cfg.n_layers-1):
+            for layer in range(self.model.cfg.n_layers+1-WINDOW):
                 for head in range(self.model.cfg.n_heads):
                     data.append(
                         {
