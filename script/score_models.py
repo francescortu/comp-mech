@@ -258,10 +258,13 @@ if __name__ == "__main__":
         type=str,
         default=[
             "gpt2",
-            "EleutherAI/pythia-160m",
-            "EleutherAI/pythia-410m",
-            "EleutherAI/pythia-1b",
-            "EleutherAI/pythia-1.4b",
+            "gpt2-medium",
+            "gpt2-large",
+            "gpt2-xl",
+            #"EleutherAI/pythia-160m",
+            #"EleutherAI/pythia-410m",
+            #"EleutherAI/pythia-1b",
+            #"EleutherAI/pythia-1.4b",
             "EleutherAI/pythia-6.9b",
         ],
     )
