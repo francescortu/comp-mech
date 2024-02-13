@@ -11,7 +11,7 @@ from src.experiment import LogitStorage, HeadLogitStorage
 from functools import partial
 from copy import deepcopy
 
-WINDOW = 32
+WINDOW = 1
 
 class Ablate(BaseExperiment):
     def __init__(
@@ -375,19 +375,67 @@ class Ablate(BaseExperiment):
             
             for layer in range(0, self.model.cfg.n_layers, 1):
                 for position in range(length):
-                    if position == self.dataset.obj_pos[0] and layer in (10,11):
-                        def head_ablation_hook(activation, hook, head):
-                            activation[:, head, -1, 1:position ] = 0
-                            activation[:, head, -1, position+1:] = 0
+                    if position == self.dataset.obj_pos[0] and layer in (0,1,2,3,4,5,6):
+                        def head_ablation_hook(activation, hook, head, multiplicator):
+                            activation[:, head, -1, position ] = multiplicator * activation[:, head, -1, position]
+                            # activation[:, head, -1, position+1:] = 1.5 * activation[:, head, -1, position+1:]
                             return activation
                         hooks = []
-                        if layer == 10:
+                        if layer == 0:
                             hooks.append(
-                                (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7))
+                                (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7, multiplicator=1.5))
                             )
 
                             hooks.append(
-                                (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10))
+                                (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10, multiplicator=1.5))
+                            )
+                        if layer == 1:
+                            hooks.append(
+                                (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7, multiplicator=2))
+                            )
+
+                            hooks.append(
+                                (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=2))
+                            )
+                        if layer == 2:
+                            hooks.append(
+                                (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=2.5))
+                            )
+
+                            hooks.append(
+                                (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=2.5))
+                            )
+                        if layer == 3:
+                            hooks.append(
+                                (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=3.5))
+                            )
+
+                            hooks.append(
+                                (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=3.5))
+                            )
+                        if layer == 4:
+                            hooks.append(
+                                (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=4))
+                            )
+
+                            hooks.append(
+                                (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=4))
+                            )
+                        if layer == 5:
+                            hooks.append(
+                                (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=4.5))
+                            )
+
+                            hooks.append(
+                                (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=4.5))
+                            )
+                        if layer == 6:
+                            hooks.append(
+                                (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=5))
+                            )
+
+                            hooks.append(
+                                (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=5))
                             )
 
                         logit = self._run_with_hooks(batch, hooks)
@@ -427,7 +475,7 @@ class Ablate(BaseExperiment):
             lengths.remove(11)
         result = {}
         for length in tqdm(lengths, desc=f"Ablating {component}", total=len(lengths)):
-            result[length] = self.ablate_single_len_component_attn_pythia(
+            result[length] = self.ablate_factual_head(
                 length, component, normalize_logit, **kwargs
             )
 
