@@ -375,7 +375,7 @@ class Ablate(BaseExperiment):
             
             for layer in range(0, self.model.cfg.n_layers, 1):
                 for position in range(length):
-                    if position == self.dataset.obj_pos[0] and layer in (0,1,2,3,4,5,6):
+                    if position == self.dataset.obj_pos[0] and layer in (0,1,2,3,4,5,6,7):
                         def head_ablation_hook(activation, hook, head, multiplicator):
                             activation[:, head, -1, position ] = multiplicator * activation[:, head, -1, position]
                             # activation[:, head, -1, position+1:] = 1.5 * activation[:, head, -1, position+1:]
