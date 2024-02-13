@@ -308,7 +308,7 @@ class BaseDataset(Dataset):
         elif method == "logit":
             return self.generate_similarity_dataset_logit()
         elif method == "self-similarity":
-            return self.generate_self_similarity_dataset()
+            return self.generate_self_similarity_dataset_()
         else:
             raise ValueError("method must be either 'word2vec' or 'logit'")
 
@@ -356,113 +356,59 @@ class BaseDataset(Dataset):
             ) + 1
         print(similarity_group_count)
         return self.full_data
-        # torch.save(similarity_score_list, path)
-        # # generate 5 groups based on the similarity score
-        # (
-        #     quartile_1,
-        #     quartile_2,
-        #     quartile_3,
-        #     quartile_4,
-        #     quartile_5,
-        #     quartile_6,
-        # ) = torch.quantile(
-        #     similarity_score_list, torch.tensor([0.2, 0.4, 0.6, 0.8, 0.9, 0.95])
-        # )
-        # # quartile_1, quartile_2, quartile_3 = torch.quantile(similarity_score_list, torch.tensor([0.25, 0.5, 0.75]))
 
-        # ticks = [
-        #     0.15,
-        #     0.25,
-        #     0.35,
-        #     # 0.40,
-        #     0.45,
-        #     # 0.50,
-        #     0.55,
-        #     # 0.6,
-        #     0.65,
-        # ]
+    def generate_self_similarity_dataset_(self) -> List[dict]:
+        word2vec = api.load("word2vec-google-news-300")
+        similarity_score_list = []
+        for d in tqdm(
+            self.full_data,
+            desc="Generating self similarity tokens (word2vec)",
+            total=len(self.full_data),
+        ):
+            base_target = d["target_true"]
+            other_target = d["target_new"]
+            # remove first space if present
+            if other_target[0] == " ":
+                other_target = other_target[1:]
+            if base_target[0] == " ":
+                base_target = base_target[1:]
 
-        # # divide the similarity in group tick
-        # for d in self.full_data:
-        #     similarity_score = d["similarity_score"]
-        #     if similarity_score == -100:
-        #         d["similarity_group"] = -100
-        #         continue
-        #     if similarity_score < ticks[0]:
-        #         d["similarity_group"] = 0
-        #     elif similarity_score < ticks[1]:
-        #         d["similarity_group"] = 1
-        #     elif similarity_score < ticks[2]:
-        #         d["similarity_group"] = 2
-        #     elif similarity_score < ticks[3]:
-        #         d["similarity_group"] = 3
-        #     elif similarity_score < ticks[4]:
-        #         d["similarity_group"] = 4
-        #     elif similarity_score < ticks[5]:
-        #         d["similarity_group"] = 5
-        #     else:
-        #         d["similarity_group"] = 6
+            # compute similarity
+            try:
+                similarity_score = word2vec.similarity(base_target, other_target)  # type: ignore
+                similarity_score_list.append(similarity_score)
+            except:
+                similarity_score = -100
+            # save the similarity score
+            d["similarity_score"] = similarity_score
 
-        # # # assign a group to each data point based on the similarity score
-        # # for d in self.full_data:
-        # #     similarity_score = d["similarity_score"]
-        # #     if similarity_score == -100:
-        # #         d["similarity_group"] = -100
-        # #     elif similarity_score < quartile_1:
-        # #         d["similarity_group"] = 6
-        # #     elif similarity_score < quartile_2:
-        # #         d["similarity_group"] = 5
-        # #     elif similarity_score < quartile_3:
-        # #         d["similarity_group"] = 4
-        # #     elif similarity_score < quartile_4:
-        # #         d["similarity_group"] = 3
-        # #     elif similarity_score < quartile_5:
-        # #         d["similarity_group"] = 2
-        # #     elif similarity_score < quartile_6:
-        # #         d["similarity_group"] = 1
-        # #     else:
-        # #         d["similarity_group"] = 0
+        # sort full data by similarity score
+        self.full_data = sorted(self.full_data, key=lambda x: x["similarity_score"], reverse=True)
+        # split into bins, with the highest similarity scores first
+        high_similarity_bin = [self.full_data[:800]]
+        near_high_similarity_bins = [
+            self.full_data[800 + i * 10: 800 + (i + 1) * 10] for i in range(20)
+        ]
+        remaining_bins = [
+            self.full_data[i: i + 1000] for i in range(1000, len(self.full_data), 1000)
+        ]
+        similarity_score_bins = high_similarity_bin + near_high_similarity_bins + remaining_bins
 
-        # # for each group, random sample 400 data points and set the other to -100
-        # # First, collect data points by their groups
-        # grouped_data_points = defaultdict(list)
-        # for index, d in enumerate(self.full_data):
-        #     grouped_data_points[d["similarity_group"]].append(index)
+        # Assign similarity_group to each data point based on the bin it falls into
+        for i, bin in enumerate(similarity_score_bins):
+            for d in bin:
+                d["similarity_group"] = i
 
-        # # Now, sample 400 data points from each group and mark the rest as -100
-        # for group, indices in grouped_data_points.items():
-        #     if (
-        #         group == -100
-        #     ):  # Skip if the group is already for error-handled data points
-        #         continue
+        # Count the number of points in each group in full data
+        similarity_group_count = {}
+        for d in self.full_data:
+            similarity_group_count[d["similarity_group"]] = similarity_group_count.get(
+                d["similarity_group"], 0
+            ) + 1
+        print(similarity_group_count)
+        return self.full_data
 
-        #     # Shuffle the indices to ensure randomness
-        #     random.shuffle(indices)
-
-        #     # If the group has more than 400 data points, sample 400, else take all
-        #     selected_indices = set(indices[:400])
-        #     # Update the groups for non-selected data points
-        #     for index in indices:
-        #         if index not in selected_indices:
-        #             self.full_data[index]["similarity_group"] = -100
-
-        # return self.full_data
-
-        # #assign a group to each data point based on the similarity score
-        # for d in self.full_data:
-        #     similarity_score = d["similarity_score"]
-        #     if similarity_score == -100:
-        #         d["similarity_group"] = -100
-        #     elif similarity_score < quartile_1:
-        #         d["similarity_group"] = 4
-        #     elif similarity_score < quartile_2:
-        #         d["similarity_group"] = 3
-        #     elif similarity_score < quartile_3:
-        #         d["similarity_group"] = 2
-        #     else:
-        #         d["similarity_group"] = 1
-        # return self.full_data
-
+    
     def generate_similarity_dataset_word2vec(self) -> List[dict]:
         word2vec = api.load("word2vec-google-news-300")
         for d in tqdm(

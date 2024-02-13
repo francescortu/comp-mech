@@ -377,7 +377,8 @@ class Ablate(BaseExperiment):
                 for position in range(length):
                     if position == self.dataset.obj_pos[0] and layer in (10,11):
                         def head_ablation_hook(activation, hook, head):
-                            activation[:, head, -1, position ] = 0
+                            activation[:, head, -1, 1:position ] = 0
+                            activation[:, head, -1, position+1:] = 0
                             return activation
                         hooks = []
                         if layer == 10:
@@ -385,7 +386,6 @@ class Ablate(BaseExperiment):
                                 (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7))
                             )
 
-                        if layer == 11:
                             hooks.append(
                                 (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10))
                             )
