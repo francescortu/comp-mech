@@ -385,10 +385,10 @@ class BaseDataset(Dataset):
         # sort full data by similarity score
         self.full_data = sorted(self.full_data, key=lambda x: x["similarity_score"], reverse=True)
         # split into bins, with the highest similarity scores first
-        high_similarity_bin = [self.full_data[:800]]
         near_high_similarity_bins = [
-            self.full_data[800 + i * 10: 800 + (i + 1) * 10] for i in range(20)
+            self.full_data[i * 10: 800 + (i + 1) * 10] for i in range(20)
         ]
+        high_similarity_bin = [self.full_data[800:1000]]
         remaining_bins = [
             self.full_data[i: i + 1000] for i in range(1000, len(self.full_data), 1000)
         ]
