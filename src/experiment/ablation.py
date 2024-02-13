@@ -11,7 +11,7 @@ from src.experiment import LogitStorage, HeadLogitStorage
 from functools import partial
 from copy import deepcopy
 
-WINDOW = 4
+WINDOW = 12
 
 class Ablate(BaseExperiment):
     def __init__(
@@ -297,7 +297,7 @@ class Ablate(BaseExperiment):
         
         if component in self.position_component:
             storage = LogitStorage(
-                n_layers=self.model.cfg.n_layers-WINDOW+1,
+                n_layers=self.model.cfg.n_layers-WINDOW +1,
                 length=length,
                 experiment=self.experiment,
             )
@@ -427,7 +427,7 @@ class Ablate(BaseExperiment):
             lengths.remove(11)
         result = {}
         for length in tqdm(lengths, desc=f"Ablating {component}", total=len(lengths)):
-            result[length] = self.ablate_factual_head(
+            result[length] = self.ablate_single_len_component_attn_pythia(
                 length, component, normalize_logit, **kwargs
             )
 
@@ -466,7 +466,7 @@ class Ablate(BaseExperiment):
 
         if component in self.position_component:
             data = []
-            for layer in range(0,self.model.cfg.n_layers):
+            for layer in range(0,self.model.cfg.n_layers-WINDOW+1):
                 for position in range(result[0][layer].shape[0]):
                     data.append(
                         {
@@ -495,7 +495,7 @@ class Ablate(BaseExperiment):
 
         elif component in self.head_component:
             data = []
-            for layer in range(self.model.cfg.n_layers):
+            for layer in range(self.model.cfg.n_layers-WINDOW+1):
 
                 for head in range(self.model.cfg.n_heads):
                     data.append(

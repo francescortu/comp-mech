@@ -281,4 +281,42 @@ class LogitAttribution(BaseExperiment):
             }
         )
         
+        # doint the same for layer 7  
+        head_indexes = [i for i, label in enumerate(labels) if ("H" in label and "L7" in label)]
+        mem_all = mem[head_indexes, :, 12].mean()
+        cp_all = cp[head_indexes, :, 12].mean()
+        mem_all_std = mem[head_indexes, :, 12].std()
+        cp_all_std = cp[head_indexes, :, 12].std()
+        data.append(
+            {
+                "label": "all_heads_L7",
+                "position": 12,
+                "mem_mean": mem_all.item(),
+                "cp_mean": cp_all.item(),
+                "diff_mean": 0,
+                "mem_std": mem_all_std.item(),
+                "cp_std": cp_all_std.item(),
+                "diff_std": 0,
+            }
+        )
+        # doint the same for layer 9
+        head_indexes = [i for i, label in enumerate(labels) if ("H" in label and "L9" in label)]
+        mem_all = mem[head_indexes, :, 12].mean()
+        cp_all = cp[head_indexes, :, 12].mean()
+        mem_all_std = mem[head_indexes, :, 12].std()
+        cp_all_std = cp[head_indexes, :, 12].std()
+        data.append(
+            {
+                "label": "all_heads_L9",
+                "position": 12,
+                "mem_mean": mem_all.item(),
+                "cp_mean": cp_all.item(),
+                "diff_mean": 0,
+                "mem_std": mem_all_std.item(),
+                "cp_std": cp_all_std.item(),
+                "diff_std": 0,
+            }
+        )
+        
+        
         return pd.DataFrame(data)
