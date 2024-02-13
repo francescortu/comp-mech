@@ -60,7 +60,7 @@ class Options:
         ]
     )
     similarity: List[bool] = field(default_factory=lambda: [True, False])
-    interval: List[int] = field(default_factory=lambda: [9, 8, 7, 6, 5, 4, 3, 2, 1, 0])
+    interval: List[int] = field(default_factory=lambda: [i for i in range(0,30)])
 
 
 @dataclass
