@@ -407,13 +407,21 @@ class Ablate(BaseExperiment):
                             )
                         if layer == 3:
                             hooks.append(
+                                (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=3))
+                            )
+
+                            hooks.append(
+                                (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=3))
+                            )
+                        if layer == 4:
+                            hooks.append(
                                 (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=3.5))
                             )
 
                             hooks.append(
                                 (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=3.5))
                             )
-                        if layer == 4:
+                        if layer == 5:
                             hooks.append(
                                 (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=4))
                             )
@@ -421,7 +429,7 @@ class Ablate(BaseExperiment):
                             hooks.append(
                                 (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=4))
                             )
-                        if layer == 5:
+                        if layer == 6:
                             hooks.append(
                                 (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=4.5))
                             )
@@ -429,7 +437,7 @@ class Ablate(BaseExperiment):
                             hooks.append(
                                 (f"blocks.{11}.attn.hook_pattern", partial(head_ablation_hook, head=10,multiplicator=4.5))
                             )
-                        if layer == 6:
+                        if layer == 7:
                             hooks.append(
                                 (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=5))
                             )
