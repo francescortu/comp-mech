@@ -9,7 +9,7 @@ if (length(args) == 0) {
   stop("No file name provided. Usage: Rscript script_name.R <filename>")
 }
 folder_name <- args[1]
-folder_name <- "results/copyVSfact/logit_lens/gpt2_full"
+#folder_name <- "results/copyVSfact/logit_lens/gpt2_full"
 #std_dev <- as.numeric(args[2])
 
 data <- read.csv(paste(folder_name, "logit_lens_data.csv", sep = "/"))

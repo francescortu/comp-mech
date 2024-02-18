@@ -60,7 +60,7 @@ class Config:
     dataset_slice: Optional[int] = None
     dataset_start: Optional[int] = None
     produce_plots: bool = True
-    normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
+    normalize_logit: Literal["none", "softmax", "log_softmax"] = "softmax"
     std_dev: int = 1  # 0 False, 1 True
     total_effect: bool = False
     up_to_layer: Union[int, str] = "all"
@@ -104,7 +104,7 @@ class logit_attribution_config:
 class logit_lens_config:
     component: str = "resid_post"
     return_index: bool = False
-    normalize: str = "none"
+    normalize: str = "softmax"
 
 
 ### check folder and create if not exists

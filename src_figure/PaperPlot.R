@@ -173,7 +173,7 @@ p <- ggplot(data_long, aes(x = model, y = Percentage, fill = Type)) +
   guides(fill = guide_legend(ncol = 2.5)) # Adjusting the legend
 p
 model <- "gpt2"
-ggsave(sprintf("PaperPlot/multiplied_pattern.pdf", model, experiment), p, width = 35, height = 40, units = "cm")
+ggsave(sprintf("PaperPlot/multiplied_pattern.pdf", model, experiment), p, width = 35, height = 50, units = "cm")
 
 
 
@@ -331,7 +331,7 @@ p_logit <-ggplot(data_resid_post_last, aes(x=layer))+
   geom_line(aes(y=cp, color="cp"),size=4,  alpha=0.8)+
   geom_point(aes(y=cp, color="cp"),size=6,  alpha=0.8)+
   scale_color_manual(values = c("mem" = "#E31B23", "cp" = "#005CAB", "cp_alt"="darkblue", "mem_subj"="darkred"), labels=c("cp"= "Altered Token","mem"="Factual Token", "cp_alt"= "Altered Attribute","mem_subj"="Factual 2nd Subject")) +
-  labs(y= "Last position logit", x="Layer", color="")+
+  labs(y= "Logit last position", x="Layer", color="")+
   theme_minimal()+
   scale_x_continuous(breaks = seq(0,n_layers,1)) +
  # scale_y_log10()+
@@ -483,7 +483,7 @@ ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_diff.pdf", model, exp
 ############################################################################################################
 experiment <- "copyVSfact"
 model_folder <- "gpt2_full"
-# model_folder <- "pythia-6.9b_full"
+model_folder <- "pythia-6.9b_full"
 data <- read.csv(sprintf("%s/logit_attribution/%s/logit_attribution_data.csv", experiment, model_folder))
 
 create_heatmap <- function(data, x, y, fill, head=FALSE) {
@@ -521,7 +521,8 @@ create_heatmap <- function(data, x, y, fill, head=FALSE) {
 }
 
 
-
+n_layers <- 32
+model <- "pythia-6.9b"
 ######## head #######
 data_head <- data %>% filter(grepl("^L[0-9]+H[0-9]+$", label))
 number_of_position <- max(as.numeric(data_head$position))
@@ -546,16 +547,16 @@ p <- create_heatmap_base(data_head_, "Layer", "Head", "diff_mean") +
   #addforce to have all the labels
   scale_y_discrete(breaks = seq(0,n_layers,1)) +
   scale_x_discrete(breaks = seq(0,n_layers,1))  +
-  labs(fill = expression(Delta[alt])) +
+  labs(fill = expression(Delta[cofa])) +
   theme(
-    axis.text.x = element_text(size=AXIS_TEXT_SIZE-30, angle = 0),
-    axis.text.y = element_text(size=AXIS_TEXT_SIZE-30),
+    axis.text.x = element_text(size=AXIS_TEXT_SIZE, angle = 0),
+    axis.text.y = element_text(size=AXIS_TEXT_SIZE),
     #remove background grid
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
     axis.title.x = element_text(size = AXIS_TITLE_SIZE),
     axis.title.y = element_text(size = AXIS_TITLE_SIZE),
-    legend.text = element_text(size = 40),
+    legend.text = element_text(size = 50),
     legend.title = element_text(size = 90),
     #remove the legend\
     legend.position = "bottom",
@@ -563,8 +564,9 @@ p <- create_heatmap_base(data_head_, "Layer", "Head", "diff_mean") +
     legend.key.size = unit(2.5, "cm"),
     # move the y ticks to the right
   )
-p
-ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attribution_head_position%s.pdf", model, experiment, number_of_position), p, width = 50, height = 50, units = "cm")
+
+model <- "gpt2"
+ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attribution_head_position%s.pdf", model, experiment, number_of_position), p, width = 40, height = 40, units = "cm")
 
 ### count the impact of the positive head ###
 #sum all the negative values
@@ -587,7 +589,11 @@ print(l11h10)
 
 data_head_
 
-
+model_folder <- "gpt2_full"
+experiment <- "copyVSfact"
+model <- "gpt2"
+n_layers <- 12
+data <- read.csv(sprintf("%s/logit_attribution/%s/logit_attribution_data.csv", experiment, model_folder))
 ############ ATtn MLP lineplot ########################
 data_mlp <- data %>% filter(grepl("^[0-9]+_mlp_out$", label))
 data_mlp <- data_mlp %>% separate(label, c("layer"), sep = "_mlp_out")
@@ -618,52 +624,52 @@ data_mlp$Block <- gsub("mem", "Factual", data_mlp$Block)
 data_attn$Block <- gsub("attc_", "", data_attn$Block)
 data_attn$Block <- gsub("cp", "Altered", data_attn$Block)
 data_attn$Block <- gsub("mem", "Factual", data_attn$Block)
-
-
-#barplot MLP Block
-ggplot(data_mlp, aes(x = as.numeric(layer), y = value, fill = Block)) +
-  geom_col(position = position_dodge(),color="black") +
-  scale_fill_manual(values = c("Factual" = "#E31B23", "Altered" = "#005CAB"))+
-  scale_y_continuous(limits = c(0, 3.1)) +
-  scale_x_continuous(breaks= seq(0, n_layers - 1, 1), labels = c("0","1","2","3","4","5","6","7","8","9","10","11")) +
-  labs(x = "Layer", y = "Logit", fill="Token:") +
-  theme_minimal() +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.x = element_blank(),
-    axis.text.x = element_text(size = 35),
-    axis.text.y = element_text(size = 35),
-    axis.title.x = element_text(size = 40),
-    axis.title.y = element_text(size = 40),
-    legend.text = element_text(size = 30),
-    legend.title = element_text(size = 30),
-    legend.position = "top"
-  ) +
-  guides(fill = guide_legend(ncol = 2)) # Adjusting the legend
-ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_mlp_position%s.pdf", model, experiment, max_position), width = 40, height = 30, units = "cm")
-
-#barplot Attention Block E31B23 005CAB
-ggplot(data_attn, aes(x = as.numeric(layer), y = value, fill = Block)) +
-  geom_col(position = position_dodge(), color="black")+
-  scale_fill_manual(values = c("Factual" = "#E31B23", "Altered" = "#005CAB"))+
-  scale_y_continuous(limits = c(0, 3.1)) +
-  scale_x_continuous(breaks= seq(0, n_layers - 1, 1), labels = c("0","1","2","3","4","5","6","7","8","9","10","11")) +
-  labs(x = "Layer", y = "Logit", fill="Token:") +
-  theme_minimal() +
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.x = element_blank(),
-    axis.text.x = element_text(size = 35),
-    axis.text.y = element_text(size = 35),
-    axis.title.x = element_text(size = 40),
-    axis.title.y = element_text(size = 40),
-    legend.text = element_text(size = 30),
-    legend.title = element_text(size = 30),
-    legend.position = "top"
-  ) +
-  guides(fill = guide_legend(ncol = 2)) # Adjusting the legend
-ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attn_position%s.pdf", model, experiment, max_position), width = 40, height = 30, , units = "cm")
-
+# 
+# 
+# #barplot MLP Block
+# ggplot(data_mlp, aes(x = as.numeric(layer), y = value, fill = Block)) +
+#   geom_col(position = position_dodge(),color="black") +
+#   scale_fill_manual(values = c("Factual" = "#E31B23", "Altered" = "#005CAB"))+
+#   scale_y_continuous(limits = c(0, 3.1)) +
+#   scale_x_continuous(breaks= seq(0, n_layers - 1, 1), labels = c("0","1","2","3","4","5","6","7","8","9","10","11")) +
+#   labs(x = "Layer", y = "Logit", fill="Token:") +
+#   theme_minimal() +
+#   theme(
+#     panel.grid.major.x = element_blank(),
+#     panel.grid.minor.x = element_blank(),
+#     axis.text.x = element_text(size = 35),
+#     axis.text.y = element_text(size = 35),
+#     axis.title.x = element_text(size = 40),
+#     axis.title.y = element_text(size = 40),
+#     legend.text = element_text(size = 30),
+#     legend.title = element_text(size = 30),
+#     legend.position = "top"
+#   ) +
+#   guides(fill = guide_legend(ncol = 2)) # Adjusting the legend
+# ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_mlp_position%s.pdf", model, experiment, max_position), width = 40, height = 30, units = "cm")
+# 
+# #barplot Attention Block E31B23 005CAB
+# ggplot(data_attn, aes(x = as.numeric(layer), y = value, fill = Block)) +
+#   geom_col(position = position_dodge(), color="black")+
+#   scale_fill_manual(values = c("Factual" = "#E31B23", "Altered" = "#005CAB"))+
+#   scale_y_continuous(limits = c(0, 3.1)) +
+#   scale_x_continuous(breaks= seq(0, n_layers - 1, 1), labels = c("0","1","2","3","4","5","6","7","8","9","10","11")) +
+#   labs(x = "Layer", y = "Logit", fill="Token:") +
+#   theme_minimal() +
+#   theme(
+#     panel.grid.major.x = element_blank(),
+#     panel.grid.minor.x = element_blank(),
+#     axis.text.x = element_text(size = 35),
+#     axis.text.y = element_text(size = 35),
+#     axis.title.x = element_text(size = 40),
+#     axis.title.y = element_text(size = 40),
+#     legend.text = element_text(size = 30),
+#     legend.title = element_text(size = 30),
+#     legend.position = "top"
+#   ) +
+#   guides(fill = guide_legend(ncol = 2)) # Adjusting the legend
+# ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attn_position%s.pdf", model, experiment, max_position), width = 40, height = 30, , units = "cm")
+# 
 
 library(ggplot2)
 library(ggsci)
@@ -681,18 +687,18 @@ data_barplot$layer <- as.numeric(data_barplot$layer)
 
 ggplot(data_barplot, aes(x = as.numeric(layer), y = `MLP Block`, fill = "MLP Block")) +
   geom_col(position = position_dodge(), color="black", size=1) +
-  labs(x = "Layer", y = expression(Delta[alt]), fill = "") + # Naming the legend
+  labs(x = "Layer", y = expression(Delta[cofa]), fill = "") + # Naming the legend
   theme_minimal() +
   scale_fill_manual(values = c("MLP Block" = "#bc5090")) + # Assigning color to the "MLP Block"
-  scale_y_continuous(limits = c(-0.25, 0.7)) +
+  scale_y_continuous(limits = c(-1, 1.5)) +
   scale_x_continuous(breaks= seq(0, n_layers-1, 1), labels = as.character(seq(0,n_layers-1,1))) +
   theme(
     panel.grid.major.x = element_blank(),
     panel.grid.minor.x = element_blank(),
-    axis.text.x = element_text(size = 30),
-    axis.text.y = element_text(size = 50),
-    axis.title.x = element_text(size = 55),
-    axis.title.y = element_text(size = 55),
+    axis.text.x = element_text(size = 60),
+    axis.text.y = element_text(size = 60),
+    axis.title.x = element_text(size = 60),
+    axis.title.y = element_text(size = 70),
     legend.text = element_text(size = 50),
     legend.title = element_text(size = 55),
     legend.position = "top"
@@ -703,18 +709,18 @@ ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_mlp_position%s_diff.pdf"
 
 ggplot(data_barplot, aes(x = as.numeric(layer), y = `Attention Block`, fill = "Attention Block")) +
   geom_col(position = position_dodge(), color="black",size=1) +
-  labs(x = "Layer", y = expression(Delta[alt]), fill = "") + # Naming the legend
+  labs(x = "Layer", y = expression(Delta[cofa]), fill = "") + # Naming the legend
   theme_minimal() +
   scale_fill_manual(values = c("Attention Block" = "#ffa600")) + # Assigning color to the "MLP Block"
-  scale_y_continuous(limits = c(-0.25, 0.7)) +
+  scale_y_continuous(limits = c(-1, 1.5)) +
   scale_x_continuous(breaks= seq(0, n_layers-1, 1), labels = as.character(seq(0,n_layers-1,1))) +
   theme(
     panel.grid.major.x = element_blank(),
     panel.grid.minor.x = element_blank(),
-    axis.text.x = element_text(size = 30),
-    axis.text.y = element_text(size = 50),
-    axis.title.x = element_text(size = 55),
-    axis.title.y = element_text(size = 55),
+    axis.text.x = element_text(size = 60),
+    axis.text.y = element_text(size = 60),
+    axis.title.x = element_text(size = 60),
+    axis.title.y = element_text(size = 70),
     legend.text = element_text(size = 50),
     legend.title = element_text(size = 55),
     legend.position = "top"
@@ -1243,7 +1249,7 @@ p<-ggplot() +
   geom_line(data = df, aes(x = percentile_interval, y = base_percentage, group = model_name, color = model_name), linetype = "dotted",  size=1.1) +
   scale_color_manual(values = palette) +
   labs(x = "Similarity Score Bins (Percentiles)",
-       y = "% factual answers",
+       y = "Percentage of Factual Recalling",
        color = "Model:",
        linetype = "") +
   scale_linetype_manual(values = c("Base Value" = "dotted")) + # Ensure "Base Value" is dotted
@@ -1255,14 +1261,11 @@ p<-ggplot() +
         axis.title = element_text(size = 23),
         legend.position = "bottom",
         legend.box = "horizontal",
-        plot.margin = unit(c(8,3,3,3), "pt")
         ) +
         guides(color = guide_legend(nrow = 3, title.position = "top", title.hjust = 0.5),
                                                                                               linetype = guide_legend(nrow = 1, title.position = "top", title.hjust = 0.5))
-  
-p
-#save plot
-ggsave("PaperPlot/copyVSfact_self_similarity_short.pdf",p, width = 18, height = 16, units = "cm")
+  #save plot
+ggsave("PaperPlot/copyVSfact_self_similarity.pdf",p, width = 16, height = 21, units = "cm")
 
 
 
