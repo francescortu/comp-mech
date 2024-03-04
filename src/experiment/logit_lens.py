@@ -16,12 +16,18 @@ class LogitStorage:
     store logits and return shape (layers, position, examples) or (layers, position, heads, examples)
     """
 
-    def __init__(self, n_layers: int, length: int, experiment:Literal["copyVSfact", "contextVSfact"] ,n_heads: int = 1):
+    def __init__(
+        self,
+        n_layers: int,
+        length: int,
+        experiment: Literal["copyVSfact", "contextVSfact"],
+        n_heads: int = 1,
+    ):
         self.n_layers = n_layers
         self.length = length
         self.n_heads = n_heads
         self.size = n_layers * length * n_heads
-        self.experiment:Literal["copyVSfact", "contextVSfact"] = experiment
+        self.experiment: Literal["copyVSfact", "contextVSfact"] = experiment
 
         # Using a dictionary to store logit values
         self.logits = {
@@ -30,7 +36,6 @@ class LogitStorage:
             "mem_winners": [[] for _ in range(self.size)],
             "cp_winners": [[] for _ in range(self.size)],
         }
-
 
     def _get_index(self, layer: int, position: int, head: int = 0):
         return (layer * self.length + position) * self.n_heads + head
@@ -46,7 +51,10 @@ class LogitStorage:
         )
 
     def _aggregate_result(
-        self, object_positions: Union[torch.Tensor, int], pattern: torch.Tensor, **kwargs
+        self,
+        object_positions: Union[torch.Tensor, int],
+        pattern: torch.Tensor,
+        **kwargs,
     ) -> torch.Tensor:
         pattern = self._reshape_tensor(pattern)
         aggregate_result = get_aggregator(self.experiment)
@@ -54,8 +62,6 @@ class LogitStorage:
             pattern, object_positions, self.length, **kwargs
         )
         return self._reshape_tensor_back(intermediate_aggregate)
-
-
 
     def store(
         self,
@@ -79,15 +85,19 @@ class LogitStorage:
             self.logits["cp_winners"][index].append(cp_winners.cpu())
 
     def _reshape_logits(self, logits_list, shape):
-        return torch.stack([torch.cat(logits, dim=0) for logits in logits_list]).view(
-            shape
-        ).to(torch.float32)
+        return (
+            torch.stack([torch.cat(logits, dim=0) for logits in logits_list])
+            .view(shape)
+            .to(torch.float32)
+        )
 
     def get_logit(self):
         shape = (self.n_layers, self.length, -1)
         if self.logits["mem_winners"][0] == []:
             return tuple(
-                self._reshape_logits(self.logits[key], shape) for key in self.logits if key != "mem_winners" and key != "cp_winners"
+                self._reshape_logits(self.logits[key], shape)
+                for key in self.logits
+                if key != "mem_winners" and key != "cp_winners"
             )
         return tuple(
             self._reshape_logits(self.logits[key], shape) for key in self.logits
@@ -97,13 +107,21 @@ class LogitStorage:
         return_tuple = self.get_logit()
         aggregate_tensor = []
         for elem in return_tuple:
-            aggregate_tensor.append(self._aggregate_result(object_position, elem, **kwargs))
+            aggregate_tensor.append(
+                self._aggregate_result(object_position, elem, **kwargs)
+            )
 
         return tuple(aggregate_tensor)
 
 
 class IndexLogitStorage(LogitStorage):
-    def __init__(self, n_layers: int, length: int, experiment:Literal["copyVSfact", "contextVSfact"],  n_heads: int = 1):
+    def __init__(
+        self,
+        n_layers: int,
+        length: int,
+        experiment: Literal["copyVSfact", "contextVSfact"],
+        n_heads: int = 1,
+    ):
         super().__init__(n_layers, length, experiment, n_heads)
         self.logits.update(
             {
@@ -144,18 +162,34 @@ class IndexLogitStorage(LogitStorage):
 
 
 class HeadLogitStorage(IndexLogitStorage, LogitStorage):
-    def __init__(self, n_layers: int, length: int, experiment:Literal["copyVSfact", "contextVSfact"], n_heads: int):
+    def __init__(
+        self,
+        n_layers: int,
+        length: int,
+        experiment: Literal["copyVSfact", "contextVSfact"],
+        n_heads: int,
+    ):
         super().__init__(n_layers, length, experiment, n_heads)
 
     @classmethod
     def from_logit_storage(cls, logit_storage: LogitStorage, n_heads: int):
-        return cls(logit_storage.n_layers, logit_storage.length, logit_storage.experiment, n_heads)
+        return cls(
+            logit_storage.n_layers,
+            logit_storage.length,
+            logit_storage.experiment,
+            n_heads,
+        )
 
     @classmethod
     def from_index_logit_storage(
         cls, index_logit_storage: IndexLogitStorage, n_heads: int
     ):
-        return cls(index_logit_storage.n_layers, index_logit_storage.length,index_logit_storage.experiment, n_heads)
+        return cls(
+            index_logit_storage.n_layers,
+            index_logit_storage.length,
+            index_logit_storage.experiment,
+            n_heads,
+        )
 
     def _reshape_tensor(self, tensor: torch.Tensor):
         return einops.rearrange(
@@ -176,26 +210,39 @@ class HeadLogitStorage(IndexLogitStorage, LogitStorage):
 
 class LogitLens(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"],
+        self,
+        dataset: TlensDataset,
+        model: WrapHookedTransformer,
+        batch_size: int,
+        experiment: Literal["copyVSfact", "contextVSfact"],
     ):
         super().__init__(dataset, model, batch_size, experiment)
-        self.valid_blocks = ["mlp_out", "resid_pre", "resid_post","resid_mid", "attn_out"]
+        self.valid_blocks = [
+            "mlp_out",
+            "resid_pre",
+            "resid_post",
+            "resid_mid",
+            "attn_out",
+        ]
         self.valid_heads = ["head"]
         self.mean_logit_per_layer = None
 
-    def project_per_position(self, component_cached: torch.Tensor, length: int):
+    def project_per_position(self, component, layer, cache, length: int):
         # assert that the activation name is a f-string with a single placeholder for the layer
-        assert (
-            component_cached.shape[1] == length
-        ), f"component_cached.shape[1] = {component_cached.shape[1]}, self.model.cfg.n_heads = {self.model.cfg.n_heads}"
-        assert (
-            component_cached.shape[2] == self.model.cfg.d_model
-        ), f"component_cached.shape[2] = {component_cached.shape[2]}, self.model.cfg.d_model = {self.model.cfg.d_model}"
+        # assert (
+        #     component_cached.shape[1] == length
+        # ), f"component_cached.shape[1] = {component_cached.shape[1]}, self.model.cfg.n_heads = {self.model.cfg.n_heads}"
+        # assert (
+        #     component_cached.shape[2] == self.model.cfg.d_model
+        # ), f"component_cached.shape[2] = {component_cached.shape[2]}, self.model.cfg.d_model = {self.model.cfg.d_model}"
 
+        cached_component = cache.apply_ln_to_stack(cache[component,layer], layer=-1)
         for position in range(length):
-            component_cached = self.model.ln_final(component_cached)
+            # component_cached = self.model.ln_final(component_cached)
+            # TODO apply the linear norm differently
+            #cached_component = normalized_component[component, layer]
             logit = einops.einsum(
-                self.model.W_U, component_cached[:, position, :], "d d_v, b d -> b d_v"
+                self.model.W_U, cached_component[:, position, :], "d d_v, b d -> b d_v"
             )
             yield logit
 
@@ -232,9 +279,9 @@ class LogitLens(BaseExperiment):
             object_positions.append(batch["obj_pos"])
             for layer in range(self.model.cfg.n_layers):
                 if component in self.valid_blocks:
-                    cached_component = cache[component, layer]
+
                     for position, logit in enumerate(
-                        self.project_per_position(cached_component, length)
+                        self.project_per_position( component,layer, cache, length)
                     ):
                         logit_token = to_logit_token(
                             logit,
@@ -246,13 +293,13 @@ class LogitLens(BaseExperiment):
                         # logit_mean = logit.mean(-1).cpu()
                         # logit_token[0] = (logit_token[0].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
                         # logit_token[1] = (logit_token[1].cpu() - logit.mean(-1).cpu()) / logit.mean(-1).cpu() #! MEAN
-                        storer.store( #! MEAN
+                        storer.store(  #! MEAN
                             layer=layer,
                             position=position,
-                            #logit=tuple(logit_token),  # type: ignore
+                            # logit=tuple(logit_token),  # type: ignore
                             logit=logit_token,  # type: ignore
                         )
-                        #storer.store(layer=layer, position=position, logit=logit_token)  # type: ignore
+                        # storer.store(layer=layer, position=position, logit=logit_token)  # type: ignore
                 elif component in self.valid_heads:
                     cached_component = cache[f"blocks.{layer}.attn.hook_z"]
                     for head in range(self.model.cfg.n_heads):
@@ -283,7 +330,11 @@ class LogitLens(BaseExperiment):
         subject_positions = torch.cat(subject_positions, dim=0)
         if self.experiment == "contextVSfact":
             object_positions = torch.cat(object_positions, dim=0)
-            return storer.get_aggregate_logit(object_position=object_positions, subj_positions=subject_positions, batch_dim=0)
+            return storer.get_aggregate_logit(
+                object_position=object_positions,
+                subj_positions=subject_positions,
+                batch_dim=0,
+            )
         object_positions = self.dataset.obj_pos[0]
         return storer.get_aggregate_logit(object_position=object_positions)
 
@@ -336,7 +387,7 @@ class LogitLens(BaseExperiment):
 
         data = []
         for layer in range(self.model.cfg.n_layers):
-            #compute the avarage over the layers
+            # compute the avarage over the layers
             mem_avg_layer = result[0][layer].mean()
             cp_avg_layer = result[1][layer].mean()
             diff_avg_layer = (result[0][layer] - result[1][layer]).mean()
@@ -363,20 +414,33 @@ class LogitLens(BaseExperiment):
                             }
                         )
                 else:
-                    mem_perc = 100 * (result[0][layer][position].mean().item() - mem_avg_layer) / mem_avg_layer
-                    cp_perc = 100 * (result[1][layer][position].mean().item() - cp_avg_layer) / cp_avg_layer
-                    diff_perc = (result[0][layer][position] - result[1][layer][position]).mean()
+                    mem_perc = (
+                        100
+                        * (result[0][layer][position].mean().item() - mem_avg_layer)
+                        / mem_avg_layer
+                    )
+                    cp_perc = (
+                        100
+                        * (result[1][layer][position].mean().item() - cp_avg_layer)
+                        / cp_avg_layer
+                    )
+                    diff_perc = (
+                        result[0][layer][position] - result[1][layer][position]
+                    ).mean()
                     diff_perc = 100 * (diff_perc - diff_avg_layer) / diff_avg_layer
-                    
-                    
+
                     data.append(
                         {
                             "component": f"{component}",
                             "layer": layer,
                             "position": position,
                             "mem": result[0][layer][position].mean().item(),
-                            "cp": result[1][layer][position].mean().item() ,
-                            "diff": (result[0][layer][position] - result[1][layer][position]).mean().item(),
+                            "cp": result[1][layer][position].mean().item(),
+                            "diff": (
+                                result[0][layer][position] - result[1][layer][position]
+                            )
+                            .mean()
+                            .item(),
                             "mem_perc": mem_perc.item(),
                             "cp_perc": cp_perc.item(),
                             "diff_perc": diff_perc.item(),

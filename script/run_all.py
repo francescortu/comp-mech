@@ -60,7 +60,7 @@ class Config:
     dataset_slice: Optional[int] = None
     dataset_start: Optional[int] = None
     produce_plots: bool = True
-    normalize_logit: Literal["none", "softmax", "log_softmax"] = "softmax"
+    normalize_logit: Literal["none", "softmax", "log_softmax"] = "none"
     std_dev: int = 1  # 0 False, 1 True
     total_effect: bool = False
     up_to_layer: Union[int, str] = "all"
@@ -104,7 +104,7 @@ class logit_attribution_config:
 class logit_lens_config:
     component: str = "resid_post"
     return_index: bool = False
-    normalize: str = "softmax"
+    normalize: str = "none"
 
 
 ### check folder and create if not exists
@@ -136,7 +136,7 @@ def logit_attribution(model, dataset, config, args):
 
     print("Running logit attribution")
     attributor = LogitAttribution(dataset, model, config.batch_size // 5, config.mech_fold)
-    dataframe = attributor.run(normalize_logit=config.normalize_logit, up_to_layer=config.up_to_layer)
+    dataframe = attributor.run(apply_ln=False, normalize_logit=config.normalize_logit, up_to_layer=config.up_to_layer)
     save_dataframe(
         f"../results/{config.mech_fold}{config.flag}/logit_attribution/{config.model_name}_{dataset_slice_name}",
         "logit_attribution_data",

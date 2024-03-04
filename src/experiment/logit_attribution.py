@@ -108,7 +108,7 @@ class LogitAttribution(BaseExperiment):
         storage: AttributeStorage,
         component: str,
         up_to_layer: Union[int, str] = "all",
-        apply_ln: bool = True,
+        apply_ln: bool = False,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
         hooks: Optional[List[Tuple[str, Callable]]] = None,
     ):

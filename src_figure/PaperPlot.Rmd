@@ -35,7 +35,7 @@ palette <- c("GPT2" = "#003f5c", "GPT2-medium" = "#58508d", "GPT2-large" = "#bc5
 model <- "gpt2"
 model_folder <- "gpt2_full"
 n_layers <- 12
-experiment <- "copyVSfact"
+experiment <- "copyVSfact_LN"
 n_positions <- 12
 positions_name <- c("-", "Subject", "2nd Subject", "3rd Subject", "Relation", "Relation Last", "Attribute*", "-", "Subject Repeat", "2nd Subject repeat", "3nd Subject repeat", "Relation repeat", "Last")
 relevant_position <- c("Subject", "Relation", "Relation Last", "Attribute*", "Subject repeat", "Relation repeat", "Last")
@@ -69,7 +69,7 @@ AXIS_TEXT_SIZE <- 40
 HEATMAP_SIZE <- 10
 ```
 
-## Load functions:
+# Load functions:
 
 ```{r}
 create_heatmap_base <- function(data, x, y, fill, midpoint = 0, text=FALSE) {
@@ -103,7 +103,7 @@ create_heatmap_base <- function(data, x, y, fill, midpoint = 0, text=FALSE) {
 ```{r}
 create_heatmap <- function(data, x, y, fill, high_color) {
   p <- create_heatmap_base(data, x, y, fill) +
-    scale_fill_gradient2(low = "white", mid = "white", high = high_color, limits = c(0,31), name = "Logit") +
+    scale_fill_gradient2(low = "white", mid = "white", high = high_color, limits=c(0,17), name = "Logit") +
     #scale_fill_gradient2(low = "black", mid = "white", high = high_color, name = "Logit") +
     #scale_fill_gradient2(low = "black", mid= "white", high = high_color, name = "Logit") +
     
@@ -142,8 +142,7 @@ print(getwd())
 
 ```{r}
 #print current working directory
-print(getwd())
-#data <- read.csv(sprintf("%s/logit_lens/%s/logit_lens_data.csv", experiment, model_folder))
+data <- read.csv(sprintf("%s/logit_lens/%s/logit_lens_data.csv", experiment, model_folder))
 number_of_position <- max(as.numeric(data$position))
 data_resid_post <- data %>% filter(grepl("resid_post", component))
 data_resid_post$position_name <- positions_name[data_resid_post$position + 1]
@@ -183,10 +182,11 @@ p_logit <-ggplot(data_resid_post_last, aes(x=layer))+
   geom_point(aes(y=mem, color="mem"),size=6, alpha=0.8)+
   geom_line(aes(y=cp, color="cp"),size=4,  alpha=0.8)+
   geom_point(aes(y=cp, color="cp"),size=6,  alpha=0.8)+
-  scale_color_manual(values = c("mem" = "#E31B23", "cp" = "#005CAB", "cp_alt"="darkblue", "mem_subj"="darkred"), labels=c("cp"= "Altered Token","mem"="Factual Token", "cp_alt"= "Altered Attribute","mem_subj"="Factual 2nd Subject")) +
+  scale_color_manual(values = c("mem" = "#E31B23", "cp" = "#005CAB", "cp_alt"="darkblue", "mem_subj"="darkred"), labels=c("cp"= "Counterfactual Token","mem"="Factual Token", "cp_alt"= "Counterfactual Attribute","mem_subj"="Factual 2nd Subject")) +
   labs(y= "Logit last position", x="Layer", color="")+
   theme_minimal()+
-  scale_x_continuous(breaks = seq(0,n_layers,1)) +
+ scale_x_continuous(breaks = seq(0,n_layers,1)) +
+  #scale_y_continuous(limits = c(0,31))+
  # scale_y_log10()+
   theme(
     axis.text.x = element_text(size=AXIS_TEXT_SIZE),
@@ -199,10 +199,15 @@ p_logit <-ggplot(data_resid_post_last, aes(x=layer))+
     #remove the legend\
     legend.position = "bottom",
     #increase the legend size
-    legend.key.size = unit(2, "cm")
+    legend.key.size = unit(2, "cm"),
+    aspect.ratio = 7/10
     # move the y ticks to the right
   ) + guides(color = guide_legend(ncol = 2, nrow=1))
 p_logit
+ggsave("logit_last_new_ln.pdf", p_logit, width = 50, height = 30, units = "cm")
+```
+
+```{r}
 ```
 
 save
@@ -211,6 +216,9 @@ save
 ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_cp_index.pdf", model, experiment), p, width = 50, height = 30, units = "cm")
 ```
 
+```{r}
+ggsave("tmp/last_logit.pdf", p_logit, width = 50, height = 30, units = "cm")
+```
 ### Residual streams - lineplot logit
 
 ```{r}
@@ -258,8 +266,8 @@ spacer <- plot_spacer()
 p_logit <- p_logit + theme(aspect.ratio = 7/10, legend.position = c(0.5,-0.2))
 p <- (p_fact / p_copy) | spacer | p_logit
 p <- p + plot_layout(widths = c(0.8, 0.3, 1.3))
-ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_all_linelogit.pdf", model, experiment), p, width = 100, height = 50, units = "cm")
-
+#ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_all_linelogit.pdf", model, experiment), p, width = 100, height = 50, units = "cm")
+ggsave("resid_post_all_linelogit_new.pdf", p, width = 100, height = 50, units = "cm")
 ```
 #### With index
 ```{r}
@@ -421,7 +429,7 @@ ggplot(data_barplot, aes(x = as.numeric(layer), y = `MLP Block`, fill = "MLP Blo
   labs(x = "Layer", y = expression(Delta[cofa]), fill = "") + # Naming the legend
   theme_minimal() +
   scale_fill_manual(values = c("MLP Block" = "#bc5090")) + # Assigning color to the "MLP Block"
-  scale_y_continuous(limits = c(-1, 1.5)) +
+  #scale_y_continuous(limits = c(-1, 1.5)) +
   scale_x_continuous(breaks= seq(0, n_layers-1, 1), labels = as.character(seq(0,n_layers-1,1))) +
   theme(
     panel.grid.major.x = element_blank(),
@@ -435,7 +443,8 @@ ggplot(data_barplot, aes(x = as.numeric(layer), y = `MLP Block`, fill = "MLP Blo
     legend.position = "top"
   ) +
   guides(fill = guide_legend(ncol = 2.5)) # Adjusting the legend
-ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_mlp_position%s_diff.pdf", model, experiment, max_position), width = 50, height = 30, units = "cm")
+ggsave("mlp_block_norm.pdf", width = 50, height = 30, units = "cm")
+#ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_mlp_position%s_diff.pdf", model, experiment, max_position), width = 50, height = 30, units = "cm")
 
 ```
 
@@ -446,7 +455,7 @@ ggplot(data_barplot, aes(x = as.numeric(layer), y = `Attention Block`, fill = "A
   labs(x = "Layer", y = expression(Delta[cofa]), fill = "") + # Naming the legend
   theme_minimal() +
   scale_fill_manual(values = c("Attention Block" = "#ffa600")) + # Assigning color to the "MLP Block"
-  scale_y_continuous(limits = c(-1, 1.5)) +
+  #scale_y_continuous(limits = c(-1, 1.5)) +
   scale_x_continuous(breaks= seq(0, n_layers-1, 1), labels = as.character(seq(0,n_layers-1,1))) +
   theme(
     panel.grid.major.x = element_blank(),
@@ -460,7 +469,9 @@ ggplot(data_barplot, aes(x = as.numeric(layer), y = `Attention Block`, fill = "A
     legend.position = "top"
   ) +
   guides(fill = guide_legend(ncol = 2.5)) # Adjusting the legend
-ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attn_position%s_diff.pdf", model, experiment, max_position), width = 50, height = 30, , units = "cm")
+ggsave("attn_block_norm.pdf", width = 50, height = 30, units = "cm")
+
+#ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attn_position%s_diff.pdf", model, experiment, max_position), width = 50, height = 30, , units = "cm")
 
 ```
 
@@ -855,10 +866,71 @@ ggsave("PaperPlot/copyVSfact_self_similarity.pdf",p, width = 16, height = 21, un
 
 
 
+# Notepad - not important thing
+
+```{r}
+create_heatmap <- function(data, x, y, fill, high_color) {
+  n_relevant_position <- length(relevant_position)
+  p <- create_heatmap_base(data, x, y, fill) +
+    scale_fill_gradient2(low = "white", mid = "white", high = high_color, limits = c(0,31), name = "Logit") +
+    #scale_fill_gradient2(low = "black", mid = "white", high = high_color, name = "Logit") +
+    #scale_fill_gradient2(low = "black", mid= "white", high = high_color, name = "Logit") +
+    
+    theme_minimal() +
+    #addforce to have all the labels
+    scale_x_continuous(breaks = seq(0,n_layers-1 ,1)) +
+    scale_y_continuous(breaks = seq(0,n_relevant_position -1,1), labels = relevant_position) +
+    scale_y_reverse(breaks = seq(0,n_relevant_position -1,1), labels = relevant_position)+
+    labs(x = "Layer", y = "")+
+    #fix intenxity of fill
+    theme(
+      axis.text.x = element_text(size=AXIS_TEXT_SIZE),
+      axis.text.y = element_text(size=AXIS_TEXT_SIZE,),
+      #remove background grid
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.title.x = element_text(size = AXIS_TITLE_SIZE),
+      axis.title.y = element_text(size = AXIS_TITLE_SIZE),
+      legend.text = element_text(size = 40),
+      legend.title = element_text(size = AXIS_TEXT_SIZE),
+      #remove the legend\
+      legend.position = "bottom",
+      #increase the legend size
+      legend.key.size = unit(2.5, "cm"),
+      # move the y ticks to the right
+    ) 
+  return(p)
+}
+```
+
+### Load and process data
+r
+```{r}
+#print current working directory
+data <- read.csv(sprintf("%s/logit_lens/%s/logit_lens_data_logit.csv", experiment, model_folder))
+number_of_position <- max(as.numeric(data$position))
+data_resid_post <- data %>% filter(grepl("resid_post", component))
+data_resid_post$position_name <- positions_name[data_resid_post$position + 1]
+relevant_position <- c("Subject", "Relation", "Relation Last")
+#filter just the relevant positions
+data_resid_post <- data_resid_post %>% filter(position == 1 | position==4 | position == 5)
+unique_positions <- unique(data_resid_post$position)
+position_mapping <- setNames(seq(0, length(unique_positions) - 1), unique_positions)
+# Apply the mapping to create a new column
+data_resid_post$mapped_position <- unname(position_mapping[as.character(data_resid_post$position)])
+```
+
+### Residual stram heatmaps
+
+```{r}
+p_fact <- create_heatmap(data_resid_post, "layer","mapped_position", "mem",  "#E31B23")
+p_copy <- create_heatmap(data_resid_post, "layer", "mapped_position", "cp",  "#005CAB")
+p_fact
+p_copy
+ggsave("tmp/heatmap_fact.pdf",p_fact, width = 35, height = 21, units = "cm")
 
 
-
-
+```
 
 
 
