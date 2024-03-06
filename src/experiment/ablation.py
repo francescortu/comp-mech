@@ -378,7 +378,8 @@ class Ablate(BaseExperiment):
                     if position == self.dataset.obj_pos[0] and layer in (0,1,2,3,4,5): #,2,3,4,5,6,7):
                         def head_ablation_hook(activation, hook, head, multiplicator):
                             #activation[:, head, -1, position ] = multiplicator * activation[:, head, -1, position]
-                            activation[:, head, -1, :] = multiplicator* activation[:, head, -1, :]
+                            # activation[:, head, -1, :] = multiplicator* activation[:, head, -1, :]
+                            activation[:, head, -1, position] = 0 
                             # activation[:, head, -1, position+1:] = 1.5 * activation[:, head, -1, position+1:]
                             return activation
                         hooks = []
@@ -398,31 +399,12 @@ class Ablate(BaseExperiment):
                                 (f"blocks.{17}.attn.hook_pattern", partial(head_ablation_hook, head=28, multiplicator=2))
                             )
 
-                            hooks.append(
-                                (f"blocks.{20}.attn.hook_pattern", partial(head_ablation_hook, head=18,multiplicator=2))
-                            )
-                            hooks.append(
-                                (f"blocks.{21}.attn.hook_pattern", partial(head_ablation_hook, head=8, multiplicator=2))
-                            )
                         if layer == 2:
-                            hooks.append(
-                                (f"blocks.{17}.attn.hook_pattern", partial(head_ablation_hook, head=28,multiplicator=3))
-                            )
-
                             hooks.append(
                                 (f"blocks.{20}.attn.hook_pattern", partial(head_ablation_hook, head=18,multiplicator=3))
                             )
-                            hooks.append(
-                                (f"blocks.{21}.attn.hook_pattern", partial(head_ablation_hook, head=8, multiplicator=3))
-                            )
-                        if layer == 3:
-                            hooks.append(
-                                (f"blocks.{17}.attn.hook_pattern", partial(head_ablation_hook, head=28,multiplicator=4))
-                            )
 
-                            hooks.append(
-                                (f"blocks.{20}.attn.hook_pattern", partial(head_ablation_hook, head=18,multiplicator=4))
-                            )
+                        if layer == 3:
                             hooks.append(
                                 (f"blocks.{21}.attn.hook_pattern", partial(head_ablation_hook, head=8, multiplicator=4))
                             )
