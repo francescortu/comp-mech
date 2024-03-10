@@ -1,40 +1,54 @@
 from turtle import up
 from typing import Callable, List, Optional, Union
+from more_itertools import first
 import torch
 from torch.utils.data import DataLoader
 import einops
 from tqdm import tqdm
-from src.dataset import TlensDataset
-from src.model import WrapHookedTransformer
-from src.base_experiment import BaseExperiment
+from Src.dataset import BaseDataset
+from Src.model import BaseModel
+from Src.base_experiment import BaseExperiment
 from typing import Tuple, Literal
-from src.utils import get_aggregator
+from Src.utils import aggregate_result
 import pandas as pd
 import ipdb
+
 
 class AttributeStorage:
     """
     Class to store the attributes of the logit attribution
     """
 
-    def __init__(self, experiment: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual"]):
+    def __init__(
+        self, experiment: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual"]
+    ):
         self.mem_attribute = []
         self.cp_attribute = []
         self.diff_attribute = []
-        self.labels = None
-        self.experiment: Literal["copyVSfact", "contextVSfact", "copyVSfact_factual"] = experiment
+        self.labels:List[str] = []
+        self.experiment: Literal[
+            "copyVSfact", "contextVSfact", "copyVSfact_factual"
+        ] = experiment
 
     def append(
         self,
         mem_attribute: torch.Tensor,
         cp_attribute: torch.Tensor,
         diff_attribute: torch.Tensor,
-        labels,
-        object_position: int,
-        **kwargs,
+        labels: List[str],
+        object_position: torch.Tensor,
+        first_subject_positions: torch.Tensor,
+        second_subject_positions: torch.Tensor,
+        subject_lengths: torch.Tensor,
     ):
         mem_attribute, cp_attribute, diff_attribute = self.aggregate(
-            mem_attribute, cp_attribute, diff_attribute, object_position, **kwargs
+            mem_attribute,
+            cp_attribute,
+            diff_attribute,
+            object_position,
+            first_subject_positions,
+            second_subject_positions,
+            subject_lengths,
         )
         self.mem_attribute.append(mem_attribute.cpu())
         self.cp_attribute.append(cp_attribute.cpu())
@@ -47,23 +61,42 @@ class AttributeStorage:
         mem_attribute,
         cp_attribute,
         diff_attribute,
-        object_position: int,
-        **kwargs,
+        object_position,
+        first_subject_positions,
+        second_subject_positions,
+        subject_lengths,
     ):
-        aggregate_result = get_aggregator(self.experiment)
         length = mem_attribute.shape[-1]
         aggregated_mem = aggregate_result(
-            mem_attribute, object_positions=object_position, length=length, **kwargs
+            experiment=self.experiment,
+            pattern=mem_attribute,
+            object_positions=object_position,
+            first_subject_positions=first_subject_positions,
+            second_subject_positions=second_subject_positions,
+            subject_lengths=subject_lengths,
+            length=length,   
         )
         aggregated_cp = aggregate_result(
-            cp_attribute, object_positions=object_position, length=length, **kwargs
+            experiment=self.experiment,
+            pattern=cp_attribute,
+            object_positions=object_position,
+            first_subject_positions=first_subject_positions,
+            second_subject_positions=second_subject_positions,
+            subject_lengths=subject_lengths,
+            length=length,
         )
         aggregated_diff = aggregate_result(
-            diff_attribute, object_positions=object_position, length=length, **kwargs
+            experiment=self.experiment,
+            pattern=diff_attribute,
+            object_positions=object_position,
+            first_subject_positions=first_subject_positions,
+            second_subject_positions=second_subject_positions,
+            subject_lengths=subject_lengths,
+            length=length,
         )
         return aggregated_mem, aggregated_cp, aggregated_diff
 
-    def stack(self):
+    def stack(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: 
         """
         from a list of tensors of shape (batch, component, position) to a tensor of shape (component, batch, position)
         Concatenate the tensors along the batch dimension
@@ -77,8 +110,8 @@ class AttributeStorage:
 class LogitAttribution(BaseExperiment):
     def __init__(
         self,
-        dataset: TlensDataset,
-        model: WrapHookedTransformer,
+        dataset: BaseDataset,
+        model: BaseModel,
         batch_size: int,
         experiment: Literal["copyVSfact", "contextVSfact"],
     ):
@@ -132,7 +165,9 @@ class LogitAttribution(BaseExperiment):
             #         batch["prompt"], hooks=hooks, return_cache=True
             #     )
             # else:
-            logits, cache = self.model.run_with_cache(batch["prompt"], prepend_bos=False)
+            logits, cache = self.model.run_with_cache(
+                batch["prompt"], prepend_bos=False
+            )
 
             if normalize_logit != "none":
                 raise NotImplementedError
@@ -155,33 +190,23 @@ class LogitAttribution(BaseExperiment):
             diff_attribute = cache.logit_attrs(
                 stack_of_component, tokens=target_mem, incorrect_tokens=target_cp
             )  # (component, batch, position)
-            if  "copyVSfact" in self.experiment:
-                object_position = self.dataset.obj_pos[0]
-                storage.append(
-                    mem_attribute.cpu(),
-                    cp_attribute.cpu(),
-                    diff_attribute.cpu(),
-                    labels,
-                    object_position,
-                )
-            elif "contextVSfact" in self.experiment:
-                for h in range(batch["subj_pos"].shape[0]):
-                    if batch["subj_pos"][h] <= batch["obj_pos"][h]:
-                        print("Error is coming")
-                storage.append(
-                    mem_attribute.cpu(),
-                    cp_attribute.cpu(),
-                    diff_attribute.cpu(),
-                    labels,
-                    batch["obj_pos"],
-                    subj_positions=batch["subj_pos"],
-                    batch_dim=1,
-                )
-
+            
+            
+            storage.append(
+                mem_attribute.cpu(),
+                cp_attribute.cpu(),
+                diff_attribute.cpu(),
+                labels,
+                batch["obj_pos"].cpu(),
+                batch["1_subj_pos"].cpu(),
+                batch["2:subj_pos"].cpu(),
+                batch["subj_len"].cpu(),
+            )
+            
         # clear the cuda cache
         torch.cuda.empty_cache()
 
-    def attribute(self, apply_ln: bool = False, **kwargs):
+    def attribute(self, apply_ln: bool = False, **kwargs) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], List[str]]:
         """
         run the logit attribution for all the lengths in the dataset and return a tuple of (mem, cp, diff) of shape (component, batch, position)
         """
@@ -212,7 +237,6 @@ class LogitAttribution(BaseExperiment):
         data = []
         for i, label in enumerate(labels):  # type: ignore
             for position in range(mem.shape[-1]):
-                
                 data.append(
                     {
                         "label": label,
@@ -225,9 +249,9 @@ class LogitAttribution(BaseExperiment):
                         "diff_std": diff[i, :, position].std().item(),
                     }
                 )
-        # index of head 
+        # index of head
         head_indexes = [i for i, label in enumerate(labels) if "H" in label]
-        #sum all the head at position 12
+        # sum all the head at position 12
         mem_all = mem[head_indexes, :, 12].mean()
         cp_all = cp[head_indexes, :, 12].mean()
         mem_all_std = mem[head_indexes, :, 12].std()
@@ -244,8 +268,10 @@ class LogitAttribution(BaseExperiment):
                 "diff_std": 0,
             }
         )
-        #doing the same but just for layer 10 and 11
-        head_indexes = [i for i, label in enumerate(labels) if ("H" in label and "L10" in label)]
+        # doing the same but just for layer 10 and 11
+        head_indexes = [
+            i for i, label in enumerate(labels) if ("H" in label and "L10" in label)
+        ]
         mem_all = mem[head_indexes, :, 12].mean()
         cp_all = cp[head_indexes, :, 12].mean()
         mem_all_std = mem[head_indexes, :, 12].std()
@@ -263,7 +289,9 @@ class LogitAttribution(BaseExperiment):
             }
         )
         # doing the same but just for layer 11
-        head_indexes = [i for i, label in enumerate(labels) if ("H" in label and "L11" in label)]
+        head_indexes = [
+            i for i, label in enumerate(labels) if ("H" in label and "L11" in label)
+        ]
         mem_all = mem[head_indexes, :, 12].mean()
         cp_all = cp[head_indexes, :, 12].mean()
         mem_all_std = mem[head_indexes, :, 12].std()
@@ -280,9 +308,11 @@ class LogitAttribution(BaseExperiment):
                 "diff_std": 0,
             }
         )
-        
-        # doint the same for layer 7  
-        head_indexes = [i for i, label in enumerate(labels) if ("H" in label and "L7" in label)]
+
+        # doint the same for layer 7
+        head_indexes = [
+            i for i, label in enumerate(labels) if ("H" in label and "L7" in label)
+        ]
         mem_all = mem[head_indexes, :, 12].mean()
         cp_all = cp[head_indexes, :, 12].mean()
         mem_all_std = mem[head_indexes, :, 12].std()
@@ -300,7 +330,9 @@ class LogitAttribution(BaseExperiment):
             }
         )
         # doint the same for layer 9
-        head_indexes = [i for i, label in enumerate(labels) if ("H" in label and "L9" in label)]
+        head_indexes = [
+            i for i, label in enumerate(labels) if ("H" in label and "L9" in label)
+        ]
         mem_all = mem[head_indexes, :, 12].mean()
         cp_all = cp[head_indexes, :, 12].mean()
         mem_all_std = mem[head_indexes, :, 12].std()
@@ -317,6 +349,5 @@ class LogitAttribution(BaseExperiment):
                 "diff_std": 0,
             }
         )
-        
-        
+
         return pd.DataFrame(data)

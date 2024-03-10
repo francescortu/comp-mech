@@ -1,14 +1,17 @@
 from math import isnan
+from more_itertools import first
 from tomlkit import value
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from src.dataset import TlensDataset
-from src.model import WrapHookedTransformer
-from src.base_experiment import BaseExperiment
+from Src.dataset import BaseDataset
+from Src.model import BaseModel
+from Src.base_experiment import BaseExperiment
 from typing import  Dict, Literal
 import pandas as pd
 
+from Src.utils import AGGREGATED_DIMS
+AGGREGATED_DIMS = 13
 
 class HeadPatternStorage():
     def __init__(self, n_layers:int, n_heads:int, experiment:Literal["copyVSfact", "contextVSfact"]):
@@ -18,92 +21,116 @@ class HeadPatternStorage():
         self.storage = {f"L{i}H{j}":[] for i in range(n_layers) for j in range(n_heads)}
         
         
-    def _get_position_to_aggregate_copyVSfact(self, i:int, object_position:int, length:int):
-        subject_1_1 = 5
-        subject_1_2 = 6 if length > 15 else 5
-        subject_1_3 = 7 if length > 17 else subject_1_2
-        subject_2_1 = object_position + 2
-        subject_2_2 = object_position + 3 if length > 15 else subject_2_1
-        subject_2_3 = object_position + 4 if length > 17 else subject_2_2
-        subject_2_2 = subject_2_2 if subject_2_2 < length else subject_2_1
-        subject_2_3 = subject_2_3 if subject_2_3 < length else subject_2_2
-        last_position = length - 1
-        object_positions_pre = object_position - 1
-        object_positions_next = object_position + 1
+    def _get_position_to_aggregate_copyVSfact(self,
+                                            i:int,
+                                            object_position:torch.Tensor,
+                                            first_subject_position:torch.Tensor,
+                                            second_subject_position:torch.Tensor,
+                                            subject_lengths:torch.Tensor, 
+                                            length:int):
         
-        if i == 0:
-            return slice(0, subject_1_1)
-        if i == 1:
-            return subject_1_1
-        if i == 2:
-            return subject_1_2
-        if i == 3:
-            return subject_1_3
-        if i == 4:
-            if object_positions_pre > subject_1_3 + 1:
-                return slice(subject_1_3 + 1, object_positions_pre)
+        if i == 0: # pre subject
+            return slice(0, first_subject_position -1)
+        if i == 1: # first subject token
+            return first_subject_position 
+        if i == 2: # between first and second subject
+            last_subject = first_subject_position + subject_lengths
+            if (last_subject -1 - (first_subject_position + 1)) < 0:
+                return - 100
+            elif (last_subject -1 - (first_subject_position + 1)) == 0:
+                return first_subject_position + 1
             else:
-                return subject_1_3
-        if i == 5:
-            return object_positions_pre
-        if i == 6:
-            return object_position
-        if i == 7:
-            return object_positions_next
-        if i == 8:
-            return subject_2_1
-        if i == 9:
-            return subject_2_2
-        if i == 10:
-            return subject_2_3
-        if i == 11:
-            if last_position > subject_2_3 +1:
-                return slice(subject_2_3 + 1, last_position)
+                return slice(first_subject_position + 1, first_subject_position + last_subject -1)
+        if i == 3: # last subject token
+            return first_subject_position + subject_lengths
+        if i == 4: # between subject and object
+            if (object_position - 1 - (first_subject_position + subject_lengths +1)) < 0:
+                return - 100
+            elif (object_position - 1 - (first_subject_position + subject_lengths +1)) == 0:
+                return first_subject_position + subject_lengths + 1
             else:
-                return subject_2_3
-        if i == 12:
-            return last_position
-        
-    def _get_position_to_aggregate_contextVSfact(self, i:int, object_position:int, length:int, subj_position:int):
-        subject_1 = subj_position
-        subject_2 = subj_position + 1 if (length - subj_position) > 14 else subject_1
-        subject_3 = subj_position + 2 if (length - subj_position) > 16 else subject_2
-        subject_pos_pre = subj_position - 1 
-        last_position = length - 1
-        
-        if i == 0:
-            return slice(0, object_position)
-        if i == 1:
+                return slice(first_subject_position + subject_lengths + 1, object_position - 1)
+        if i == 5: # pre object
+            return object_position - 1
+        if i == 6: # object token
             return object_position
-        if i == 2:
-            slice_object = slice(object_position + 1, subject_pos_pre)
-            if slice_object.start > slice_object.stop:
-                print("ERROR")
-            if object_position + 1 > subj_position:
-                return object_position
-            elif object_position + 1 == subject_pos_pre:
+        if i == 7: # next object
+            return object_position + 1
+        if i == 8: # from next object to second subject
+            if (second_subject_position - 1 - (object_position + 1)) < 0:
+                return - 100
+            elif (second_subject_position - 1 - (object_position + 1)) == 0:
                 return object_position + 1
-            else: 
-                return slice(object_position + 1, subject_pos_pre)
-        if i == 3:
-            return subject_pos_pre
-        if i == 4:
-            return subject_1
-        if i == 5:
-            return subject_2
-        if i == 6:
-            return subject_3
-        if i == 7:
-            if subject_3 + 1 == last_position:
-                return subject_3
             else:
-                return slice(subject_3 + 1, last_position)
-        if i == 8:
-            return last_position
+                return slice(object_position + 1, second_subject_position - 1)
+        if i == 9: # first token of second subject
+            return second_subject_position
+        if i == 10: # between first and second subject
+            last_subject = second_subject_position + subject_lengths
+            if (last_subject -1 - (second_subject_position + 1)) < 0:
+                return - 100
+            elif (last_subject -1 - (second_subject_position + 1)) == 0:
+                return second_subject_position + 1
+            else:
+                return slice(second_subject_position + 1, second_subject_position + last_subject -1)
+        if i == 11: # from subject to last token
+            last_token = length - 1
+            if (last_token - 1 - (second_subject_position + subject_lengths + 1)) < 0:
+                return - 100
+            elif (last_token - 1 - (second_subject_position + subject_lengths + 1)) == 0:
+                return second_subject_position + subject_lengths + 1
+            else:
+                return slice(second_subject_position + subject_lengths + 1, last_token)
+        if i == 12: # last token
+            return length - 1
+        
+    # def _get_position_to_aggregate_contextVSfact(self, i:int, object_position:int, length:int, subj_position:int):
+    #     subject_1 = subj_position
+    #     subject_2 = subj_position + 1 if (length - subj_position) > 14 else subject_1
+    #     subject_3 = subj_position + 2 if (length - subj_position) > 16 else subject_2
+    #     subject_pos_pre = subj_position - 1 
+    #     last_position = length - 1
+        
+    #     if i == 0:
+    #         return slice(0, object_position)
+    #     if i == 1:
+    #         return object_position
+    #     if i == 2:
+    #         slice_object = slice(object_position + 1, subject_pos_pre)
+    #         if slice_object.start > slice_object.stop:
+    #             print("ERROR")
+    #         if object_position + 1 > subj_position:
+    #             return object_position
+    #         elif object_position + 1 == subject_pos_pre:
+    #             return object_position + 1
+    #         else: 
+    #             return slice(object_position + 1, subject_pos_pre)
+    #     if i == 3:
+    #         return subject_pos_pre
+    #     if i == 4:
+    #         return subject_1
+    #     if i == 5:
+    #         return subject_2
+    #     if i == 6:
+    #         return subject_3
+    #     if i == 7:
+    #         if subject_3 + 1 == last_position:
+    #             return subject_3
+    #         else:
+    #             return slice(subject_3 + 1, last_position)
+    #     if i == 8:
+    #         return last_position
 
         
         
-    def _aggregate_pattern(self, pattern:torch.Tensor, object_position, **kwargs) -> torch.Tensor:    
+    def _aggregate_pattern(self, 
+                        pattern:torch.Tensor, 
+                        object_position:torch.Tensor,
+                        first_subject_position:torch.Tensor,
+                        second_subject_position:torch.Tensor,
+                        subject_lengths,
+                        length:int
+                        ) -> torch.Tensor:    
         """
         pattern shape: (batch_size, seq_len, seq_len)
         return shape:(batch_size, 13, 13)
@@ -112,53 +139,85 @@ class HeadPatternStorage():
         length = pattern.shape[-1]
 
         if "contextVSfact" in self.experiment:
-            return self._aggregate_pattern_contextVSfact(pattern, object_position, length, **kwargs)
+            raise NotImplementedError("Only copyVSfact and contextVSfact are supported")
         elif "copyVSfact" in self.experiment:
-            return self._aggregate_pattern_copyVSfact(pattern, object_position, length, **kwargs)
+            return_pattern = torch.zeros((pattern.shape[0], AGGREGATED_DIMS, AGGREGATED_DIMS))
+            for i in range(pattern.shape[0]):
+                return_pattern[i] = self._aggregate_pattern_copyVSfact(pattern[i],
+                                                object_position[i],
+                                                first_subject_position[i],
+                                                second_subject_position[i],
+                                                subject_lengths[i],
+                                                length 
+                                                )
+            return return_pattern
         else:
             raise NotImplementedError("Only copyVSfact and contextVSfact are supported")
         
+    
+    def _aggregate_pattern_copyVSfact(self,
+                                    pattern:torch.Tensor,
+                                    object_position:torch.Tensor,
+                                    first_subject_position:torch.Tensor,
+                                    second_subject_position:torch.Tensor,
+                                    subject_lengths:torch.Tensor,
+                                    length:int,
+                                    ) -> torch.Tensor:
         
-    def _aggregate_pattern_contextVSfact(self, pattern:torch.Tensor, object_position:torch.Tensor, length:int, subj_position) -> torch.Tensor:
-        batch_size = pattern.shape[0]
-        aggregate_result = torch.zeros((batch_size, 9, 9))
+        assert pattern.ndim == 2, "pattern should be 2D, (seq_len, seq_len) NOT (batch_size, seq_len, seq_len)"
+        assert object_position.ndim == 0, "object_position should be 0D, NOT 1D. Not (batch_size) but ()"
+        assert first_subject_position.ndim == 0, "first_subject_position should be 0D, NOT 1D. Not (batch_size) but ()"
+        assert second_subject_position.ndim == 0, "second_subject_position should be 0D, NOT 1D. Not (batch_size) but ()"
+        assert subject_lengths.ndim == 0, "subject_lengths should be 0D, NOT 1D. Not (batch_size) but ()"
         
-        for batch_idx in range(batch_size):
-            for i in range(9):
-                position_to_aggregate_row = self._get_position_to_aggregate_contextVSfact(i, object_position[batch_idx], length, subj_position=subj_position[batch_idx])
-                for j in range(9):
-                    position_to_aggregate_col = self._get_position_to_aggregate_contextVSfact(j, object_position[batch_idx], length, subj_position=subj_position[batch_idx])
-                    value_to_aggregate = pattern[batch_idx, position_to_aggregate_row, position_to_aggregate_col]
-                    if value_to_aggregate.ndim == 2:
-                        value_to_aggregate = value_to_aggregate.mean(dim=(0, 1))
-                    elif value_to_aggregate.ndim == 1:
-                        value_to_aggregate = value_to_aggregate.mean(dim=0)
-                    if torch.isnan(value_to_aggregate).any():
-                        print(torch.isnan(value_to_aggregate))
-                        print("NAN")
-                    aggregate_result[batch_idx, i, j] = value_to_aggregate
-        return aggregate_result
 
-    def _aggregate_pattern_copyVSfact(self, pattern:torch.Tensor, object_position:int, length:int, **kwargs) -> torch.Tensor:
+        aggregate_result = torch.zeros((AGGREGATED_DIMS, AGGREGATED_DIMS))
         
-        aggregate_result = torch.zeros((pattern.shape[0], 13, 13))
-        
-        for i in range(13):
-            position_to_aggregate_row = self._get_position_to_aggregate_copyVSfact(i, object_position, length, **kwargs)
-            for j in range(13):
-                position_to_aggregate_col = self._get_position_to_aggregate_copyVSfact(j, object_position, length, **kwargs)
-                value_to_aggregate = pattern[:, position_to_aggregate_row, position_to_aggregate_col]
+        for i in range(AGGREGATED_DIMS):
+            position_to_aggregate_row = self._get_position_to_aggregate_copyVSfact(i, 
+                                                                                object_position = object_position,
+                                                                                first_subject_position = first_subject_position,
+                                                                                second_subject_position = second_subject_position,
+                                                                                subject_lengths = subject_lengths,    
+                                                                                length = length)
+            for j in range(AGGREGATED_DIMS):
+                position_to_aggregate_col = self._get_position_to_aggregate_copyVSfact(j, 
+                                                                                    object_position = object_position,
+                                                                                    first_subject_position = first_subject_position, 
+                                                                                    second_subject_position = second_subject_position,
+                                                                                    subject_lengths = subject_lengths,
+                                                                                    length= length,)
+                if position_to_aggregate_row == -100 or position_to_aggregate_col == -100:
+                    aggregate_result[i, j] = -100
+                    continue
+                value_to_aggregate = pattern[position_to_aggregate_row, position_to_aggregate_col]
                 if value_to_aggregate.ndim == 3:
                     value_to_aggregate = value_to_aggregate.mean(dim=(1, 2))
                 elif value_to_aggregate.ndim == 2:
                     value_to_aggregate = value_to_aggregate.mean(dim=1)
-                aggregate_result[:, i, j] = value_to_aggregate
+                aggregate_result[i, j] = value_to_aggregate
         return aggregate_result
             
         
         
-    def store(self, layer:int, head:int, pattern:torch.Tensor, object_position:int, **kwargs):
-        aggregate_pattern = self._aggregate_pattern(pattern, object_position, **kwargs) # (batch_size, 13, 13)
+    def store(self,     
+            layer:int, 
+            head:int, 
+            pattern:torch.Tensor, 
+            object_position:torch.Tensor,
+            first_subject_position:torch.Tensor,
+            second_subject_position:torch.Tensor,
+            subject_lengths:torch.Tensor,
+            length:int):
+        
+        aggregate_pattern = self._aggregate_pattern(
+                        pattern = pattern,
+                        object_position = object_position,
+                        first_subject_position = first_subject_position,
+                        second_subject_position = second_subject_position,
+                        subject_lengths = subject_lengths,
+                        length = length
+                        ) # (batch_size, 13, 13)
         self.storage[f"L{layer}H{head}"].append(aggregate_pattern)
 
     def stack(self):
@@ -174,7 +233,7 @@ class HeadPatternStorage():
 
 class HeadPattern(BaseExperiment):
     def __init__(
-        self, dataset: TlensDataset, model: WrapHookedTransformer, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"],
+        self, dataset: BaseDataset, model: BaseModel, batch_size: int, experiment: Literal["copyVSfact", "contextVSfact"],
     ):
         super().__init__(dataset, model, batch_size, experiment)
         
@@ -194,13 +253,17 @@ class HeadPattern(BaseExperiment):
             for layer in range(self.model.cfg.n_layers):
                 for head in range(self.model.cfg.n_heads):
                     pattern = self._extract_pattern(cache, layer, head)
-                    if  "contextVSfact" in self.experiment:
-                        storage.store(layer, head, pattern.cpu(), batch["obj_pos"], subj_position=batch["subj_pos"])
-                    elif  "copyVSfact" in self.experiment:
-                        storage.store(layer, head, pattern.cpu(), object_position)
-                    else:
-                        raise NotImplementedError("Only copyVSfact and contextVSfact are supported")
-        
+                    storage.store(
+                        layer=layer,
+                        head=head,
+                        pattern=pattern.cpu(),
+                        object_position=batch["obj_pos"],
+                        first_subject_position=batch["1_subj_pos"],
+                        second_subject_position=batch["2_subj_pos"],
+                        subject_lengths=batch["subj_len"],
+                        length=length
+                    )
+                            
         torch.cuda.empty_cache()
 
     def extract(self) -> Dict[str, torch.Tensor]:

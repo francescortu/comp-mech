@@ -1,5 +1,6 @@
 import re
 from numpy import dtype
+from sympy import sec
 import torch
 from torch.utils.data import DataLoader
 import einops
@@ -111,12 +112,23 @@ class LogitStorage:
             self._reshape_logits(self.logits[key], shape) for key in self.logits
         )
 
-    def get_aggregate_logit(self, object_position: torch.Tensor, **kwargs):
+    def get_aggregate_logit(self, 
+                        object_position: torch.Tensor,
+                        first_subject_positions:torch.Tensor,
+                        second_subject_positions:torch.Tensor,
+                        subject_lengths:torch.Tensor):
         return_tuple = self.get_logit()
         aggregate_tensor = []
         for elem in return_tuple:
             aggregate_tensor.append(
-                self._aggregate_result(object_position, elem, **kwargs)
+                self._aggregate_result(
+                    pattern=elem,
+                    object_positions=object_position,
+                    first_subject_positions=first_subject_positions,
+                    second_subject_positions=second_subject_positions,
+                    subject_lengths=subject_lengths,
+                                    
+                                       )
             )
 
         return tuple(aggregate_tensor)

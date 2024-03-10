@@ -2,12 +2,12 @@ from re import sub
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from src.dataset import TlensDataset
-from src.model import WrapHookedTransformer
-from src.base_experiment import BaseExperiment, to_logit_token
+from Src.dataset import BaseDataset
+from Src.model import WrapHookedTransformer
+from Src.base_experiment import BaseExperiment, to_logit_token
 from typing import Optional, Tuple, Dict, Any, Literal, Union, List
 import pandas as pd
-from src.experiment import LogitStorage, HeadLogitStorage
+from Src.experiment import LogitStorage, HeadLogitStorage
 from functools import partial
 from copy import deepcopy
 
@@ -16,7 +16,7 @@ WINDOW = 1
 class Ablate(BaseExperiment):
     def __init__(
         self,
-        dataset: TlensDataset,
+        dataset: BaseDataset,
         model: WrapHookedTransformer,
         batch_size: int,
         experiment: Literal["copyVSfact", "contextVSfact"] = "copyVSfact",

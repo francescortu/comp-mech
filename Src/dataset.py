@@ -197,7 +197,7 @@ class BaseDataset(Dataset):
             d["target_new_token"] = self.model.tokenize(d["target_new"]).squeeze(0).cuda()
             d["target_true_token"] = self.model.tokenize(d["target_true"]).squeeze(0).cuda()
             d["targets"] = torch.cat(
-                (d["target_new_token"], d["target_true_token"]), dim=0
+                (d["target_true_token"], d["target_new_token"]), dim=0
             )
             # if find_subj_pod raises an error, add the point to the log data and continue
             try:

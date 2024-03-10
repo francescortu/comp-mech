@@ -21,27 +21,28 @@ def check_dataset_and_sample(dataset_path, model_name, hf_model_name):
         print("Dataset found!")
         return
     else:
-        print("Dataset not found, creating it:")
-        model = AutoModelForCausalLM.from_pretrained(
-            hf_model_name, device_map="auto", torch_dtype="auto"
-        )
-        tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
-        model.eval()
-        model = model.to("cuda")
-        from src.dataset import SampleDataset
+        raise FileNotFoundError("Dataset not found, please create it first")
+        # print("Dataset not found, creating it:")
+        # model = AutoModelForCausalLM.from_pretrained(
+        #     hf_model_name, device_map="auto", torch_dtype="auto"
+        # )
+        # tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
+        # model.eval()
+        # model = model.to("cuda")
+        # from src.dataset import SampleDataset
 
-        sampler = SampleDataset(
-            "../data/full_data.json",
-            model=model,
-            save_path=dataset_path,
-            tokenizer=tokenizer,
-        )
-        sampler.sample()
-        sampler.save()
-        del model
-        del sampler
-        torch.cuda.empty_cache()
-        return
+        # sampler = SampleDataset(
+        #     "../data/full_data.json",
+        #     model=model,
+        #     save_path=dataset_path,
+        #     tokenizer=tokenizer,
+        # )
+        # sampler.sample()
+        # sampler.save()
+        # del model
+        # del sampler
+        # torch.cuda.empty_cache()
+        # return
 
 
 def display_experiments(experiments, status):
@@ -183,7 +184,7 @@ def aggregate_result(
     else:
         raise ValueError("Invalid experiment name")
 
-AGGREGATED_DIMS = 13
+AGGREGATED_DIMS = 14
 def aggregate_result_copyVSfact(
     pattern: torch.Tensor,
     object_positions: torch.Tensor,
