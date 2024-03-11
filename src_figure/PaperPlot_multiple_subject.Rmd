@@ -35,11 +35,11 @@ palette <- c("GPT2" = "#003f5c", "GPT2-medium" = "#58508d", "GPT2-large" = "#bc5
 model <- "gpt2"
 model_folder <- "gpt2_full"
 n_layers <- 12
-experiment <- "copyVSfact"
-n_positions <- 12
-positions_name <- c("-", "Subject", "2nd Subject", "3rd Subject", "Relation", "Relation Last", "Attribute*", "-", "Subject Repeat", "2nd Subject repeat", "3nd Subject repeat", "Relation repeat", "Last")
-relevant_position <- c("Subject", "Relation", "Relation Last", "Attribute*", "Subject repeat", "Relation repeat", "Last")
-n_relevant_position <- 7
+experiment <- "copyVSfact_TEST"
+n_positions <- 13
+positions_name <- c("-", "Subject", "2nd Subject", "3rd Subject", "Relation", "Relation Last", "Attribute*", "NextObject","-", "Subject Repeat", "2nd Subject repeat", "3nd Subject repeat", "Relation repeat", "Last")
+relevant_position <- c("Subject",  "2nd Subject", "3rd Subject", "Relation", "Relation Last", "Attribute*", "Subject repeat", "2nd Subject repeat", "3nd Subject repeat", "Relation repeat", "Last")
+n_relevant_position <- 11
 layer_pattern <- c(11,10,10,10,9,9)
 head_pattern <- c(10,0,7,10,6,9)
 layer_pattern <- c(11,10,10,10,9,9)
@@ -146,10 +146,10 @@ print(getwd())
 #print current working directory
 data <- read.csv(sprintf("%s/logit_lens/%s/logit_lens_data.csv", experiment, model_folder))
 number_of_position <- max(as.numeric(data$position))
-data_resid_post <- data %>% filter(grepl("resid_post", component))
+data_resid_post <- data %>% filter(grepl("resid_mid", component))
 data_resid_post$position_name <- positions_name[data_resid_post$position + 1]
 #filter just the relevant positions
-data_resid_post <- data_resid_post %>% filter(position == 1 | position==4 | position == 5 | position== 6 | position==8 |  position == 11 | position== 12)
+data_resid_post <- data_resid_post %>% filter(position == 1 | position == 2 | position == 3 | position==4 | position == 5 | position== 6 | position==9 | position==10 | position==11|  position == 12 | position== 13)
 unique_positions <- unique(data_resid_post$position)
 position_mapping <- setNames(seq(0, length(unique_positions) - 1), unique_positions)
 # Apply the mapping to create a new column
@@ -176,8 +176,8 @@ ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_cp.pdf", model, exper
 
 ```{r}
 data_resid_post_altered <- data_resid_post %>% filter(position == 6)
-data_resid_post_2_subject <- data_resid_post %>% filter(position == 8)
-data_resid_post_last <- data_resid_post %>% filter(position ==12)
+data_resid_post_2_subject <- data_resid_post %>% filter(position == 9)
+data_resid_post_last <- data_resid_post %>% filter(position ==13)
 p_logit <-ggplot(data_resid_post_last, aes(x=layer))+
   #last
   geom_line(aes(y=mem, color="mem"),size=4,  alpha=0.8 )+
@@ -207,7 +207,7 @@ p_logit <-ggplot(data_resid_post_last, aes(x=layer))+
     # move the y ticks to the right
   ) + guides(color = guide_legend(ncol = 2, nrow=1))
 p_logit
-ggsave("logit_last.pdf", p_logit, width = 50, height = 30, units = "cm")
+# ggsave("logit_last.pdf", p_logit, width = 50, height = 30, units = "cm")
 ```
 
 ```{r}

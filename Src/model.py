@@ -35,6 +35,12 @@ class BaseModel:
             raise NotImplementedError(f"Model {model_name} does not have a predict_with_space attribute: pleas check the model behavior and add it manually")
         self.initialize_model(model_name, *args, **kwargs)
         
+    def __call__(self, *args, **kwargs):
+        if self.model is None:
+            raise NotImplementedError("Model has not been initialized")
+        return self.model(*args, **kwargs)
+        
+        
     def initialize_model(self,model_name:str, *args, **kwargs):
         raise NotImplementedError("initialize_model method must be implemented")
     
@@ -43,7 +49,7 @@ class BaseModel:
         pass
     
     @abstractmethod
-    def tokenize(self, text:str, prepend_bos:bool = False):
+    def tokenize(self, text:str, prepend_bos:bool = False) -> torch.Tensor:
         pass
     
     @abstractmethod
@@ -54,8 +60,22 @@ class BaseModel:
     def cuda(cls):
         return cls.cuda()
     
+    def eval(self):
+        if self.model is None:
+            raise NotImplementedError("Model has not been initialized")
+        self.model.eval()
+            
+    @abstractmethod
+    def run_with_cache(self, *args, **kwargs):
+        raise NotImplementedError("run_with_cache method must be implemented")
+    
+    @abstractmethod
+    def unembed(self):
+        raise NotImplementedError("unembed method must be implemented")
 
 class WrapHookedTransformer(BaseModel):
+    
+
 
     def initialize_model(self, model_name:str, *args, **kwargs):
         self.model = HookedTransformer.from_pretrained(model_name, *args, **kwargs)
@@ -76,6 +96,12 @@ class WrapHookedTransformer(BaseModel):
     
     def to_string_token(self, token):
         return self.to_string_token(token)
+    
+    def run_with_cache(self, *args, **kwargs):
+        return self.model.run_with_cache(*args, **kwargs)
+    
+    def unembed(self):
+        return self.model.W_U
     
     
 class WrapAutoModelForCausalLM(BaseModel):
@@ -105,8 +131,9 @@ class WrapAutoModelForCausalLM(BaseModel):
         for t in list_tokens:
             string_tokens.append(self.tokenizer.decode(t))
         return string_tokens
+
     
-class ModelFactory:
+class ModelFactory():
     @staticmethod
     def create(model_name:str, hf_model:bool=False):
         if hf_model:
