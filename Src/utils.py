@@ -12,7 +12,6 @@ from rich.table import Table
 import time
 import os
 import torch.nn.functional as F
-from transformers import AutoModelForCausalLM, AutoTokenizer, GPTNeoXForCausalLM
 from typing import Literal, Union
 
 
@@ -22,27 +21,6 @@ def check_dataset_and_sample(dataset_path, model_name, hf_model_name):
         return
     else:
         raise FileNotFoundError("Dataset not found, please create it first")
-        # print("Dataset not found, creating it:")
-        # model = AutoModelForCausalLM.from_pretrained(
-        #     hf_model_name, device_map="auto", torch_dtype="auto"
-        # )
-        # tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
-        # model.eval()
-        # model = model.to("cuda")
-        # from src.dataset import SampleDataset
-
-        # sampler = SampleDataset(
-        #     "../data/full_data.json",
-        #     model=model,
-        #     save_path=dataset_path,
-        #     tokenizer=tokenizer,
-        # )
-        # sampler.sample()
-        # sampler.save()
-        # del model
-        # del sampler
-        # torch.cuda.empty_cache()
-        # return
 
 
 def display_experiments(experiments, status):
@@ -62,13 +40,15 @@ def display_config(config):
         Text.assemble(("Model Name: ", "bold"), str(config.model_name)),
         Text.assemble(("Batch Size: ", "bold"), str(config.batch_size)),
         Text.assemble(("Dataset Path: ", "bold"), config.dataset_path),
-        Text.assemble(("Dataset Slice: ", "bold"), str(config.dataset_slice)),
+        Text.assemble(("Dataset End: ", "bold"), str(config.dataset_end)),
         Text.assemble(("Produce Plots: ", "bold"), str(config.produce_plots)),
         Text.assemble(("Normalize Logit: ", "bold"), str(config.normalize_logit)),
         Text.assemble(("Std Dev: ", "bold"), str(config.std_dev)),
         Text.assemble(("Total Effect: ", "bold"), str(config.total_effect)),
         Text.assemble(("Up-to-layer: ", "bold"), str(config.up_to_layer)),
-        Text.assemble(("Experiment Name: ", "bold"), str(config.mech_fold)),
+        Text.assemble(("Experiment Name: ", "bold"), str(config.experiment)),
+        Text.assemble(("Flag: ", "bold"), str(config.flag)),
+        Text.assemble(("HF Model: ", "bold"), str(config.hf_model))
     ]
 
     columns = Columns(config_items, equal=True, expand=True)
@@ -193,15 +173,15 @@ def aggregate_result_copyVSfact(
     subject_lengths: torch.Tensor,
     length: int,
 ) -> torch.Tensor:
-    batch_size = pattern.shape[0]
+    batch_size = pattern.shape[1]
     assert batch_size == first_subject_positions.shape[0], "Batch size mismatch"
     
     *leading_dims, pen_len, last_len = pattern.shape
     intermediate_aggregate = torch.zeros((*leading_dims, pen_len, AGGREGATED_DIMS))
     
     for i in range(batch_size):
-        intermediate_aggregate[i] = aggregate_single_result_copyVSfact(
-            pattern[i],
+        intermediate_aggregate[:,i,:] = aggregate_single_result_copyVSfact(
+            pattern[:,i,:],
             object_positions[i],
             first_subject_positions[i],
             second_subject_positions[i],

@@ -11,7 +11,7 @@ from typing import  Dict, Literal
 import pandas as pd
 
 from Src.utils import AGGREGATED_DIMS
-AGGREGATED_DIMS = 13
+AGGREGATED_DIMS = 14
 
 class HeadPatternStorage():
     def __init__(self, n_layers:int, n_heads:int, experiment:Literal["copyVSfact", "contextVSfact"]):
@@ -73,7 +73,9 @@ class HeadPatternStorage():
                 return second_subject_position + 1
             else:
                 return slice(second_subject_position + 1, second_subject_position + last_subject -1)
-        if i == 11: # from subject to last token
+        if i == 11: # last token of second subject
+            return second_subject_position + subject_lengths
+        if i == 12: # from subject to last token
             last_token = length - 1
             if (last_token - 1 - (second_subject_position + subject_lengths + 1)) < 0:
                 return - 100
@@ -81,7 +83,7 @@ class HeadPatternStorage():
                 return second_subject_position + subject_lengths + 1
             else:
                 return slice(second_subject_position + subject_lengths + 1, last_token)
-        if i == 12: # last token
+        if i == 13: # last token
             return length - 1
         
     # def _get_position_to_aggregate_contextVSfact(self, i:int, object_position:int, length:int, subj_position:int):
@@ -188,13 +190,13 @@ class HeadPatternStorage():
                                                                                     subject_lengths = subject_lengths,
                                                                                     length= length,)
                 if position_to_aggregate_row == -100 or position_to_aggregate_col == -100:
-                    aggregate_result[i, j] = -100
+                    aggregate_result[i, j] = 0
                     continue
                 value_to_aggregate = pattern[position_to_aggregate_row, position_to_aggregate_col]
-                if value_to_aggregate.ndim == 3:
-                    value_to_aggregate = value_to_aggregate.mean(dim=(1, 2))
-                elif value_to_aggregate.ndim == 2:
-                    value_to_aggregate = value_to_aggregate.mean(dim=1)
+                if value_to_aggregate.ndim == 2:
+                    value_to_aggregate = value_to_aggregate.mean(dim=(0, 1))
+                elif value_to_aggregate.ndim == 1:
+                    value_to_aggregate = value_to_aggregate.mean(dim=0)
                 aggregate_result[i, j] = value_to_aggregate
         return aggregate_result
             
@@ -281,7 +283,7 @@ class HeadPattern(BaseExperiment):
         if "contextVSfact" in self.experiment:
             n_grid = 9
         elif  "copyVSfact" in self.experiment:
-            n_grid = 13
+            n_grid = AGGREGATED_DIMS
         else:
             raise NotImplementedError("Only copyVSfact and contextVSfact are supported")
         

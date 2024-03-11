@@ -53,7 +53,7 @@ class AttributeStorage:
         self.mem_attribute.append(mem_attribute.cpu())
         self.cp_attribute.append(cp_attribute.cpu())
         self.diff_attribute.append(diff_attribute.cpu())
-        if self.labels is None:
+        if len(self.labels) == 0:
             self.labels = labels
 
     def aggregate(
@@ -199,7 +199,7 @@ class LogitAttribution(BaseExperiment):
                 labels,
                 batch["obj_pos"].cpu(),
                 batch["1_subj_pos"].cpu(),
-                batch["2:subj_pos"].cpu(),
+                batch["2_subj_pos"].cpu(),
                 batch["subj_len"].cpu(),
             )
             
@@ -213,8 +213,6 @@ class LogitAttribution(BaseExperiment):
         storage = AttributeStorage(self.experiment)
         lengths = self.dataset.get_lengths()
         for length in tqdm(lengths, desc="Attributing"):
-            if length == 10:
-                continue
             self.attribute_single_len(
                 length, storage, "logit", apply_ln=apply_ln, **kwargs
             )
