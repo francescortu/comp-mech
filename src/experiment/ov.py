@@ -72,8 +72,7 @@ class OV(BaseExperiment):
         
         logit_diff_mem_input = logit_mem_mem_input - logit_cp_mem_input
         logit_diff_cp_input = logit_mem_cp_input - logit_cp_cp_input
-        
-        return logit_diff_mem_input, logit_diff_cp_input
+        return logit_diff_mem_input, logit_diff_cp_input, logit_mem_mem_input, logit_cp_mem_input
 
     def compute_logit_dif_single_len(self, length:int, storage:OV_storage, **kwargs):
         self.set_len(length, slice_to_fit_batch=False)

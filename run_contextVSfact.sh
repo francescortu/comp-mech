@@ -11,6 +11,9 @@
 
 conda activate torch
 cd script
-python run_all.py --ablate --no-plot --model pythia-6.9b --batch 5  -slice 2500 --folder contextVSfact
+python run_all.py --ablate --no-plot --model pythia-6.9b --batch 10 --slice 2500 --folder contextVSfact --ablate-component mlp_out
+python run_all.py --ablate --no-plot --model pythia-6.9b --batch 10 --slice 2500 --folder contextVSfact --ablate-component attn_out
+#python run_all.py --ablate --no-plot --model pythia-6.9b --batch 10 --slice 20 --folder contextVSfact --ablate-component head 
 #python run_all.py --ablate --no-plot --model pythia-6.9b --batch 5  --slice 2000  --folder contextVSfact
+
 #python run_all.py --ablate --no-plot --model pythia-6.9b --batch 5  --slice 500   --folder contextVSfact
