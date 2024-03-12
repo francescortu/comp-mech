@@ -14,3 +14,4 @@
 /.idea/
 /src/config.py
 /Src/config.py
+/Src/experiment/__pycache__
