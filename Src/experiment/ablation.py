@@ -481,7 +481,7 @@ class Ablate(BaseExperiment):
                             # )
                         if layer == 4:
                             # hooks.append(
-                            #     (f"blocks.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=3.5))
+                            #     (f"dat.{10}.attn.hook_pattern", partial(head_ablation_hook, head=7,multiplicator=3.5))
                             # )
 
                             hooks.append(
