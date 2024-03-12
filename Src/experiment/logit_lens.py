@@ -10,7 +10,7 @@ from Src.model import BaseModel
 from Src.base_experiment import BaseExperiment, to_logit_token
 from typing import Optional, Tuple, Literal, Union
 from Src.utils import aggregate_result
-
+import ipdb
 
 class LogitStorage:
     """
@@ -273,6 +273,7 @@ class LogitLens(BaseExperiment):
         return_index: bool = False,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
     ):
+        ipdb.set_trace()
         self.set_len(length, slice_to_fit_batch=False)
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=False)
         num_batches = len(dataloader)

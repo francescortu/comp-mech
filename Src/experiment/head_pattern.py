@@ -1,5 +1,4 @@
 from math import isnan
-from more_itertools import first
 from tomlkit import value
 import torch
 from torch.utils.data import DataLoader

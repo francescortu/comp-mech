@@ -1,6 +1,5 @@
 from turtle import up
 from typing import Callable, List, Optional, Union
-from more_itertools import first
 import torch
 from torch.utils.data import DataLoader
 import einops
