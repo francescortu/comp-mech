@@ -185,7 +185,11 @@ class BaseDataset(Dataset):
                 obj_pos = i
                 break
         return obj_pos
-    
+    def one_token(self, token:torch.Tensor) -> torch.Tensor:
+        if token.shape[0] == 1:
+            return token
+        else:
+            return token[0].unsqueeze(0)
     def __get_lenghts_and_tokenize__(self):
         lengths = []
         log_data = []
@@ -194,8 +198,8 @@ class BaseDataset(Dataset):
         for d in tqdm(self.full_data, desc="Tokenizing and computing lengths"):
             d["prompt"] = self.__get_prompt__(d)
             d["tokenized_prompt"] = self.model.tokenize(d["prompt"]).squeeze(0).cuda()
-            d["target_new_token"] = self.model.tokenize(d["target_new"]).squeeze(0).cuda()
-            d["target_true_token"] = self.model.tokenize(d["target_true"]).squeeze(0).cuda()
+            d["target_new_token"] = self.one_token(self.model.tokenize(d["target_new"]).squeeze(0).cuda())
+            d["target_true_token"] = self.one_token(self.model.tokenize(d["target_true"]).squeeze(0).cuda())
             d["targets"] = torch.cat(
                 (d["target_true_token"], d["target_new_token"]), dim=0
             )
