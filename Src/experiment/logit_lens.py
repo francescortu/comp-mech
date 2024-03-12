@@ -43,12 +43,12 @@ class LogitStorage:
 
     def _reshape_tensor(self, tensor: torch.Tensor):
         return einops.rearrange(
-            tensor, "layer position examples -> examples layer position"
+            tensor, "layer position examples -> layer examples position"
         )
 
     def _reshape_tensor_back(self, tensor: torch.Tensor):
         return einops.rearrange(
-            tensor, "examples layer position -> layer position examples"
+            tensor, "layer examples position -> layer position examples"
         )
 
     def _aggregate_result(

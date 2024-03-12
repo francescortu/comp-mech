@@ -1,5 +1,6 @@
 # Standard library imports
 from json import load
+import json
 import sys
 import os
 
@@ -103,7 +104,7 @@ class Config:
         }
 
 def get_dataset_path(args):
-    if args.folder == "copyVSfact":
+    if args.experiment == "copyVSfact":
         return f"../data/full_data_sampled_{args.model_name}_with_subjects.json"
     else:
         raise ValueError("No dataset path found for folder: ", args.folder)
@@ -134,10 +135,10 @@ def logit_attribution(model, dataset, config, args):
         dataset_slice_name if config.up_to_layer == "all" else f"{dataset_slice_name}_layer_{config.up_to_layer}"
     )
     print("Running logit attribution")
-    attributor = LogitAttribution(dataset, model, config.batch_size // 5, config.mech_fold)
+    attributor = LogitAttribution(dataset, model, config.batch_size // 5, config.experiment)
     dataframe = attributor.run(apply_ln=False, normalize_logit=config.normalize_logit, up_to_layer=config.up_to_layer)
     save_dataframe(
-        f"../results/{config.mech_fold}{config.flag}/logit_attribution/{config.model_name}_{dataset_slice_name}",
+        f"../results/{config.experiment}{config.flag}/logit_attribution/{config.model_name}_{dataset_slice_name}",
         "logit_attribution_data",
         dataframe,
     )
@@ -151,24 +152,24 @@ def logit_attribution_plot(config, dataset_slice_name):
             [
                 "Rscript",
                 "../src_figure/logit_attribution.R",
-                f"../results/{config.mech_fold}{config.flag}/logit_attribution/{config.model_name}_{dataset_slice_name}",
+                f"../results/{config.experiment}{config.flag}/logit_attribution/{config.model_name}_{dataset_slice_name}",
                 f"{config.std_dev}",
             ]
         )
 
 
 def logit_lens(model, dataset, config, args):
-    data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
+    data_slice_name = "full" if config.dataset_end is None else config.dataset_end
     logit_lens_cnfg = logit_lens_config()
     print("Running logit lens")
-    logit_lens = LogitLens(dataset, model, config.batch_size, config.mech_fold)
+    logit_lens = LogitLens(dataset, model, config.batch_size, config.experiment)
     dataframe = logit_lens.run(
         logit_lens_cnfg.component,
         logit_lens_cnfg.return_index,
         normalize_logit=config.normalize_logit,
     )
     save_dataframe(
-        f"../results/{config.mech_fold}{config.flag}/logit_lens/{config.model_name}_{data_slice_name}",
+        f"../results/{config.experiment}{config.flag}/logit_lens/{config.model_name}_{data_slice_name}",
         "logit_lens_data",
         dataframe,
     )
@@ -178,38 +179,38 @@ def logit_lens(model, dataset, config, args):
         logit_lens_plot(config, data_slice_name)
         
 def logit_lens_plot(config, data_slice_name):
-        print("Plotting from source:", f"../results/{config.mech_fold}/logit_lens/{config.model_name}_{data_slice_name}")
+        print("Plotting from source:", f"../results/{config.experiment}/logit_lens/{config.model_name}_{data_slice_name}")
         subprocess.run(
             [
                 "Rscript",
                 "../src_figure/logit_lens.R",
-                f"../results/{config.mech_fold}{config.flag}/logit_lens/{config.model_name}_{data_slice_name}",
+                f"../results/{config.experiment}{config.flag}/logit_lens/{config.model_name}_{data_slice_name}",
             ]
         )
 
 
 def ablate(model, dataset, config, args):
-    data_slice_name = "full" if config.dataset_slice is None else config.dataset_slice
+    data_slice_name = "full" if config.dataset_end is None else config.dataset_end
     start_slice_name = "" if config.dataset_start is None else f"{config.dataset_start}_"
     data_slice_name = f"{start_slice_name}{data_slice_name}_total_effect" if config.total_effect else data_slice_name
     LOAD_FROM_PT = None
-    ablator = Ablate(dataset, model, config.batch_size, config.mech_fold)
+    ablator = Ablate(dataset, model, config.batch_size, config.experiment)
     if args.ablate_component == "all":
         dataframe, tuple_results = ablator.run_all(normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
         save_dataframe(
-            f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}",
+            f"../results/{config.experiment}{config.flag}/ablation/{config.model_name}_{data_slice_name}",
             "ablation_data",
             dataframe,
         )
-        torch.save(tuple_results, f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}/ablation_data.pt")
+        torch.save(tuple_results, f"../results/{config.experiment}{config.flag}/ablation/{config.model_name}_{data_slice_name}/ablation_data.pt")
     else:
         dataframe, tuple_results = ablator.run(args.ablate_component, normalize_logit=config.normalize_logit, total_effect=args.total_effect, load_from_pt=LOAD_FROM_PT)
         save_dataframe(
-            f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}",
+            f"../results/{config.experiment}{config.flag}/ablation/{config.model_name}_{data_slice_name}",
             f"ablation_data_{args.ablate_component}",
             dataframe,
         )
-        torch.save(dataframe, f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}/ablation_data_{args.ablate_component}.pt")
+        torch.save(dataframe, f"../results/{config.experiment}{config.flag}/ablation/{config.model_name}_{data_slice_name}/ablation_data_{args.ablate_component}.pt")
 
     if config.produce_plots:
         # run the R script
@@ -217,12 +218,12 @@ def ablate(model, dataset, config, args):
         
 def ablate_plot(config, data_slice_name):
     data_slice_name = f"{data_slice_name}_total_effect" if config.total_effect else data_slice_name
-    print("plotting from source: ",  f"../results/{config.mech_fold}/ablation/{config.model_name}_{data_slice_name}")
+    print("plotting from source: ",  f"../results/{config.experiment}/ablation/{config.model_name}_{data_slice_name}")
     subprocess.run(
         [
             "Rscript",
             "../src_figure/ablation.R",
-            f"../results/{config.mech_fold}{config.flag}/ablation/{config.model_name}_{data_slice_name}",
+            f"../results/{config.experiment}{config.flag}/ablation/{config.model_name}_{data_slice_name}",
             f"{config.std_dev}",
         ]
     )
@@ -230,10 +231,10 @@ def ablate_plot(config, data_slice_name):
 def pattern(model, dataset, config, args):
     data_slice_name = "full" if config.dataset_end is None else config.dataset_end
     print("Running head pattern")
-    pattern = HeadPattern(dataset, model, config.batch_size, config.mech_fold)
+    pattern = HeadPattern(dataset, model, config.batch_size, config.experiment)
     dataframe = pattern.run()
     save_dataframe(
-        f"../results/{config.mech_fold}{config.flag}/head_pattern/{config.model_name}_{data_slice_name}",
+        f"../results/{config.experiment}{config.flag}/head_pattern/{config.model_name}_{data_slice_name}",
         "head_pattern_data",
         dataframe,
     )
@@ -248,7 +249,7 @@ def pattern_plot(config, data_slice_name):
             [
                 "Rscript",
                 "../src_figure/head_pattern.R",
-                f"../results/{config.mech_fold}{config.flag}/head_pattern/{config.model_name}_{data_slice_name}",
+                f"../results/{config.experiment}{config.flag}/head_pattern/{config.model_name}_{data_slice_name}",
             ]
         )
 
@@ -277,7 +278,7 @@ def main(args):
         
     # save the config in a json file in the experiment folder
     with open(f"../results/{config.experiment}/config.json", "w") as f:
-        f.write(config.to_json())
+        json.dump(config.to_json(), f)
     # create experiment folder
     if args.only_plot:
         data_slice_name = "full" if config.dataset_end is None else config.dataset_end

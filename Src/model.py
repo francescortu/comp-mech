@@ -72,6 +72,14 @@ class BaseModel:
     @abstractmethod
     def unembed(self):
         raise NotImplementedError("unembed method must be implemented")
+    
+    @abstractmethod
+    def reset_hooks(self):
+        raise NotImplementedError("reset_hooks method must be implemented")
+    
+    @abstractmethod
+    def run_with_hooks(self, *args, **kwargs):
+        raise NotImplementedError("run_with_hooks method must be implemented")
 
 class WrapHookedTransformer(BaseModel):
     
@@ -100,8 +108,16 @@ class WrapHookedTransformer(BaseModel):
     def run_with_cache(self, *args, **kwargs):
         return self.model.run_with_cache(*args, **kwargs)
     
+    def reset_hooks(self):
+        self.model.reset_hooks()
+        
+    def run_with_hooks(self, *args, **kwargs):
+        return self.model.run_with_hooks(*args, **kwargs)
+    
     def unembed(self):
         return self.model.W_U
+    
+    
     
     
 class WrapAutoModelForCausalLM(BaseModel):
