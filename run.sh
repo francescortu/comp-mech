@@ -12,8 +12,8 @@
 conda activate torch
 
 cd Script
-python run_all.py --model-name gpt2 --logit-lens --batch 30 --flag __WITH_SUBJECT
-python run_all.py --model-name pythia-6.9b --logit-lens --batch 30 --flag __WITH_SUBJECT
-python run_all.py --model-name gpt2 --logit-attribution --batch 10 --flag __WITH_SUBJECT
-python run_all.py --model-name pythia-6.9b --logit-attribution --batch 10 --flag __WITH_SUBJECT 
+#python run_all.py --model-name gpt2 --logit-lens --batch 30 --flag __WITH_SUBJECT --experiment copyVSfact
+python run_all.py --model-name pythia-6.9b --logit-lens --batch 30 --flag __WITH_SUBJECT --experiment copyVSfact
+python run_all.py --model-name gpt2 --logit-attribution --batch 30 --flag __WITH_SUBJECT --experiment copyVSfact
+python run_all.py --model-name pythia-6.9b --logit-attribution --batch 30 --flag __WITH_SUBJECT --experiment copyVSfact 
 
