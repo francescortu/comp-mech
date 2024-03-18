@@ -75,11 +75,10 @@ class LaunchConfig:
     batch_size: int = 40
 
 
-def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None):
+def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None, model=None):
     DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
     print("Loading model", config.model_name)
     print("Launch config", config)
-    model = ModelFactory.create(config.hf_model_name, hf_model=True, device=DEVICE)
     if dataset is None:
         dataset = init_dataset(config, model)
         print("Dataset loaded")
@@ -104,7 +103,7 @@ def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None):
 
 def init_evaluator(config: LaunchConfig, dataset: BaseDataset, model:BaseModel):
     DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
-    model = ModelFactory.create(config.hf_model_name, hf_model=True, device=DEVICE)
+
     return EvaluateMechanism(
         model = model,
         dataset=dataset,
@@ -141,7 +140,9 @@ def init_dataset(config: LaunchConfig, model: BaseModel):
 
 
 def evaluate_size(options: Options, experiment: Literal["copyVSfact", "contextVSfact"]):
+    DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
     for model_name in options.models_name:
+        model = ModelFactory.create(model_name, hf_model=True, device=DEVICE)
         launch_config = LaunchConfig(
             model_name=model_name,
             hf_model_name=model_name,
@@ -152,15 +153,17 @@ def evaluate_size(options: Options, experiment: Literal["copyVSfact", "contextVS
             family_name=FAMILY_NAME,
             num_samples=1,
         )
-        launch_evaluation(launch_config)
+        launch_evaluation(launch_config, model=model)
 
 
 def evaluate_premise(
     options: Options, experiment: Literal["copyVSfact", "contextVSfact"]
 ):
+    DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
     dataset = None
     evaluator = None
     for model_name in options.models_name:
+        model = ModelFactory.create(model_name, hf_model=True, device=DEVICE)
         for premise in options.premise:
             launch_config = LaunchConfig(
                 model_name=model_name,
@@ -173,7 +176,7 @@ def evaluate_premise(
                 premise=premise,
                 num_samples=NUM_SAMPLES,
             )
-            dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator)
+            dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator, model)
         dataset = None
         evaluator = None
 
@@ -181,9 +184,11 @@ def evaluate_premise(
 def evaluate_similarity_default_premise(
     options: Options, experiment: Literal["copyVSfact", "contextVSfact"]
 ):
+    DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
     dataset = None
     evaluator = None
     for model_name in options.models_name:
+        model = ModelFactory.create(model_name, hf_model=True, device=DEVICE)
         for interval in options.interval:
             launch_config = LaunchConfig(
                 model_name=model_name,
@@ -195,7 +200,7 @@ def evaluate_similarity_default_premise(
                 family_name=FAMILY_NAME,
                 num_samples=NUM_SAMPLES,
             )
-            dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator)
+            dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator, model)
         dataset = None
         evaluator = None
 
@@ -203,9 +208,11 @@ def evaluate_similarity_default_premise(
 def evaluate_similarity_all_premise(
     options: Options, experiment: Literal["copyVSfact", "contextVSfact"]
 ):
+    DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
     dataset = None
     evaluator = None
     for model_name in options.models_name:
+        model = ModelFactory.create(model_name, hf_model=True, device=DEVICE)
         for premise in options.premise:
             for interval in options.interval:
                 launch_config = LaunchConfig(
@@ -220,7 +227,7 @@ def evaluate_similarity_all_premise(
                     num_samples=NUM_SAMPLES,
                 )
                 dataset, evaluator = launch_evaluation(
-                    launch_config, dataset, evaluator
+                    launch_config, dataset, evaluator, model
                 )
         dataset = None
         evaluator = None
