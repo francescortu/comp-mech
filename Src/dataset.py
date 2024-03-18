@@ -41,8 +41,12 @@ class BaseDataset(Dataset):
         start: Optional[int] = None,
         end: Optional[int] = None,
         similarity: Tuple[bool, int, Literal["self-similarity"]] = (False, 0, "self-similarity"),
-        premise:str = "Redefine"
+        premise:str = "Redefine",
+        no_subject:bool = False,
     ):
+        if no_subject:
+            print(f"{REDC} No subject found in the dataset {ENDC}, proceeding with no subject data")
+        self.no_subject = no_subject
         self.model = model
         self.experiment = experiment
         self.similarity = similarity
@@ -154,6 +158,8 @@ class BaseDataset(Dataset):
 
     
     def __find_subj_pos__(self, d:Dict) -> Tuple[int,int, int]:
+        if self.no_subject:
+            return -1, -1, -1
         subject_string = " " + d["subject"]
         subject_token = self.model.tokenize(subject_string).squeeze(0).cuda()
         prompt_token = d["tokenized_prompt"]
@@ -185,6 +191,7 @@ class BaseDataset(Dataset):
                 obj_pos = i
                 break
         return obj_pos
+    
     def one_token(self, token:torch.Tensor) -> torch.Tensor:
         if token.shape[0] == 1:
             return token

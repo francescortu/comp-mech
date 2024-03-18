@@ -1,8 +1,6 @@
-from calendar import c
+
 import sys
 import os
-
-
 # Get the directory of the current script
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13,19 +11,19 @@ sys.path.append(os.path.join(script_dir, ".."))
 # Optionally, add the 'src' directory directly
 sys.path.append(os.path.join(script_dir, "..", "src"))
 
-from src.score_models import EvaluateMechanism  # noqa: E402
-from src.dataset import HFDataset  # noqa: E402
+from Src.score_models import EvaluateMechanism  # noqa: E402
+from Src.dataset import BaseDataset, Dataset  # noqa: E402
 from transformers import AutoTokenizer  # noqa: E402
 import torch  # noqa: E402
 import os  # noqa: E402
 from argparse import ArgumentParser  # noqa: E402
 from dataclasses import dataclass, field  # noqa: E402
 from typing import List, Literal  # noqa: E402
-from src.utils import check_dataset_and_sample  # noqa: E402
+from Src.utils import check_dataset_and_sample  # noqa: E402
 import ipdb
+from Src.model import ModelFactory, BaseModel
 
-
-NUM_SAMPLES = 10
+NUM_SAMPLES = 1
 FAMILY_NAME = "gpt2"
 
 
@@ -69,7 +67,7 @@ class LaunchConfig:
     hf_model_name: str
     similarity: bool
     interval: int
-    similarity_type: Literal["logit", "word2vec", "self-similarity"]
+    similarity_type: Literal["self-similarity"]
     experiment: Literal["copyVSfact", "contextVSfact"]
     family_name: str
     premise: str = "Redefine"
@@ -81,8 +79,9 @@ def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None):
     DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
     print("Loading model", config.model_name)
     print("Launch config", config)
+    model = ModelFactory.create(config.hf_model_name, hf_model=True, device=DEVICE)
     if dataset is None:
-        dataset = init_dataset(config)
+        dataset = init_dataset(config, model)
         print("Dataset loaded")
     else:
         dataset.update(
@@ -91,7 +90,7 @@ def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None):
         )
         print("Dataset updated")
     if evaluator is None:
-        evaluator = init_evaluator(config, dataset)
+        evaluator = init_evaluator(config, dataset, model)
     else:
         evaluator.update(
             dataset=dataset,
@@ -103,10 +102,11 @@ def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None):
     return dataset, evaluator
 
 
-def init_evaluator(config: LaunchConfig, dataset: HFDataset):
+def init_evaluator(config: LaunchConfig, dataset: BaseDataset, model:BaseModel):
     DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+    model = ModelFactory.create(config.hf_model_name, hf_model=True, device=DEVICE)
     return EvaluateMechanism(
-        model_name=config.model_name,
+        model = model,
         dataset=dataset,
         device=DEVICE,
         batch_size=config.batch_size,
@@ -117,10 +117,8 @@ def init_evaluator(config: LaunchConfig, dataset: HFDataset):
     )
 
 
-def init_dataset(config: LaunchConfig):
-    tokenizer = AutoTokenizer.from_pretrained(
-        config.model_name,
-    )
+def init_dataset(config: LaunchConfig, model: BaseModel):
+
     if len(config.model_name.split("/")) > 1:
         save_name = config.model_name.split("/")[1]
     else:
@@ -133,15 +131,12 @@ def init_dataset(config: LaunchConfig):
         raise ValueError("Experiment not recognized")
     check_dataset_and_sample(dataset_path, config.model_name, config.hf_model_name)
 
-    return HFDataset(
-        model=config.model_name,
-        tokenizer=tokenizer,
+    return BaseDataset(
         path=dataset_path,
+        model= model,
         experiment=config.experiment,
-        slice=10000,
-        premise=config.premise,
         similarity=(config.similarity, config.interval, config.similarity_type),
-        family_name="gpt2" if "gpt2" in config.model_name else "pythia",
+        no_subject=True,
     )
 
 

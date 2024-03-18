@@ -81,13 +81,34 @@ class BaseModel:
     def run_with_hooks(self, *args, **kwargs):
         raise NotImplementedError("run_with_hooks method must be implemented")
 
+    def to(self, device:str):
+        self.model = self.model.to(device)
+        self.device = device
+        return self
+
+
+    @property
+    def device(self) -> str:
+        return self._device
+    
+    @device.setter
+    def device(self, device:str):
+        self._device = device
+    
+        
+    
+    @abstractmethod
+    def get_tokenizer(self):
+        raise NotImplementedError("get_tokenizer method must be implemented")
+
+
 class WrapHookedTransformer(BaseModel):
     
 
 
     def initialize_model(self, model_name:str, *args, **kwargs):
         self.model = HookedTransformer.from_pretrained(model_name, *args, **kwargs)
-        self.device = self.model.cfg.device
+        self.device = str(self.model.cfg.device)
         self.tokenizer = self.model.tokenizer
 
         self.cfg.update_config(
@@ -117,6 +138,10 @@ class WrapHookedTransformer(BaseModel):
     def unembed(self):
         return self.model.W_U
     
+    def get_tokenizer(self):
+        return self.model.tokenizer
+    
+    
     
     
     
@@ -124,7 +149,7 @@ class WrapAutoModelForCausalLM(BaseModel):
     def initialize_model(self, model_name: str, device:str, *args, **kwargs):
         self.model = AutoModelForCausalLM.from_pretrained(model_name, *args, **kwargs)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.device = self.model.device
+        self.device = str(self.model.device)
         if device == "cuda":
             self.model = self.model.cuda()
         #print warnings for the configuration
@@ -148,11 +173,25 @@ class WrapAutoModelForCausalLM(BaseModel):
             string_tokens.append(self.tokenizer.decode(t))
         return string_tokens
 
-    
+    def get_tokenizer(self):
+        return self.tokenizer
+
+REDC = "\033[31m"
+RESET = "\033[0;0m"
 class ModelFactory():
     @staticmethod
-    def create(model_name:str, hf_model:bool=False):
+    def create(model_name:str, hf_model:bool=False, device:str="cuda") -> BaseModel:
+        #check if cuda is available
+        if device == "cuda":
+            if not torch.cuda.is_available():
+                print(f"{REDC} Cuda is not available, switching to cpu {RESET}")
+                device = "cpu"
         if hf_model:
-            return WrapAutoModelForCausalLM(model_name)
+            model = WrapAutoModelForCausalLM(model_name, device=device)
         else:
-            return WrapHookedTransformer(model_name)
+            model = WrapHookedTransformer(model_name, device=device)
+        
+        if device != model.device:
+            model = model.to(device)
+            
+        return model
