@@ -1,4 +1,7 @@
+import random
 import re
+import os
+from click import Option
 import torch
 import gensim.downloader as api
 from torch.utils.data import Dataset
@@ -18,9 +21,13 @@ def load_dataset(path:str, model_name:str, start:Optional[int], end:Optional[int
         end = len(data)
     return data[start:end]
 
-def load_similarity_score_dict(model_name:str) -> Dict:
+def load_similarity_score_dict(model_name:str) -> Optional[Dict]:
     family_name = get_family_name(model_name)
-    return torch.load(f"../data/similarity_score_{family_name}.pt")
+    if os.path.exists(f"../data/similarity_score_{family_name}.pt"):
+        return torch.load(f"../data/similarity_score_{family_name}.pt")
+    else:
+        return None
+
 
 def get_family_name(model_name:str) -> str:
     if "gpt2" in model_name:
@@ -40,7 +47,7 @@ class BaseDataset(Dataset):
         experiment: Literal["copyVSfact", "contextVSfact"],
         start: Optional[int] = None,
         end: Optional[int] = None,
-        similarity: Tuple[bool, int, Literal["self-similarity"]] = (False, 0, "self-similarity"),
+        similarity: Tuple[bool, int, Literal["self-similarity", "modify-self-similarity"]] = (False, 0, "self-similarity"),
         premise:str = "Redefine",
         no_subject:bool = False,
     ):
@@ -52,7 +59,7 @@ class BaseDataset(Dataset):
         self.similarity = similarity
         self.premise = premise
         if similarity[0]:
-            if similarity[2] == "self-similarity":
+                self.full_data = load_dataset(path, self.model.cfg.model_name,start, end)
                 self.similarity_score_dict = load_similarity_score_dict(self.model.cfg.model_name)
                 self.full_data = self.generate_similarity_data(similarity[2])
         else:
@@ -71,7 +78,7 @@ class BaseDataset(Dataset):
         self,
         new_similarity_level:Optional[int] = None,
     ):
-        if self.similarity[0] == True:
+        if self.similarity[0] is True:
             self.similarity = (self.similarity[0], new_similarity_level, self.similarity[2])
 
         self.lengths = self.__get_lenghts_and_tokenize__()
@@ -103,8 +110,6 @@ class BaseDataset(Dataset):
         self.lengths = self.__get_lenghts_and_tokenize__()
         
     def __len__(self):
-        if len(self.prompts) == 0:
-            raise ValueError("The dataset is empty: please call set_len() first")
         return len(self.prompts)
     
     def __getitem__(self, idx):
@@ -197,6 +202,7 @@ class BaseDataset(Dataset):
             return token
         else:
             return token[0].unsqueeze(0)
+        
     def __get_lenghts_and_tokenize__(self):
         lengths = []
         log_data = []
@@ -242,11 +248,70 @@ class BaseDataset(Dataset):
             
         return lengths
     
-    def generate_similarity_data(self, similarity_type:Literal["self-similarity"]):
+
+
+        
+        
+    
+    def generate_similarity_data(self, similarity_type:Literal["self-similarity", "modify-self-similarity"]):
         if similarity_type == "self-similarity":
             return self.__generate_self_similarity_data__()
+        elif similarity_type == "modify-self-similarity":
+            return self.__generate_modify_self_similarity_data__()
         else:
             raise NotImplementedError(f"Similarity type {similarity_type} is not supported")
+        
+    def __generate_modify_self_similarity_data__(self):
+        word2vec = api.load("word2vec-google-news-300")
+        similarity_score_list = []
+        for d in tqdm(
+            self.full_data,
+            desc="Generating self similarity tokens (word2vec)",
+            total=len(self.full_data),
+        ):
+            base_target = d["target_true"]
+            other_target = d["target_new"]
+            # remove first space if present
+            if other_target[0] == " ":
+                other_target = other_target[1:]
+            if base_target[0] == " ":
+                base_target = base_target[1:]
+
+            # compute similarity
+            try:
+                similarity_score = word2vec.similarity(base_target, other_target)  # type: ignore
+                similarity_score_list.append(similarity_score)
+            except:
+                similarity_score = -100
+            # save the similarity score
+            d["similarity_score"] = similarity_score
+
+        # sort full data by similarity score
+        self.full_data = sorted(self.full_data, key=lambda x: x["similarity_score"], reverse=True)
+        group_intervals = [(0, 0.1), (0.1, 0.2), (0.2, 0.3), (0.3, 0.4), (0.4, 0.5), (0.5, 0.6), (0.6, 0.7), (0.7, 0.8)]
+        # divide the data into 8 groups based on the similarity score
+        for i, interval in enumerate(group_intervals):
+            for d in self.full_data:
+                if interval[0] <= d["similarity_score"] < interval[1]:
+                    d["similarity_group"] = i
+                if d["similarity_score"] >= 0.8:
+                    d["similarity_group"] = -100
+                if d["similarity_score"] < 0:
+                    d["similarity_group"] = -100
+        
+        # Count the number of points in each group in full data
+        similarity_group_count = {}
+        for d in self.full_data:
+            similarity_group_count[d["similarity_group"]] = similarity_group_count.get(
+                d["similarity_group"], 0
+            ) + 1
+        print(similarity_group_count)
+        # remove points with similarity group -100
+        # set the minimal size of the similarity group excluding the -100 group
+        #remove the keys with -100
+        similarity_group_count.pop(-100, None)
+        self.minimal_size = min(similarity_group_count.values())
+        return self.full_data
         
     def __generate_self_similarity_data__(self):
         word2vec = api.load("word2vec-google-news-300")
@@ -301,7 +366,12 @@ class BaseDataset(Dataset):
     
     def filter_similarity_data(self):
         similarity_group = self.similarity[1]
-        return [d for d in self.full_data if d["similarity_group"] == similarity_group]
+        data = [d for d in self.full_data if d["similarity_group"] == similarity_group]
+        if self.similarity[2] == "modify-self-similarity":
+            #random sample a subset of the data of size minimal_size
+            data = random.sample(data, self.minimal_size)
+        return data
+    
     
     def set_len(self, length:int):
         self.len = length
@@ -326,6 +396,7 @@ class BaseDataset(Dataset):
             i for i, d in enumerate(self.full_data) if d["length"] == length
         ]
         self.check_duplicates()
+
         
     def check_duplicates(self):
         seen = set()

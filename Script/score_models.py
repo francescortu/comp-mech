@@ -58,7 +58,7 @@ class Options:
         ]
     )
     similarity: List[bool] = field(default_factory=lambda: [True, False])
-    interval: List[int] = field(default_factory=lambda: [i for i in range(0,30)])
+    interval: List[int] = field(default_factory=lambda: [i for i in range(0,8)])
 
 
 @dataclass
@@ -67,7 +67,7 @@ class LaunchConfig:
     hf_model_name: str
     similarity: bool
     interval: int
-    similarity_type: Literal["self-similarity"]
+    similarity_type: Literal["self-similarity", "modify-self-similarity"]
     experiment: Literal["copyVSfact", "contextVSfact"]
     family_name: str
     premise: str = "Redefine"
@@ -86,7 +86,7 @@ def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None):
     else:
         dataset.update(
             premise=config.premise,
-            similarity=(config.similarity, config.interval, config.similarity_type),
+            new_similarity_level= config.interval,
         )
         print("Dataset updated")
     if evaluator is None:
@@ -250,7 +250,7 @@ if __name__ == "__main__":
     parser.add_argument("--size", action="store_true")
     parser.add_argument("--premise", action="store_true")
     parser.add_argument("--similarity", action="store_true")
-    parser.add_argument("--similarity-type", type=str, default="logit")
+    parser.add_argument("--similarity-type", type=str)
     parser.add_argument("--num-samples", type=int, default=NUM_SAMPLES)
     parser.add_argument("--experiment", type=str, default="")
     parser.add_argument(

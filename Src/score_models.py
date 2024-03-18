@@ -78,9 +78,8 @@ class EvaluateMechanism:
                 other_indices.append(i)
         return target_true_indices, target_false_indices, other_indices
 
-    def evaluate(self, length):
-        self.dataset.set_len(length)
-        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
+    def evaluate(self, length, dataloader):
+
         target_true, target_false, other = 0, 0, 0
         n_batch = len(dataloader)
         all_true_indices = []
@@ -134,7 +133,11 @@ class EvaluateMechanism:
             all_false_indices = []
             all_other_indices = []
             for length in tqdm(self.dataset.get_lengths()):
-                result = self.evaluate(length)
+                self.dataset.set_len(length)
+                if len(self.dataset) == 0:
+                    continue
+                dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
+                result = self.evaluate(length, dataloader)
                 target_true_tmp += result[0]
                 target_false_tmp += result[1]
                 other_tmp += result[2]
