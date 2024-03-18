@@ -29,7 +29,7 @@ class BaseModel:
         self.cfg = ModelConfig(model_name = model_name)
         if model_name in ['Llama-2-7b-hf']:
             self.predict_with_space = False
-        elif model_name in ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', "pythia-6.9b"]:
+        elif model_name in ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', "pythia-6.9b", "EleutherAI/pythia-6.9b"]:
             self.predict_with_space = True
         else:
             raise NotImplementedError(f"Model {model_name} does not have a predict_with_space attribute: pleas check the model behavior and add it manually")
