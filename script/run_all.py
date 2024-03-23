@@ -102,13 +102,8 @@ class logit_attribution_config:
 
 @dataclass
 class logit_lens_config:
-<<<<<<< HEAD
     component: str = "resid_post"
     return_index: bool = True
-=======
-    component: str = "resid_mid"
-    return_index: bool = False
->>>>>>> c472856cc59dd24fe13136482f8ffcad748d36f8
     normalize: str = "none"
 
 

@@ -1,0 +1,17 @@
+auto_mix_prep==0.2.0
+click==8.1.7
+einops==0.7.0
+gensim==4.3.2
+ipdb==0.13.13
+matplotlib==3.8.1
+more_itertools==10.2.0
+numpy==1.25.2
+openai==1.14.2
+pandas==1.5.3
+rich==13.7.1
+sympy==1.12
+tomlkit==0.12.4
+torch==1.13.1
+tqdm==4.66.1
+transformer_lens==1.14.0
+transformers==4.29.2
