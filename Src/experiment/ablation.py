@@ -162,7 +162,9 @@ class Ablate(BaseExperiment):
         )
         logit = self._run_with_hooks(batch, hooks)  #!more performance
         logit_token = to_logit_token(
-            logit, batch["target"], normalize=normalize_logit, return_winners=True
+            logit, batch["target"], 
+            normalize=normalize_logit, 
+            return_winners=True
         )
 
         if component in self.position_component:
