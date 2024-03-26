@@ -4,6 +4,9 @@
 ## Run the Experiments
 
 ### LogitLens, Logit Attribution, Attention Pattern
+#### Notebooks/experiments.ipynb
+You can run the experiments running the `notebooks/experiments.ipynb` notebook. This notebook contains the code to run the experiments for the logit lens, logit attribution, and attention pattern.
+
 #### Script/run_all.py
 You can run the experiment running the following command:
 ```bash
