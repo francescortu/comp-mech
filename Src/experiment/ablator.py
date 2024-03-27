@@ -74,7 +74,7 @@ class Ablator(BaseExperiment):
                 raise ValueError("position must be 'all' or 'attribute'")
             
         for layer, head in heads:
-            self.hooks.append((f"blocks.{layer}.attn.hook_pattern", partial(hook_fn, value=value, position=position, head=head)))
+            self.hooks.append((f"blocks.{layer}.attn.hook_attn_scores", partial(hook_fn, value=value, position=position, head=head)))
             
                 
     def reset_hooks(self):
