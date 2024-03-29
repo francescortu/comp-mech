@@ -220,7 +220,7 @@ class LogitAttribution(BaseExperiment):
 
     def run(
         self,
-        apply_ln: bool = False,
+        #apply_ln: bool = False,
         normalize_logit: Literal["none", "softmax", "log_softmax"] = "none",
         **kwargs,
     ):
