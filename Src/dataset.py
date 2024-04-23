@@ -66,6 +66,8 @@ class BaseDataset(Dataset):
             self.full_data = load_dataset(path, self.model.cfg.model_name,start, end)
             
         self.lengths = self.__get_lenghts_and_tokenize__()
+        if similarity[0]:
+            self.filtered_data = self.filter_similarity_data()
         self.prompts = []
         self.tokenized_prompts = []
         self.targets = []
@@ -82,6 +84,8 @@ class BaseDataset(Dataset):
             self.similarity = (self.similarity[0], new_similarity_level, self.similarity[2])
 
         self.lengths = self.__get_lenghts_and_tokenize__()
+        if self.similarity[0]:
+            self.filtered_data = self.filter_similarity_data()
         self.prompts = []
         self.tokenized_prompts = []
         self.targets = []
@@ -108,7 +112,8 @@ class BaseDataset(Dataset):
         self.lengths = []
         self.subj_len = []
         self.lengths = self.__get_lenghts_and_tokenize__()
-        
+        if self.similarity[0]:
+            self.filtered_data = self.filter_similarity_data()
     def __len__(self):
         return len(self.prompts)
     
@@ -378,7 +383,7 @@ class BaseDataset(Dataset):
         
         #filter for similarity group
         if self.similarity[0]:
-            data = self.filter_similarity_data()
+            data = self.filtered_data
         else:
             data = self.full_data
             
