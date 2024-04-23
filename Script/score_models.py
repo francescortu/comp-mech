@@ -1,4 +1,3 @@
-
 import sys
 import os
 # Get the directory of the current script
@@ -58,7 +57,7 @@ class Options:
         ]
     )
     similarity: List[bool] = field(default_factory=lambda: [True, False])
-    interval: List[int] = field(default_factory=lambda: [i for i in range(0,8)])
+    interval: List[int] = field(default_factory=lambda: [i for i in range(0, 11)])
 
 
 @dataclass
@@ -85,7 +84,7 @@ def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None, model=
     else:
         dataset.update(
             premise=config.premise,
-            new_similarity_level= config.interval,
+            new_similarity_level=config.interval,
         )
         print("Dataset updated")
     if evaluator is None:
@@ -101,11 +100,11 @@ def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None, model=
     return dataset, evaluator
 
 
-def init_evaluator(config: LaunchConfig, dataset: BaseDataset, model:BaseModel):
+def init_evaluator(config: LaunchConfig, dataset: BaseDataset, model: BaseModel):
     DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     return EvaluateMechanism(
-        model = model,
+        model=model,
         dataset=dataset,
         device=DEVICE,
         batch_size=config.batch_size,
@@ -117,7 +116,6 @@ def init_evaluator(config: LaunchConfig, dataset: BaseDataset, model:BaseModel):
 
 
 def init_dataset(config: LaunchConfig, model: BaseModel):
-
     if len(config.model_name.split("/")) > 1:
         save_name = config.model_name.split("/")[1]
     else:
@@ -132,7 +130,7 @@ def init_dataset(config: LaunchConfig, model: BaseModel):
 
     return BaseDataset(
         path=dataset_path,
-        model= model,
+        model=model,
         experiment=config.experiment,
         similarity=(config.similarity, config.interval, config.similarity_type),
         no_subject=True,
@@ -176,7 +174,9 @@ def evaluate_premise(
                 premise=premise,
                 num_samples=NUM_SAMPLES,
             )
-            dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator, model)
+            dataset, evaluator = launch_evaluation(
+                launch_config, dataset, evaluator, model
+            )
         dataset = None
         evaluator = None
 
@@ -200,7 +200,9 @@ def evaluate_similarity_default_premise(
                 family_name=FAMILY_NAME,
                 num_samples=NUM_SAMPLES,
             )
-            dataset, evaluator = launch_evaluation(launch_config, dataset, evaluator, model)
+            dataset, evaluator = launch_evaluation(
+                launch_config, dataset, evaluator, model
+            )
         dataset = None
         evaluator = None
 
@@ -269,10 +271,10 @@ if __name__ == "__main__":
             "gpt2-medium",
             "gpt2-large",
             "gpt2-xl",
-            #"EleutherAI/pythia-160m",
-            #"EleutherAI/pythia-410m",
-            #"EleutherAI/pythia-1b",
-            #"EleutherAI/pythia-1.4b",
+            # "EleutherAI/pythia-160m",
+            # "EleutherAI/pythia-410m",
+            # "EleutherAI/pythia-1b",
+            # "EleutherAI/pythia-1.4b",
             "EleutherAI/pythia-6.9b",
         ],
     )

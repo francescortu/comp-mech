@@ -13,7 +13,10 @@ from Src.model import BaseModel
 REDC = "\033[91m"
 ENDC = "\033[0m"
 
-def load_dataset(path:str, model_name:str, start:Optional[int], end:Optional[int]) -> List[Dict]:
+
+def load_dataset(
+    path: str, model_name: str, start: Optional[int], end: Optional[int]
+) -> List[Dict]:
     data = json.load(open(path, "r"))
     if start is None:
         start = 0
@@ -21,7 +24,8 @@ def load_dataset(path:str, model_name:str, start:Optional[int], end:Optional[int
         end = len(data)
     return data[start:end]
 
-def load_similarity_score_dict(model_name:str) -> Optional[Dict]:
+
+def load_similarity_score_dict(model_name: str) -> Optional[Dict]:
     family_name = get_family_name(model_name)
     if os.path.exists(f"../data/similarity_score_{family_name}.pt"):
         return torch.load(f"../data/similarity_score_{family_name}.pt")
@@ -29,7 +33,7 @@ def load_similarity_score_dict(model_name:str) -> Optional[Dict]:
         return None
 
 
-def get_family_name(model_name:str) -> str:
+def get_family_name(model_name: str) -> str:
     if "gpt2" in model_name:
         return "gpt2"
     elif "llama" in model_name:
@@ -39,32 +43,39 @@ def get_family_name(model_name:str) -> str:
     else:
         raise NotImplementedError(f"Model {model_name} is not supported")
 
+
 class BaseDataset(Dataset):
     def __init__(
         self,
-        path:str,
-        model:BaseModel,
+        path: str,
+        model: BaseModel,
         experiment: Literal["copyVSfact", "contextVSfact"],
         start: Optional[int] = None,
         end: Optional[int] = None,
-        similarity: Tuple[bool, int, Literal["self-similarity", "modify-self-similarity"]] = (False, 0, "self-similarity"),
-        premise:str = "Redefine",
-        no_subject:bool = False,
+        similarity: Tuple[
+            bool, int, Literal["self-similarity", "modify-self-similarity"]
+        ] = (False, 0, "self-similarity"),
+        premise: str = "Redefine",
+        no_subject: bool = False,
     ):
         if no_subject:
-            print(f"{REDC} No subject found in the dataset {ENDC}, proceeding with no subject data")
+            print(
+                f"{REDC} No subject found in the dataset {ENDC}, proceeding with no subject data"
+            )
         self.no_subject = no_subject
         self.model = model
         self.experiment = experiment
         self.similarity = similarity
         self.premise = premise
         if similarity[0]:
-                self.full_data = load_dataset(path, self.model.cfg.model_name,start, end)
-                self.similarity_score_dict = load_similarity_score_dict(self.model.cfg.model_name)
-                self.full_data = self.generate_similarity_data(similarity[2])
+            self.full_data = load_dataset(path, self.model.cfg.model_name, start, end)
+            self.similarity_score_dict = load_similarity_score_dict(
+                self.model.cfg.model_name
+            )
+            self.full_data = self.generate_similarity_data(similarity[2])
         else:
-            self.full_data = load_dataset(path, self.model.cfg.model_name,start, end)
-            
+            self.full_data = load_dataset(path, self.model.cfg.model_name, start, end)
+
         self.lengths = self.__get_lenghts_and_tokenize__()
         if similarity[0]:
             self.filtered_data = self.filter_similarity_data()
@@ -75,13 +86,17 @@ class BaseDataset(Dataset):
         self.first_subj_pos = []
         self.second_subj_pos = []
         self.subj_len = []
-        
+
     def reset(
         self,
-        new_similarity_level:Optional[int] = None,
+        new_similarity_level: Optional[int] = None,
     ):
         if self.similarity[0] is True:
-            self.similarity = (self.similarity[0], new_similarity_level, self.similarity[2])
+            self.similarity = (
+                self.similarity[0],
+                new_similarity_level,
+                self.similarity[2],
+            )
 
         self.lengths = self.__get_lenghts_and_tokenize__()
         if self.similarity[0]:
@@ -92,13 +107,13 @@ class BaseDataset(Dataset):
         self.obj_pos = []
         self.first_subj_pos = []
         self.second_subj_pos = []
-        
+
         self.subj_len = []
-        
+
     def update(
         self,
-        premise:str,
-        new_similarity_level:Optional[int] = None,
+        premise: str,
+        new_similarity_level: Optional[int] = None,
     ):
         print(
             f"Updating the dataset from {self.premise} to {premise} and the similarity level from {self.similarity[1]} to {new_similarity_level}"
@@ -114,9 +129,10 @@ class BaseDataset(Dataset):
         self.lengths = self.__get_lenghts_and_tokenize__()
         if self.similarity[0]:
             self.filtered_data = self.filter_similarity_data()
+
     def __len__(self):
         return len(self.prompts)
-    
+
     def __getitem__(self, idx):
         if len(self.prompts) == 0:
             raise ValueError("Dataset is empty: please call set_len() first")
@@ -130,11 +146,11 @@ class BaseDataset(Dataset):
                 "2_subj_pos": self.second_subj_pos[idx],
                 "subj_len": self.subj_len[idx],
             }
-            
+
     def get_lengths(self):
         return self.lengths
-    
-    def __get_prompt__(self, d:Dict) -> str:
+
+    def __get_prompt__(self, d: Dict) -> str:
         if self.experiment == "copyVSfact":
             return d["template"].format(self.premise, d["target_new"])
         elif self.experiment == "contextVSfact":
@@ -144,80 +160,95 @@ class BaseDataset(Dataset):
                 return " " + d["prompt"]
         else:
             raise NotImplementedError(f"Experiment {self.experiment} is not supported")
-        
-    def __find_first_occurence__(self, prompt:torch.Tensor, target:torch.Tensor) -> int:
+
+    def __find_first_occurence__(
+        self, prompt: torch.Tensor, target: torch.Tensor
+    ) -> int:
         position = -1
         for i in range(prompt.shape[0] - target.shape[0] + 1):
-            if torch.all(prompt[i:i+target.shape[0]] == target):
+            if torch.all(prompt[i : i + target.shape[0]] == target):
                 position = i
                 break
         return position
-    
-    def __find_second_occurence__(self, prompt:torch.Tensor, target:torch.Tensor, first_occurence:int) -> int:
+
+    def __find_second_occurence__(
+        self, prompt: torch.Tensor, target: torch.Tensor, first_occurence: int
+    ) -> int:
         position = -1
         for i in range(first_occurence + 1, prompt.shape[0] - target.shape[0] + 1):
-            if torch.all(prompt[i:i+target.shape[0]] == target):
+            if torch.all(prompt[i : i + target.shape[0]] == target):
                 position = i
                 break
         return position
-    
-    def find_occurence(self, prompt:torch.Tensor, target:torch.Tensor) -> Tuple[int,int]:
+
+    def find_occurence(
+        self, prompt: torch.Tensor, target: torch.Tensor
+    ) -> Tuple[int, int]:
         first_occurence = self.__find_first_occurence__(prompt, target)
-        second_occurence = self.__find_second_occurence__(prompt, target, first_occurence)
+        second_occurence = self.__find_second_occurence__(
+            prompt, target, first_occurence
+        )
         return first_occurence, second_occurence
 
-    
-    def __find_subj_pos__(self, d:Dict) -> Tuple[int,int, int]:
+    def __find_subj_pos__(self, d: Dict) -> Tuple[int, int, int]:
         if self.no_subject:
             return -1, -1, -1
         subject_string = " " + d["subject"]
         subject_token = self.model.tokenize(subject_string).squeeze(0).cuda()
         prompt_token = d["tokenized_prompt"]
-        
+
         subject_token_len = subject_token.shape[0]
-        #find the first occurence of the subject tokens in the prompt tokens
-        first_subj_pos, second_subj_pos = self.find_occurence(prompt_token, subject_token)
-            
+        # find the first occurence of the subject tokens in the prompt tokens
+        first_subj_pos, second_subj_pos = self.find_occurence(
+            prompt_token, subject_token
+        )
+
         if first_subj_pos == -1:
             # try with removing the last token
             subject_token = subject_token[:-1]
             subject_token_len = subject_token.shape[0]
-            first_subj_pos, second_subj_pos = self.find_occurence(prompt_token, subject_token)
-                
+            first_subj_pos, second_subj_pos = self.find_occurence(
+                prompt_token, subject_token
+            )
+
         if first_subj_pos == -1:
             raise ValueError(f"Subject token: {subject_token}")
-        
-        return first_subj_pos, second_subj_pos, subject_token_len-1
-    
-    def __find_obj_pos__(self, d:Dict) -> int:
+
+        return first_subj_pos, second_subj_pos, subject_token_len - 1
+
+    def __find_obj_pos__(self, d: Dict) -> int:
         object_string = d["target_new"]
         object_token = self.model.tokenize(object_string).cuda()
         prompt_token = d["tokenized_prompt"]
-        
-        #find the first occurence of the subject tokens in the prompt tokens
+
+        # find the first occurence of the subject tokens in the prompt tokens
         obj_pos = -1
         for i in range(prompt_token.shape[0] - object_token.shape[0] + 1):
-            if torch.all(prompt_token[i:i+object_token.shape[0]] == object_token):
+            if torch.all(prompt_token[i : i + object_token.shape[0]] == object_token):
                 obj_pos = i
                 break
         return obj_pos
-    
-    def one_token(self, token:torch.Tensor) -> torch.Tensor:
+
+    def one_token(self, token: torch.Tensor) -> torch.Tensor:
         if token.shape[0] == 1:
             return token
         else:
             return token[0].unsqueeze(0)
-        
+
     def __get_lenghts_and_tokenize__(self):
         lengths = []
         log_data = []
         to_remove = []
-        
+
         for d in tqdm(self.full_data, desc="Tokenizing and computing lengths"):
             d["prompt"] = self.__get_prompt__(d)
             d["tokenized_prompt"] = self.model.tokenize(d["prompt"]).squeeze(0).cuda()
-            d["target_new_token"] = self.one_token(self.model.tokenize(d["target_new"]).squeeze(0).cuda())
-            d["target_true_token"] = self.one_token(self.model.tokenize(d["target_true"]).squeeze(0).cuda())
+            d["target_new_token"] = self.one_token(
+                self.model.tokenize(d["target_new"]).squeeze(0).cuda()
+            )
+            d["target_true_token"] = self.one_token(
+                self.model.tokenize(d["target_true"]).squeeze(0).cuda()
+            )
             d["targets"] = torch.cat(
                 (d["target_true_token"], d["target_new_token"]), dim=0
             )
@@ -227,11 +258,11 @@ class BaseDataset(Dataset):
                 d["1_subj_pos"] = first_subj_pos
                 d["2_subj_pos"] = second_subj_pos
                 d["subj_len"] = subj_len
-                
+
             except ValueError as e:
                 for key in d.keys():
                     if isinstance(d[key], torch.Tensor):
-                        d[key] = d[key].tolist() 
+                        d[key] = d[key].tolist()
                 log_data.append((d, str(e)))
                 # remove the point from the full data
                 to_remove.append(d)
@@ -241,31 +272,34 @@ class BaseDataset(Dataset):
             d["length"] = d["tokenized_prompt"].shape[0]
             if d["length"] not in lengths:
                 lengths.append(d["length"])
-                
+
         if len(log_data) > 0:
-            print(f"{REDC} Found {len(log_data)} errors while tokenizing the prompts. Check the logs for more details... {ENDC}")
-            #save in a json file
-            with open(f"../logs/tokenization_errors_{self.model.cfg.model_name}.json", "w") as f:
+            print(
+                f"{REDC} Found {len(log_data)} errors while tokenizing the prompts. Check the logs for more details... {ENDC}"
+            )
+            # save in a json file
+            with open(
+                f"../logs/tokenization_errors_{self.model.cfg.model_name}.json", "w"
+            ) as f:
                 json.dump(log_data, f, indent=4)
-            
+
         for d in to_remove:
             self.full_data.remove(d)
-            
+
         return lengths
-    
 
-
-        
-        
-    
-    def generate_similarity_data(self, similarity_type:Literal["self-similarity", "modify-self-similarity"]):
+    def generate_similarity_data(
+        self, similarity_type: Literal["self-similarity", "modify-self-similarity"]
+    ):
         if similarity_type == "self-similarity":
             return self.__generate_self_similarity_data__()
         elif similarity_type == "modify-self-similarity":
             return self.__generate_modify_self_similarity_data__()
         else:
-            raise NotImplementedError(f"Similarity type {similarity_type} is not supported")
-        
+            raise NotImplementedError(
+                f"Similarity type {similarity_type} is not supported"
+            )
+
     def __generate_modify_self_similarity_data__(self):
         word2vec = api.load("word2vec-google-news-300")
         similarity_score_list = []
@@ -292,8 +326,22 @@ class BaseDataset(Dataset):
             d["similarity_score"] = similarity_score
 
         # sort full data by similarity score
-        self.full_data = sorted(self.full_data, key=lambda x: x["similarity_score"], reverse=True)
-        group_intervals = [(0, 0.1), (0.1, 0.2), (0.2, 0.3), (0.3, 0.4), (0.4, 0.5), (0.5, 0.6), (0.6, 0.7), (0.7, 0.8)]
+        self.full_data = sorted(
+            self.full_data, key=lambda x: x["similarity_score"], reverse=True
+        )
+        group_intervals = [
+            (0, 0.1),
+            (0.1, 0.2),
+            (0.2, 0.3),
+            (0.3, 0.4),
+            (0.4, 0.5),
+            (0.5, 0.6),
+            (0.6, 0.7),
+            (0.7, 0.725),
+            (0.725, 0.750),
+            (0.750, 0.775),
+            (0.775, 0.8),
+        ]
         # divide the data into 8 groups based on the similarity score
         for i, interval in enumerate(group_intervals):
             for d in self.full_data:
@@ -303,21 +351,21 @@ class BaseDataset(Dataset):
                     d["similarity_group"] = -100
                 if d["similarity_score"] < 0:
                     d["similarity_group"] = -100
-        
+
         # Count the number of points in each group in full data
         similarity_group_count = {}
         for d in self.full_data:
-            similarity_group_count[d["similarity_group"]] = similarity_group_count.get(
-                d["similarity_group"], 0
-            ) + 1
+            similarity_group_count[d["similarity_group"]] = (
+                similarity_group_count.get(d["similarity_group"], 0) + 1
+            )
         print(similarity_group_count)
         # remove points with similarity group -100
         # set the minimal size of the similarity group excluding the -100 group
-        #remove the keys with -100
+        # remove the keys with -100
         similarity_group_count.pop(-100, None)
         self.minimal_size = min(similarity_group_count.values())
         return self.full_data
-        
+
     def __generate_self_similarity_data__(self):
         word2vec = api.load("word2vec-google-news-300")
         similarity_score_list = []
@@ -344,16 +392,20 @@ class BaseDataset(Dataset):
             d["similarity_score"] = similarity_score
 
         # sort full data by similarity score
-        self.full_data = sorted(self.full_data, key=lambda x: x["similarity_score"], reverse=True)
+        self.full_data = sorted(
+            self.full_data, key=lambda x: x["similarity_score"], reverse=True
+        )
         # split into bins, with the highest similarity scores first
         near_high_similarity_bins = [
-            self.full_data[i * 50: 500 + (i) * 50] for i in range(10)
+            self.full_data[i * 50 : 500 + (i) * 50] for i in range(10)
         ]
         high_similarity_bin = [self.full_data[500:1000]]
         remaining_bins = [
-            self.full_data[i: i + 1000] for i in range(1000, len(self.full_data), 1000)
+            self.full_data[i : i + 1000] for i in range(1000, len(self.full_data), 1000)
         ]
-        similarity_score_bins = high_similarity_bin + near_high_similarity_bins + remaining_bins
+        similarity_score_bins = (
+            high_similarity_bin + near_high_similarity_bins + remaining_bins
+        )
 
         # Assign similarity_group to each data point based on the bin it falls into
         for i, bin in enumerate(similarity_score_bins):
@@ -363,31 +415,30 @@ class BaseDataset(Dataset):
         # Count the number of points in each group in full data
         similarity_group_count = {}
         for d in self.full_data:
-            similarity_group_count[d["similarity_group"]] = similarity_group_count.get(
-                d["similarity_group"], 0
-            ) + 1
+            similarity_group_count[d["similarity_group"]] = (
+                similarity_group_count.get(d["similarity_group"], 0) + 1
+            )
         print(similarity_group_count)
         return self.full_data
-    
+
     def filter_similarity_data(self):
         similarity_group = self.similarity[1]
         data = [d for d in self.full_data if d["similarity_group"] == similarity_group]
         if self.similarity[2] == "modify-self-similarity":
-            #random sample a subset of the data of size minimal_size
+            # random sample a subset of the data of size minimal_size
             data = random.sample(data, self.minimal_size)
         return data
-    
-    
-    def set_len(self, length:int):
+
+    def set_len(self, length: int):
         self.len = length
-        
-        #filter for similarity group
+
+        # filter for similarity group
         if self.similarity[0]:
             data = self.filtered_data
         else:
             data = self.full_data
-            
-        #filter for length
+
+        # filter for length
         data = [d for d in data if d["length"] == length]
         self.prompts = [d["prompt"] for d in data]
         self.tokenized_prompts = [d["tokenized_prompt"] for d in data]
@@ -396,13 +447,12 @@ class BaseDataset(Dataset):
         self.first_subj_pos = [d["1_subj_pos"] for d in data]
         self.second_subj_pos = [d["2_subj_pos"] for d in data]
         self.subj_len = [d["subj_len"] for d in data]
-        
+
         self.original_index = [
             i for i, d in enumerate(self.full_data) if d["length"] == length
         ]
         self.check_duplicates()
 
-        
     def check_duplicates(self):
         seen = set()
         for i, d in enumerate(self.full_data):
@@ -417,4 +467,3 @@ class BaseDataset(Dataset):
                                 return False
             seen.add(d["prompt"])
         return True
-        
