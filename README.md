@@ -1,6 +1,6 @@
 # Competition of Mechanisms
-This repo contains the code to reproduce [Competition of Mechanisms: Tracing How Language Models Handle Facts and Counterfactuals
-](https://arxiv.org/abs/2402.11655).
+This repo contains the official code for the [Competition of Mechanisms: Tracing How Language Models Handle Facts and Counterfactuals
+](https://arxiv.org/abs/2402.11655) paper.
 The datasets used are also available on [HuggingFace](https://huggingface.co/datasets/francescortu/comp-mech)
 
 ## Run the Experiments
