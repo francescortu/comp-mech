@@ -27,6 +27,8 @@ print(getwd())
 
 ```{r}
 palette <- c("GPT2" = "#003f5c", "GPT2-medium" = "#58508d", "GPT2-large" = "#bc5090", "GPT2-xl" = "#ff6361", "Pythia-6.9b" = "#ffa600")
+FACTUAL_COLOR <- "#005CAB"
+COUNTERFACTUAL_COLOR <- "#E31B23"
 ```
 
 # GPT2 Small Configurations
@@ -39,6 +41,7 @@ experiment <- "copyVSfact"
 n_positions <- 12
 positions_name <- c("-", "Subject", "2nd Subject", "3rd Subject", "Relation", "Relation Last", "Attribute*", "-", "Subject Repeat", "2nd Subject repeat", "3nd Subject repeat", "Relation repeat", "Last")
 relevant_position <- c("Subject", "Relation", "Relation Last", "Attribute*", "Subject repeat", "Relation repeat", "Last")
+example_position <- c("iPhone", "was developed", "by", "Google.", "iPhone", "was developed", "by")
 n_relevant_position <- 7
 layer_pattern <- c(11,10,10,10,9,9)
 head_pattern <- c(10,0,7,10,6,9)
@@ -74,6 +77,12 @@ HEATMAP_SIZE <- 10
 # Load functions:
 
 ```{r}
+
+LOW_COLOR <- FACTUAL_COLOR
+HIGH_COLOR <- COUNTERFACTUAL_COLOR
+
+#LOW_COLOR <- "#1a80bb" # factual
+#HIGH_COLOR <- "#a00000" # counterfactual
 create_heatmap_base <- function(data, x, y, fill, midpoint = 0, text=FALSE) {
   # Convert strings to symbols for tidy evaluation
   x_sym <- rlang::sym(x)
@@ -82,14 +91,14 @@ create_heatmap_base <- function(data, x, y, fill, midpoint = 0, text=FALSE) {
   if (text==TRUE){
     p<- ggplot(data, aes(!!x_sym, !!y_sym, fill = !!fill_sym)) +
       geom_tile(colour = "grey") +
-      scale_fill_gradient2(low = "#a00000", mid = "white", high = "#1a80bb", midpoint = midpoint) +
+      scale_fill_gradient2(low = LOW_COLOR, mid = "white", high = HIGH_COLOR, midpoint = midpoint) +
       theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust=1)) +
       geom_text(aes(label = sprintf("%.2f", !!fill_sym)), color = "black", size = HEATMAP_SIZE)+
       labs(x = x, y = y)
   }else{
   p<- ggplot(data, aes(!!x_sym, !!y_sym, fill = !!fill_sym)) +
     geom_tile(colour = "grey") +
-   scale_fill_gradient2(low = "#a00000", mid = "white", high = "#1a80bb") +
+   scale_fill_gradient2(low = LOW_COLOR, mid = "white", high = HIGH_COLOR) +
     theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust=1)) +
    # geom_text(aes(label = sprintf("%.2f", !!fill_sym)), color = "black", size = HEATMAP_SIZE)+
     labs(x = x, y = y) 
@@ -103,17 +112,19 @@ create_heatmap_base <- function(data, x, y, fill, midpoint = 0, text=FALSE) {
 ### Functions
 
 ```{r}
-create_heatmap <- function(data, x, y, fill, high_color) {
+create_heatmap <- function(data, x, y, legend, fill, high_color) {
   p <- create_heatmap_base(data, x, y, fill) +
-    scale_fill_gradient2(low = "white", mid = "white", high = high_color, limits=c(-1,17), name = "Logit") +
+    scale_fill_gradient2(low = "white", mid = "white", high = high_color, limits=c(-1,17), name = legend) +
     #scale_fill_gradient2(low = "black", mid = "white", high = high_color, name = "Logit") +
     #scale_fill_gradient2(low = "black", mid= "white", high = high_color, name = "Logit") +
     
     theme_minimal() +
     #addforce to have all the labels
     #scale_x_continuous(breaks = seq(0,n_layers-1 ,1)) +
-    scale_y_continuous(breaks = seq(0,n_relevant_position -1,1), labels = relevant_position) +
-    scale_y_reverse(breaks = seq(0,n_relevant_position -1,1), labels = relevant_position)+
+    scale_y_continuous(breaks = seq(0,n_relevant_position -1,1), labels = relevant_position,)+
+                      # sec.axis = dup_axis(name = "", labels =  example_position)) +
+    scale_y_reverse(breaks = seq(0,n_relevant_position -1,1), labels = relevant_position, )+
+                    #sec.axis = dup_axis(name = "", labels = example_position))+
     labs(x = "Layer", y = "")+
     #fix intenxity of fill
     theme(
@@ -159,8 +170,8 @@ data_resid_post$mapped_position <- unname(position_mapping[as.character(data_res
 ### Residual stram heatmaps
 
 ```{r}
-p_fact <- create_heatmap(data_resid_post, "layer","mapped_position", "mem",  "#E31B23")
-p_copy <- create_heatmap(data_resid_post, "layer", "mapped_position", "cp",  "#005CAB")
+p_fact <- create_heatmap(data_resid_post, "layer","mapped_position",bquote("Logit of " * italic(t[fact])), "mem",  FACTUAL_COLOR)
+p_copy <- create_heatmap(data_resid_post, "layer", "mapped_position", bquote("Logit of " * italic(t[cofa])), "cp",  COUNTERFACTUAL_COLOR)
 p_fact
 p_copy
 ```
@@ -168,8 +179,8 @@ p_copy
 Save it:
 
 ```{r}
-ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_mem.pdf", model, experiment), p_fact, width = 50, height = 32, units = "cm")
-ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_cp.pdf", model, experiment), p_copy, width = 50, height = 32, units = "cm")
+ggsave(sprintf("tmp/%s_%s_residual_stream/resid_post_mem.pdf", model, experiment), p_fact, width = 50, height = 32, units = "cm")
+ggsave(sprintf("tmp/%s_%s_residual_stream/resid_post_cp.pdf", model, experiment), p_copy, width = 50, height = 32, units = "cm")
 ```
 
 ### Residual streams - lineplot index
@@ -184,10 +195,10 @@ p_logit <-ggplot(data_resid_post_last, aes(x=layer))+
   geom_point(aes(y=mem, color="mem"),size=6, alpha=0.8)+
   geom_line(aes(y=cp, color="cp"),size=4,  alpha=0.8)+
   geom_point(aes(y=cp, color="cp"),size=6,  alpha=0.8)+
-  scale_color_manual(values = c("mem" = "#E31B23", "cp" = "#005CAB", "cp_alt"="darkblue", "mem_subj"="darkred"), labels=c("cp"= "Counterfactual Token","mem"="Factual Token", "cp_alt"= "Counterfactual Attribute","mem_subj"="Factual 2nd Subject")) +
-  labs(y= "Logit last position", x="Layer", color="")+
+  scale_color_manual(values = c("mem" = FACTUAL_COLOR, "cp" = COUNTERFACTUAL_COLOR, "cp_alt"="darkblue", "mem_subj"="darkred"), labels=c("cp"= "Counterfactual Token","mem"="Factual Token", "cp_alt"= "Counterfactual Attribute","mem_subj"="Factual 2nd Subject")) +
+  labs(y= "Logit in the Last Position", x="Layer", color="")+
   theme_minimal()+
-# scale_x_continuous(breaks = seq(0,n_layers-1,1)) +
+ scale_x_continuous(breaks = seq(0,n_layers-1,1)) +
   scale_y_continuous(limits = c(0,17))+
  # scale_y_log10()+
   theme(
@@ -207,7 +218,7 @@ p_logit <-ggplot(data_resid_post_last, aes(x=layer))+
     # move the y ticks to the right
   ) + guides(color = guide_legend(ncol = 2, nrow=1))
 p_logit
-ggsave("logit_last.pdf", p_logit, width = 50, height = 30, units = "cm")
+ggsave(sprintf("tmp/%s_%s_residual_stream/resid_post_all_linelogit_line.pdf", model, experiment), p_logit, width = 50, height = 30, units = "cm")
 ```
 
 ```{r}
@@ -226,12 +237,12 @@ data_resid_post_altered <- data_resid_post %>% filter(position == 6)
 data_resid_post_2_subject <- data_resid_post %>% filter(position == 8)
 data_resid_post_last <- data_resid_post %>% filter(position ==12)
 
-p_idx<-ggplot(data_resid_post_last, aes(x=layer))+
+p_idx<-ggplot(data_resid_post_altered, aes(x=layer))+
   geom_line(aes(y=mem_idx, color="mem"),size=4,  alpha=0.8 )+
   geom_point(aes(y=mem_idx, color="mem"),size=6, alpha=0.8)+
   geom_line(aes(y=cp_idx, color="cp"),size=4,  alpha=0.8)+
   geom_point(aes(y=cp_idx, color="cp"),size=6,  alpha=0.8)+
-  scale_color_manual(values = c("mem" = "#E31B23", "cp" = "#005CAB"), labels=c( "Altered Token", "Factual Token")) +
+  scale_color_manual(values = c("mem" = FACTUAL_COLOR, "cp" = COUNTERFACTUAL_COLOR), labels=c( "Altered Token", "Factual Token")) +
   labs(y= bquote("Rank"), x="Layer", color="")+
   theme_minimal()+
   #scale_x_continuous(breaks = seq(0,n_layers,1)) +
@@ -258,7 +269,7 @@ model
 Save
 
 ```{r}
-ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_index.pdf", model, experiment), p_idx, width = 50, height = 30, units = "cm")
+ggsave(sprintf("tmp/%s_%s_residual_stream/resid_post_index.pdf", model, experiment), p_idx, width = 50, height = 30, units = "cm")
 ```
 
 ### Multiple plots
@@ -267,8 +278,8 @@ ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_index.pdf", model, ex
 spacer <- plot_spacer()
 p_logit <- p_logit + theme(aspect.ratio = 7/10, legend.position = c(0.5,-0.2))
 p <- (p_fact / p_copy) | spacer | p_logit
-p <- p + plot_layout(widths = c(0.8, 0.3, 1.3))
-ggsave(sprintf("PaperPlot/%s_%s_residual_stream/resid_post_all_linelogit.pdf", model, experiment), p, width = 100, height = 50, units = "cm")
+p <- p + plot_layout(widths = c(0.8, 0.4, 1.3))
+ggsave(sprintf("tmp/%s_%s_residual_stream/resid_post_all_linelogit.pdf", model, experiment), p, width = 100, height = 50, units = "cm")
 #ggsave("resid_post_all_linelogit_new.pdf", p, width = 100, height = 50, units = "cm")
 ```
 #### With index
@@ -350,22 +361,22 @@ p <- create_heatmap_base(data_head_, "Layer", "Head", "diff_mean") +
   scale_x_discrete(breaks = seq(0,n_layers,1))  +
   labs(fill = expression(Delta[cofa])) +
   theme(
-    axis.text.x = element_text(size=AXIS_TEXT_SIZE, angle = 0),
-    axis.text.y = element_text(size=AXIS_TEXT_SIZE),
+    axis.text.x = element_text(size=AXIS_TEXT_SIZE -8, angle = 0),
+    axis.text.y = element_text(size=AXIS_TEXT_SIZE-8),
     #remove background grid
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
     axis.title.x = element_text(size = AXIS_TITLE_SIZE),
     axis.title.y = element_text(size = AXIS_TITLE_SIZE),
-    legend.text = element_text(size = 50),
-    legend.title = element_text(size = 90),
+    legend.text = element_text(size = 40),
+    legend.title = element_text(size = 70),
     #remove the legend\
     legend.position = "bottom",
     # increase the size of the legend
     legend.key.size = unit(2.5, "cm"),
     # move the y ticks to the right
   )
-ggsave(sprintf("PaperPlot/%s_%s_logit_attribution/logit_attribution_head_position%s.pdf", model, experiment, number_of_position), p, width = 60, height = 80, units = "cm")
+ggsave(sprintf("tmp/%s_%s_logit_attribution/logit_attribution_head_position%s.pdf", model, experiment, number_of_position), p, width = 60, height = 60, units = "cm")
 
 ```
 
@@ -616,32 +627,42 @@ data_final <- data_final %>%
     y_label=="Layer 20 | Head 18" |
     y_label=="Layer 21 | Head 8"
     ), "Target", "Other")) # Add color column
+#gpt2 
+# data_final <- data_final %>%
+#   mutate(color = ifelse((y_label =="Layer 10 | Head 7" | y_label=="Layer 11 | Head 10"), "Target", "Other")) # Add color column
+#pythia
 data_final <- data_final %>%
-  mutate(color = ifelse((y_label =="Layer 10 | Head 7" | y_label=="Layer 11 | Head 10"), "Target", "Other")) # Add color column
+ mutate(color = ifelse((y_label =="Layer 21 | Head 8" | y_label=="Layer 20 | Head 18" | y_label=="Layer 17 | Head 28" |  y_label=="Layer 10 | Head 27"), "Target", "Other")) # Add color column
 
 library(ggnewscale) # for using new color scales within the same plot
 # Your original plot for 'Other'
 ```
 
 ```{r}
-heatmap_plot <- ggplot(data_final %>% filter(color == "Other"), aes(x = mapped_position, y = y_label, fill = value)) +
-  geom_tile(colour = "grey") +
+
+max_positions <- max(data_final$mapped_position)
+tile_width <- 1 
+tile_height <- 1 
+
+
+heatmap_plot <- ggplot(data_final %>% filter(color == "Target"), aes(x = mapped_position, y = y_label, fill = value)) +
+  geom_tile(colour = "grey", width = tile_width, height = tile_height) +
   scale_x_continuous(breaks = seq(0, length(relevant_position) - 1,1), labels = relevant_position) +
   scale_y_discrete(limits = unique(data_final$y_label)) +
-  scale_fill_gradient(low = "white", high = "#005CAB", limits=c(0,0.8)) +
+  scale_fill_gradient(low = "white", high = FACTUAL_COLOR, limits=range(data_final$value)) +
   labs(fill = "Attention\nScore:") +
   theme_minimal() +
   new_scale_fill() + # This tells ggplot to start a new fill scale
-  geom_tile(data = data_final %>% filter(color == "Target"), aes(x = mapped_position, y = y_label, fill = value), colour="grey") +
-  scale_fill_gradient(low = "white", high = "#E31B23", limits=c(0,0.8)) +
+  geom_tile(data = data_final %>% filter(color == "Other"), aes(x = mapped_position, y = y_label, fill = value), width = tile_width, height = tile_height, colour="grey") +
+  scale_fill_gradient(low = "white", high = COUNTERFACTUAL_COLOR, limits=range(data_final$value)) +
   scale_x_continuous(breaks = seq(0, length(relevant_position) - 1,1), labels = relevant_position) +
   scale_y_discrete(limits = unique(data_final$y_label)) +
   labs(fill = "Attention\nScore:") +
   theme(
-    # axis.text.x = element_text(size=60, angle = 45, hjust = 1),
-    # axis.text.y = element_text(size=60, angle = 0),
-    axis.text.x = element_text(size=40, angle = 45, hjust = 1),
-    axis.text.y = element_text(size=40, angle = 0),
+    axis.text.x = element_text(size=60, angle = 45, hjust = 1),
+    axis.text.y = element_text(size=60, angle = 0),
+   # axis.text.x = element_text(size=40, angle = 45, hjust = 1),
+   # axis.text.y = element_text(size=40, angle = 0),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
     axis.title.x = element_blank(),
@@ -652,15 +673,18 @@ heatmap_plot <- ggplot(data_final %>% filter(color == "Other"), aes(x = mapped_p
     legend.key.size = unit(1.3, "cm"),
   )
 heatmap_plot
-ggsave(sprintf("PaperPlot/%s_%s_heads_pattern/head_pattern_layer.pdf", model, experiment), heatmap_plot, width = 53, height = 38, units = "cm")
+ggsave(sprintf("tmp/%s_%s_heads_pattern/head_pattern_layer.pdf", model, experiment), heatmap_plot, width = 53, height = 38, units = "cm")
 
 ```
+
+
+
 ### Full position
 #### FUnctions
 ```{r}
 create_heatmap <- function(data, x, y, fill,title, color) {
     p <- create_heatmap_base(data, x, y, fill) +
-      scale_fill_gradient2(low = "#a00000", mid = "white", high = color, midpoint = 0, limits=c(0,0.45)) +
+      scale_fill_gradient2(low = LOW_COLOR, mid = "white", high = color, midpoint = 0, limits=c(0,0.45)) +
       theme_minimal() +
       #addforce to have all the labels
       scale_y_discrete(breaks = seq(0, length(relevant_position)-1,1), labels = relevant_position) +
@@ -702,11 +726,12 @@ create_heatmap <- function(data, x, y, fill,title, color) {
     data_head$dest_mapped <- unname(position_mapping[as.character(data_head$dest_position)])
     data_head$source_mapped <- unname(position_mapping[as.character(data_head$source_position)])
     # order the position
-    data_head$dest_mapped <- factor(data_head$dest_mapped, levels = unique(data_head$dest_mapped))
-    data_head$source_mapped <- factor(data_head$source_mapped, levels = unique(data_head$source_mapped))
+    data_head$dest_mapped <- factor(data_head$dest_mapped, levels = c(0,1,2,3,4,5,6))
+    data_head$source_mapped <- factor(data_head$source_mapped, levels = c(6,5,4,3,2,1,0))
     
     #reorder the source_position and dest_position contrary to the order of the factor
-    data_head$source_mapped <- factor(data_head$source_mapped, levels = rev(levels(data_head$source_mapped)))
+    
+    #data_head$source_mapped <- factor(data_head$source_mapped, levels = rev(levels(data_head$source_mapped)))
 
     p <- create_heatmap(data_head, "dest_mapped", "source_mapped", "value", paste("Layer", l, "Head", h), color)
     p
@@ -745,19 +770,53 @@ scale_y_discrete(limits = source_mapped_levels)
 ```
 #### Plot
 ```{r}
-plot <- NULL
+# plot <- NULL
+# for (i in c(1:length(head_pattern))) {
+#   head <- head_pattern[i]
+#   layer <- layer_pattern[i]
+#   if (layer %in% factual_heads_layer & head %in% factual_heads_head){
+#     color <-FACTUAL_COLOR
+#   }else{
+#     color <-  COUNTERFACTUAL_COLOR
+#   }
+#    plot <- plot + plot_pattern(layer,head, data, color)
+# }
+# plot + plot_layout(ncol=2, nrow=3)
+
+library(patchwork)
+
+# plots <- list()
+# for (i in c(1:length(head_pattern))) {
+#   head <- head_pattern[i]
+#   layer <- layer_pattern[i]
+#   if (layer %in% factual_heads_layer & head %in% factual_heads_head){
+#     print(layer)
+#     print(head)
+#     color <- FACTUAL_COLOR
+#   }else{
+#     color <-  COUNTERFACTUAL_COLOR
+#   }
+#   print(color)
+#   plots <- c(plots, list(plot_pattern(layer, head, data, color)))
+# }
+
+plots <- list()
 for (i in c(1:length(head_pattern))) {
   head <- head_pattern[i]
   layer <- layer_pattern[i]
-  if (layer %in% factual_heads_layer & head %in% factual_heads_head){
-    color <-"#E31B23"
+  if ((layer==11 & head==10) || (layer==10 & head==7)){
+    print(layer)
+    print(head)
+    color <- FACTUAL_COLOR
   }else{
-    color <-  "#005CAB"
+    color <-  COUNTERFACTUAL_COLOR
   }
-  plot <- plot + plot_pattern(layer,head, data, color)
+  print(color)
+  plots <- c(plots, list(plot_pattern(layer, head, data, color)))
 }
-plot + plot_layout(ncol=2, nrow=3)
-#ggsave(sprintf("PaperPlot/%s_%s_heads_pattern/full_pattern.pdf", model, experiment), plot, width = 80, height = 100, units = "cm")
+
+plot <- wrap_plots(plots, ncol = 2, nrow = 3)
+ggsave(sprintf("tmp/%s_%s_heads_pattern/full_pattern.pdf", model, experiment), plot, width = 80, height = 100, units = "cm")
 
 ```
 
@@ -928,8 +987,8 @@ data_resid_post$mapped_position <- unname(position_mapping[as.character(data_res
 ### Residual stram heatmaps
 
 ```{r}
-p_fact <- create_heatmap(data_resid_post, "layer","mapped_position", "mem",  "#E31B23")
-p_copy <- create_heatmap(data_resid_post, "layer", "mapped_position", "cp",  "#005CAB")
+p_fact <- create_heatmap(data_resid_post, "layer","mapped_position", "mem",  FACTUAL_COLOR)
+p_copy <- create_heatmap(data_resid_post, "layer", "mapped_position", "cp",  COUNTERFACTUAL_COLOR)
 p_fact
 p_copy
 ggsave("tmp/heatmap_fact.pdf",p_fact, width = 35, height = 21, units = "cm")
