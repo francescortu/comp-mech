@@ -1,3 +1,4 @@
+from hmac import new
 import random
 import re
 import os
@@ -9,6 +10,7 @@ import json
 from tqdm import tqdm
 from typing import List, Dict, Tuple, Optional, Literal
 from Src.model import BaseModel
+import numpy as np
 
 REDC = "\033[91m"
 ENDC = "\033[0m"
@@ -53,7 +55,7 @@ class BaseDataset(Dataset):
         start: Optional[int] = None,
         end: Optional[int] = None,
         similarity: Tuple[
-            bool, int, Literal["self-similarity", "modify-self-similarity"]
+            bool, int, Literal["self-similarity", "modify-self-similarity", "data-sampling"]
         ] = (False, 0, "self-similarity"),
         premise: str = "Redefine",
         no_subject: bool = False,
@@ -289,16 +291,90 @@ class BaseDataset(Dataset):
         return lengths
 
     def generate_similarity_data(
-        self, similarity_type: Literal["self-similarity", "modify-self-similarity"]
+        self, similarity_type: Literal["data-sampling", "self-similarity", "modify-self-similarity"]
     ):
         if similarity_type == "self-similarity":
             return self.__generate_self_similarity_data__()
         elif similarity_type == "modify-self-similarity":
             return self.__generate_modify_self_similarity_data__()
+        elif similarity_type == "data-sampling":
+            return self.__generate_similarity_data_sampling__()
         else:
             raise NotImplementedError(
                 f"Similarity type {similarity_type} is not supported"
             )
+            
+    def __generate_similarity_data_sampling__(self):
+        word2vec = api.load("word2vec-google-news-300")
+        print("Word2Vec loaded")
+        #if exist the similarity score dict, use it
+        if self.similarity_score_dict is None:
+            
+            def word_vector_generator(word2vec):
+                for word in word2vec.vocab:
+                    yield word2vec[word], word
+            
+            vector_iterator = word_vector_generator(word2vec)
+            
+            similarity_score_dict = {}
+            for d in tqdm(
+                self.full_data,
+                desc="Computing all similarities (word2vec)",
+                total=len(self.full_data),
+            ):
+                target_word = d["target_true"]
+                # remove first space if present
+                if target_word[0] == " ":
+                    target_word = target_word[1:]
+                    
+                # skip if the target word is already in the similarity score dict
+                if target_word in similarity_score_dict:
+                    continue
+                
+                similarity = []
+                for vector, word in vector_iterator:
+                    sim = np.dot(vector, word2vec[target_word]) / (np.linalg.norm(vector) * np.linalg.norm(word2vec[target_word]))
+                    similarity.append((word, sim))
+
+                similarity_score_dict[target_word] = similarity
+            
+            torch.save(similarity_score_dict, f"../data/similarity_score_{self.model.cfg.model_name}.pt")
+            self.similarity_score_dict = similarity_score_dict
+        
+        new_data = []
+        for d in tqdm(
+            self.full_data,
+            desc="Generating self similarity tokens (word2vec)",
+            total=len(self.full_data),
+        ):
+            base_target = d["target_true"]
+            
+            if base_target[0] == " ":
+                base_target = base_target[1:]
+                
+            #get a tensor of similarity scores for the target word
+            similarity_scores = torch.tensor([sim for word, sim in self.similarity_score_dict[base_target]])
+            # word_list = [word for word, sim in self.similarity_score_dict[base_target]]
+            
+            # divide in 10 groups based on the quantiles
+            groups = torch.quantile(similarity_scores, torch.linspace(0, 1, 11))
+            
+            #divide the word_list based on the groups
+            word_groups = []
+            for i in range(10):
+                word_groups.append([word for word, sim in self.similarity_score_dict[base_target] if groups[i] <= sim < groups[i+1]])
+                
+            for grup in word_groups:
+                #for each group create a new data point
+                new_d = d.copy()
+                # select 20 words from the group
+                new_d["target_new"] = [ random.choice(grup) for _ in range(20)]
+                new_d["similarity_group"] = grup
+                new_data.append(new_d)
+        
+        return new_data
+            
+
 
     def __generate_modify_self_similarity_data__(self):
         word2vec = api.load("word2vec-google-news-300")
@@ -421,13 +497,24 @@ class BaseDataset(Dataset):
         print(similarity_group_count)
         return self.full_data
 
-    def filter_similarity_data(self):
-        similarity_group = self.similarity[1]
-        data = [d for d in self.full_data if d["similarity_group"] == similarity_group]
-        if self.similarity[2] == "modify-self-similarity":
-            # random sample a subset of the data of size minimal_size
-            data = random.sample(data, self.minimal_size)
-        return data
+    def filter_similarity_data(self): # TODO: implement similarity filtering for sampling
+        if self.similarity[2] == "data-sampling":
+            similarity_group = self.similarity[1]
+            data_group = [d for d in self.full_data if d["similarity_groyp"] == similarity_group]
+            for d in data_group:
+                #sample from the list 
+                d["target_new"] = random.choice(d["target_new"])
+            return data_group
+        
+        elif self.similarity[2] == "modify-self-similarity" or self.similarity[2] == "self-similarity":
+            similarity_group = self.similarity[1]
+            data = [d for d in self.full_data if d["similarity_group"] == similarity_group]
+            if self.similarity[2] == "modify-self-similarity":
+                # random sample a subset of the data of size minimal_size
+                data = random.sample(data, self.minimal_size)
+            return data
+        else:
+            raise NotImplementedError(f"Similarity type {self.similarity[2]} is not supported")
 
     def set_len(self, length: int):
         self.len = length

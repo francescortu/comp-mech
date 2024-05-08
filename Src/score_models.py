@@ -16,6 +16,7 @@ sys.path.append("../data")
 from Src.dataset import BaseDataset  # noqa: E402
 from Src.model import BaseModel  # noqa: E402
 
+FILENAME = "../results/{}_evaluate_mechanism_data_sampling.csv"
 
 class EvaluateMechanism:
     def __init__(
@@ -25,8 +26,8 @@ class EvaluateMechanism:
         device="cpu",
         batch_size=100,
         similarity: Tuple[
-            bool, int, Literal["word2vec", "logit", "self-similarity"]
-        ] = (True, 4, "word2vec"),
+            bool, int, Literal["data-sampling", "modify-self-similarity", "self-similarity"]
+        ] = (True, 4, "self-similarity"),
         premise="Redefine",
         family_name: Optional[str] = None,
         num_samples=1,
@@ -48,7 +49,7 @@ class EvaluateMechanism:
     def update(
         self,
         dataset: BaseDataset,
-        similarity: Tuple[bool, int, Literal["word2vec", "logit", "self-similarity"]],
+        similarity: Tuple[bool, int, Literal["self-similarity", "modify-self-similarity","data-sampling"]],
         premise: str,
     ):
         self.dataset = dataset
@@ -189,7 +190,7 @@ class EvaluateMechanism:
             save_name += "similarity"
         # save results
 
-        filename = f"../results/{self.family_name}_evaluate_mechanism_refactored.csv"
+        filename = FILENAME.format(self.family_name)
         # if file not exists, create it and write the header
         if not os.path.isfile(filename):
             with open(filename, "w") as file:

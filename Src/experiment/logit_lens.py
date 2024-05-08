@@ -335,7 +335,7 @@ class LogitLens(BaseExperiment):
                             "batch pos d_head, d_head d_model -> batch pos d_model",
                         )  # type: ignore
                         for position, logit in enumerate(
-                            self.project_per_position(output_head, length)
+                            self.project_per_position(output_head, length)  # TODO:fix this
                         ):
                             logit_token = to_logit_token(
                                 logit,
