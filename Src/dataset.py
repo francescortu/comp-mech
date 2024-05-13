@@ -46,6 +46,18 @@ def get_family_name(model_name: str) -> str:
         raise NotImplementedError(f"Model {model_name} is not supported")
 
 
+def compute_similarity_for_target(args):
+    word2vec, d, similarity_score_dict = args
+    target_word = d["target_true"].strip()
+
+    similarity = []
+    for word in word2vec.vocab:
+        vector = word2vec[word]
+        sim = np.dot(vector, word2vec[target_word]) / (np.linalg.norm(vector) * np.linalg.norm(word2vec[target_word]))
+        similarity.append((word, sim))
+
+    similarity_score_dict[target_word] = similarity
+
 class BaseDataset(Dataset):
     def __init__(
         self,
@@ -304,17 +316,40 @@ class BaseDataset(Dataset):
                 f"Similarity type {similarity_type} is not supported"
             )
             
+            
     def __generate_similarity_data_sampling__(self):
+        from multiprocessing import Pool, Manager
+        word2vec = api.load("word2vec-google-news-300")
+        print("Word2Vec loaded")
+        self.similarity_score_dict = None
+
+        if self.similarity_score_dict is None:
+            # Manager for managing a shared dictionary
+            manager = Manager()
+            similarity_score_dict = manager.dict()
+
+            # Distribute computations over a pool of workers
+            with Pool(processes=4) as pool:
+                # Creating a list of tasks
+                tasks = [(word2vec, d, similarity_score_dict) for d in self.full_data if d["target_true"].strip() not in similarity_score_dict]
+                # Mapping tasks to worker processes
+                list(tqdm(pool.imap(compute_similarity_for_target, tasks), total=len(tasks), desc="Computing all similarities (word2vec)"))
+
+            # Saving the similarity dictionary using torch
+            torch.save(dict(similarity_score_dict), f"../data/similarity_score_{self.model.cfg.model_name}.pt")
+            self.similarity_score_dict = similarity_score_dict        
+            
+    def __generate_similarity_data_sampling___(self):
         word2vec = api.load("word2vec-google-news-300")
         print("Word2Vec loaded")
         #if exist the similarity score dict, use it
+        self.similarity_score_dict = None
         if self.similarity_score_dict is None:
             
             def word_vector_generator(word2vec):
                 for word in word2vec.vocab:
                     yield word2vec[word], word
             
-            vector_iterator = word_vector_generator(word2vec)
             
             similarity_score_dict = {}
             for d in tqdm(
@@ -322,6 +357,7 @@ class BaseDataset(Dataset):
                 desc="Computing all similarities (word2vec)",
                 total=len(self.full_data),
             ):
+                vector_iterator = word_vector_generator(word2vec)
                 target_word = d["target_true"]
                 # remove first space if present
                 if target_word[0] == " ":
@@ -330,6 +366,8 @@ class BaseDataset(Dataset):
                 # skip if the target word is already in the similarity score dict
                 if target_word in similarity_score_dict:
                     continue
+                
+
                 
                 similarity = []
                 for vector, word in vector_iterator:
@@ -342,27 +380,51 @@ class BaseDataset(Dataset):
             self.similarity_score_dict = similarity_score_dict
         
         new_data = []
-        for d in tqdm(
-            self.full_data,
-            desc="Generating self similarity tokens (word2vec)",
-            total=len(self.full_data),
-        ):
-            base_target = d["target_true"]
+        # for d in tqdm(
+        #     self.full_data,
+        #     desc="Generating sampled-similarity tokens (word2vec)",
+        #     total=len(self.full_data),
+        # ):
+        #     base_target = d["target_true"]
             
-            if base_target[0] == " ":
-                base_target = base_target[1:]
+        #     if base_target[0] == " ":
+        #         base_target = base_target[1:]
                 
-            #get a tensor of similarity scores for the target word
-            similarity_scores = torch.tensor([sim for word, sim in self.similarity_score_dict[base_target]])
-            # word_list = [word for word, sim in self.similarity_score_dict[base_target]]
+        #     #get a tensor of similarity scores for the target word
+        #     similarity_scores = torch.tensor([sim for word, sim in self.similarity_score_dict[base_target]])
+        #     # word_list = [word for word, sim in self.similarity_score_dict[base_target]]
             
-            # divide in 10 groups based on the quantiles
-            groups = torch.quantile(similarity_scores, torch.linspace(0, 1, 11))
+        #     # divide in 10 groups based on the quantiles
+        #     groups = torch.quantile(similarity_scores, torch.linspace(0, 1, 11))
             
-            #divide the word_list based on the groups
+        #     #divide the word_list based on the groups
+        #     word_groups = []
+        #     for i in range(10):
+        #         word_groups.append([word for word, sim in self.similarity_score_dict[base_target] if groups[i] <= sim < groups[i+1]])
+                
+                
+                
+        for d in tqdm(self.full_data, desc="Generating sampled-similarity tokens (word2vec)", total=len(self.full_data)):
+            base_target = d["target_true"].lstrip()  # strip leading spaces efficiently
+
+            # Get all pairs once and reuse them
+            word_sim_pairs = self.similarity_score_dict[base_target]
+            words, sims = zip(*word_sim_pairs)  # This unpacks word-similarity pairs into separate lists
+            
+            # Convert similarities to a PyTorch tensor or Numpy array for faster processing
+            similarity_scores = torch.tensor(sims)
+            
+            # Compute quantiles
+            quantiles = torch.quantile(similarity_scores, torch.linspace(0, 1, 11))
+
+            # Use vectorized operations to categorize words
             word_groups = []
+            indices = torch.bucketize(similarity_scores, quantiles)  # This will assign each score to a bucket
+            
             for i in range(10):
-                word_groups.append([word for word, sim in self.similarity_score_dict[base_target] if groups[i] <= sim < groups[i+1]])
+                # Filter words based on the bucket indices
+                word_groups.append([words[j] for j, idx in enumerate(indices) if idx == i + 1])
+
                 
             for grup in word_groups:
                 #for each group create a new data point

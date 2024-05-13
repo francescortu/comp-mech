@@ -66,7 +66,7 @@ class LaunchConfig:
     hf_model_name: str
     similarity: bool
     interval: int
-    similarity_type: Literal["self-similarity", "modify-self-similarity"]
+    similarity_type: Literal["self-similarity", "modify-self-similarity","data-sampling"]
     experiment: Literal["copyVSfact", "contextVSfact"]
     family_name: str
     premise: str = "Redefine"
@@ -74,7 +74,7 @@ class LaunchConfig:
     batch_size: int = 40
 
 
-def launch_evaluation(config: LaunchConfig, dataset=None, evaluator=None, model=None):
+def launch_evaluation(config: LaunchConfig,  model:BaseModel, dataset=None, evaluator=None):
     DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
     print("Loading model", config.model_name)
     print("Launch config", config)
@@ -175,7 +175,7 @@ def evaluate_premise(
                 num_samples=NUM_SAMPLES,
             )
             dataset, evaluator = launch_evaluation(
-                launch_config, dataset, evaluator, model
+                launch_config, model, dataset, evaluator
             )
         dataset = None
         evaluator = None
@@ -201,7 +201,7 @@ def evaluate_similarity_default_premise(
                 num_samples=NUM_SAMPLES,
             )
             dataset, evaluator = launch_evaluation(
-                launch_config, dataset, evaluator, model
+                launch_config, model, dataset, evaluator
             )
         dataset = None
         evaluator = None
@@ -229,7 +229,7 @@ def evaluate_similarity_all_premise(
                     num_samples=NUM_SAMPLES,
                 )
                 dataset, evaluator = launch_evaluation(
-                    launch_config, dataset, evaluator, model
+                launch_config, model, dataset, evaluator
                 )
         dataset = None
         evaluator = None
