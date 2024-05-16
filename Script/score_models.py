@@ -57,7 +57,7 @@ class Options:
         ]
     )
     similarity: List[bool] = field(default_factory=lambda: [True, False])
-    interval: List[int] = field(default_factory=lambda: [i for i in range(0, 11)])
+    interval: List[int] = field(default_factory=lambda: [i for i in range(1, 11)])
 
 
 @dataclass
@@ -134,6 +134,7 @@ def init_dataset(config: LaunchConfig, model: BaseModel):
         experiment=config.experiment,
         similarity=(config.similarity, config.interval, config.similarity_type),
         no_subject=True,
+        end=100
     )
 
 

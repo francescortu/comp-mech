@@ -11,6 +11,8 @@ from tqdm import tqdm
 from typing import List, Dict, Tuple, Optional, Literal
 from Src.model import BaseModel
 import numpy as np
+import pandas as pd
+from line_profiler import profile
 
 REDC = "\033[91m"
 ENDC = "\033[0m"
@@ -28,9 +30,19 @@ def load_dataset(
 
 
 def load_similarity_score_dict(model_name: str) -> Optional[Dict]:
-    family_name = get_family_name(model_name)
-    if os.path.exists(f"../data/similarity_score_{family_name}.pt"):
-        return torch.load(f"../data/similarity_score_{family_name}.pt")
+    # family_name = get_family_name(model_name)
+    # if os.path.exists(f"../data/similarity_score_{family_name}.pt"):
+    #     return torch.load(f"../data/similarity_score_{family_name}.pt")
+    # else:
+    #     return None
+    if os.path.exists(f"../data/similarity_score_all_dict.pt"):
+        return torch.load(f"../data/similarity_score_all_dict.pt")
+    else:
+        return None
+    
+def load_word_embeddings_dict(model_name: str) -> Optional[Dict]:
+    if os.path.exists(f"../data/word_embeddings_word2vec.pt"):
+        return torch.load(f"../data/word_embeddings_word2vec.pt")
     else:
         return None
 
@@ -86,7 +98,11 @@ class BaseDataset(Dataset):
             self.similarity_score_dict = load_similarity_score_dict(
                 self.model.cfg.model_name
             )
+            self.word_embeddings_dict = load_word_embeddings_dict(
+                self.model.cfg.model_name
+            )
             self.full_data = self.generate_similarity_data(similarity[2])
+            self.base_full_data = self.full_data
         else:
             self.full_data = load_dataset(path, self.model.cfg.model_name, start, end)
 
@@ -253,8 +269,12 @@ class BaseDataset(Dataset):
         lengths = []
         log_data = []
         to_remove = []
-
+        if self.similarity[0] and self.similarity[2] == "data-sampling":
+            self.full_data = [d for d in self.base_full_data if d["similarity_group"] == self.similarity[1]]
+            
         for d in tqdm(self.full_data, desc="Tokenizing and computing lengths"):
+            if self.similarity[0] and self.similarity[2] == "data-sampling":
+                d["target_new"] = random.choice(d["target_new_list"])
             d["prompt"] = self.__get_prompt__(d)
             d["tokenized_prompt"] = self.model.tokenize(d["prompt"]).squeeze(0).cuda()
             d["target_new_token"] = self.one_token(
@@ -310,34 +330,225 @@ class BaseDataset(Dataset):
         elif similarity_type == "modify-self-similarity":
             return self.__generate_modify_self_similarity_data__()
         elif similarity_type == "data-sampling":
-            return self.__generate_similarity_data_sampling__()
+            return self.__generate_similarity_data_sampling_fast__()
         else:
             raise NotImplementedError(
                 f"Similarity type {similarity_type} is not supported"
             )
             
+    @profile
+    def __generate_similarity_data_sampling_fast__(self):
+        
+        # load the model
+        
+        if self.word_embeddings_dict is None:
+            word2vec = api.load("word2vec-google-news-300")
+        # declare the embedding tensor and the mapping index
+            word_embeddings = torch.zeros(len(word2vec.vocab), 300, dtype=torch.float16) # type: ignore
+            # word_index = pd.DataFrame(columns=["word", "index"])
+            word_index = {}
+            for i, word in tqdm(enumerate(word2vec.vocab.keys()), desc="converting embedding to torch", total=len(word2vec.vocab)): #type: ignore
+                word_index[word] = word2vec.vocab[word].index #type: ignore
+                word_embeddings[i] = torch.tensor(word2vec[word], dtype=torch.float16)
+                
+                
+            word_embeddings = word_embeddings.to("cuda")
+            #release memory
+            del word2vec
+            
+            word_index = pd.DataFrame(list(word_index.items()), columns=["word", "index"])
+            word_index.set_index("word", inplace=True)
+            print("Word2Vec released - Converted to Torch")
+            torch.save({
+                "word_embeddings": word_embeddings,
+                "word_index": word_index
+            }, "../data/word_embeddings_word2vec.pt")
+        else:
+            word_embeddings = self.word_embeddings_dict["word_embeddings"]
+            word_index = self.word_embeddings_dict["word_index"]
+        
+        if self.similarity_score_dict is None:
+            similarity_score_per_word = {}
+            full_norm = torch.norm(word_embeddings, dim=1)
+            for d in tqdm(
+                self.full_data,
+                desc="Computing all similarities (word2vec)",
+                total=len(self.full_data),
+            ):
+                target_word = d["target_true"].lstrip()
+                if target_word in similarity_score_per_word:
+                    continue
+                
+                target_vector = word_embeddings[word_index.loc[target_word,"index"]].cuda()
+                
+                #compute the similarity between target vector and all the other
+                dot_products = torch.matmul(word_embeddings, target_vector.unsqueeze(1)).squeeze(1) # shape 
+                
+                cosine_similarities = dot_products /  (full_norm * torch.norm(target_vector))
+                
+                similarity_score_per_word[target_word] = cosine_similarities.cpu()
+                
+                
+            similarity_score_dict = {
+                "similarity_score_dict": similarity_score_per_word,
+                "word_index": word_index,
+            }
+                
+            torch.save(similarity_score_dict, "../data/similarity_score_all_dict.pt")
+            self.similarity_score_dict = similarity_score_dict
+            
+    #     @profile
+    #     def process_data_point(d):
+    #         similarity_score_dict = self.similarity_score_dict["similarity_score_dict"]
+    #         word_index = self.similarity_score_dict["word_index"]
+    #         base_target = d["target_true"].lstrip()
+    #         similarity_scores = similarity_score_dict[base_target].to(torch.float32)
+    #         quantilies = torch.quantile(similarity_scores, torch.linspace(0,1,11))
+    #         indices = torch.bucketize(similarity_scores, quantilies)
+    #         word_index["group"] = indices
+    #         # map the indices to the word
+            
+            
+    #         local_new_data = []
+    #         for grup in range(1, 11):
+    #             new_d = d.copy()
+                
+    #             new_d["target_new_list"] = word_index[word_index["group"] == grup].sample(20).index.tolist()
+    #             new_d["similarity_group"] = grup
+    #             local_new_data.append(new_d)
+    #         return local_new_data
+        
+    #     import concurrent.futures
+        
+    # # Use ThreadPoolExecutor with 4 workers and tqdm for progress tracking
+    #     with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
+    #         # Prepare a list to store future objects
+    #         futures = [executor.submit(process_data_point, d) for d in self.full_data]
+            
+    #         # Iterate over futures and update tqdm progress bar
+    #         results = []
+    #         for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing Data Points"):
+    #             results.append(future.result())
+                
+    #     new_data = []
+    #     for result in results:
+    #         new_data.extend(result)
+                
+    #     return new_data
+        new_data = []
+        similarity_score_dict = self.similarity_score_dict["similarity_score_dict"]
+        word_index = self.similarity_score_dict["word_index"]
+        word_index["word"] = word_index.index
+        for d in tqdm(self.full_data, desc="Generating sampled-similarity tokens (word2vec)", total=len(self.full_data)):
+            base_target = d["target_true"].lstrip()  # strip leading spaces efficiently
+
+            similarity_scores = similarity_score_dict[base_target]
+            
+            # to dtype=torch.float32
+            similarity_scores = similarity_scores.to(torch.float32).cuda()
+
+            # Compute quantiles
+            quantiles = torch.quantile(similarity_scores, torch.linspace(0, 1, 11).cuda())
+
+            # Use vectorized operations to categorize words
+            indices = torch.bucketize(similarity_scores, quantiles).cpu()  # This will assign each score to a bucket
+            
+            # map the indices to the words
+            # word_groups = [word_index.iloc[indices == i].index.tolist() for i in range(10)]
+            #assign each word to a group based on the indices
+            #add indices to the word_index
+            word_index["group"] = indices
+            #add the current word_index as a column to the word_index
+            
+            # word_index = word_index.reset_index(drop=True)
+            word_index = word_index.set_index("group")
+
+                
+            
+            for grup in range(1,11):
+                #for each group create a new data point
+                new_d = d.copy()
+                # select 20 words from the group
+                # new_d["target_new"] = [ random.choice(grup) for _ in range(20)]
+                # sample 20 words from word_index based on the group
+                # new_d["target_new_list"] = word_index[word_index["group"] == grup].sample(200).index.tolist()
+                new_d["target_new_list"] = word_index.loc[grup].sample(20).word.tolist()
+                new_d["similarity_group"] = grup
+                new_data.append(new_d)
+                
+        return new_data
+            
+
+        
+        
+            
+        
             
     def __generate_similarity_data_sampling__(self):
-        from multiprocessing import Pool, Manager
         word2vec = api.load("word2vec-google-news-300")
         print("Word2Vec loaded")
         self.similarity_score_dict = None
+        from multiprocessing import Pool, Manager
+        from concurrent.futures import ProcessPoolExecutor
+        import concurrent.futures
+        
+        def word_vector_batch_generator(word2vec, batch_size=100):
+            """
+            Generator that yields a batch of vectors as a tensor and corresponding words as a list.
+            """
+            vectors = []
+            words = []
+            for word in word2vec.vocab:
+                vectors.append(word2vec[word])
+                words.append(word)
+                if len(vectors) == batch_size:
+                    yield torch.tensor(np.array(vectors)), words  # Convert list of arrays to a single numpy array before tensor conversion
+                    vectors = []
+                    words = []
+            if vectors:
+                yield torch.tensor(np.array(vectors)), words  # Convert list of arrays to a single numpy array before tensor conversion
+
+        def similarity_computation(word2vec, target_word, device):
+            """
+            Compute the cosine similarity of `target_word` against all words in `word2vec`.
+            Returns a list of (word, similarity) tuples.
+            """
+            # target_vec = torch.tensor(word2vec[target_word]).to(device)
+            target_vec = torch.tensor(word2vec[target_word])
+            target_norm = torch.norm(target_vec)
+            similarities = []
+
+            for vectors, words in word_vector_batch_generator(word2vec):
+                # vectors = vectors.to(device)
+                norms = torch.norm(vectors, dim=1)
+
+                # Broadcasting to compute dot product
+                dot_products = torch.matmul(vectors, target_vec.unsqueeze(1)).squeeze(1)
+                sims = dot_products / (norms * target_norm)
+
+                similarities.extend(zip(words, sims.cpu().numpy()))
+
+            return similarities
+        
 
         if self.similarity_score_dict is None:
             # Manager for managing a shared dictionary
-            manager = Manager()
-            similarity_score_dict = manager.dict()
+            similarity_score_dict = {}
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-            # Distribute computations over a pool of workers
-            with Pool(processes=4) as pool:
-                # Creating a list of tasks
-                tasks = [(word2vec, d, similarity_score_dict) for d in self.full_data if d["target_true"].strip() not in similarity_score_dict]
-                # Mapping tasks to worker processes
-                list(tqdm(pool.imap(compute_similarity_for_target, tasks), total=len(tasks), desc="Computing all similarities (word2vec)"))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                futures = {}
+                for d in tqdm(self.full_data, desc="Scheduling tasks"):
+                    target_word = d["target_true"].strip()
+                    if target_word not in similarity_score_dict:
+                        future = executor.submit(similarity_computation, word2vec, target_word, device)
+                        futures[future] = target_word
 
-            # Saving the similarity dictionary using torch
-            torch.save(dict(similarity_score_dict), f"../data/similarity_score_{self.model.cfg.model_name}.pt")
-            self.similarity_score_dict = similarity_score_dict        
+                for future in tqdm(concurrent.futures.as_completed(futures), desc="Calculating similarities", total=len(futures)):
+                    target_word = futures[future]
+                    similarity_score_dict[target_word] = future.result()
+            self.similarity_score_dict = similarity_score_dict
+            torch.save(similarity_score_dict, f"../data/similarity_score_{self.model.cfg.model_name}.pt")
             
     def __generate_similarity_data_sampling___(self):
         word2vec = api.load("word2vec-google-news-300")
@@ -559,13 +770,13 @@ class BaseDataset(Dataset):
         print(similarity_group_count)
         return self.full_data
 
-    def filter_similarity_data(self): # TODO: implement similarity filtering for sampling
+    def filter_similarity_data(self):
         if self.similarity[2] == "data-sampling":
             similarity_group = self.similarity[1]
-            data_group = [d for d in self.full_data if d["similarity_groyp"] == similarity_group]
-            for d in data_group:
-                #sample from the list 
-                d["target_new"] = random.choice(d["target_new"])
+            data_group = [d for d in self.full_data if d["similarity_group"] == similarity_group]
+            # for d in data_group:
+            #     #sample from the list 
+            #     d["target_new"] = random.choice(d["target_new"])
             return data_group
         
         elif self.similarity[2] == "modify-self-similarity" or self.similarity[2] == "self-similarity":
