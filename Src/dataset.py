@@ -367,35 +367,35 @@ class BaseDataset(Dataset):
             word_embeddings = self.word_embeddings_dict["word_embeddings"]
             word_index = self.word_embeddings_dict["word_index"]
         
-        if self.similarity_score_dict is None:
-            similarity_score_per_word = {}
-            full_norm = torch.norm(word_embeddings, dim=1)
-            for d in tqdm(
-                self.full_data,
-                desc="Computing all similarities (word2vec)",
-                total=len(self.full_data),
-            ):
-                target_word = d["target_true"].lstrip()
-                if target_word in similarity_score_per_word:
-                    continue
-                
-                target_vector = word_embeddings[word_index.loc[target_word,"index"]].cuda()
-                
-                #compute the similarity between target vector and all the other
-                dot_products = torch.matmul(word_embeddings, target_vector.unsqueeze(1)).squeeze(1) # shape 
-                
-                cosine_similarities = dot_products /  (full_norm * torch.norm(target_vector))
-                
-                similarity_score_per_word[target_word] = cosine_similarities.cpu()
-                
-                
-            similarity_score_dict = {
-                "similarity_score_dict": similarity_score_per_word,
-                "word_index": word_index,
-            }
-                
-            torch.save(similarity_score_dict, "../data/similarity_score_all_dict.pt")
-            self.similarity_score_dict = similarity_score_dict
+
+        similarity_score_per_word = {}
+        full_norm = torch.norm(word_embeddings, dim=1)
+        for d in tqdm(
+            self.full_data,
+            desc="Computing all similarities (word2vec)",
+            total=len(self.full_data),
+        ):
+            target_word = d["target_true"].lstrip()
+            if target_word in similarity_score_per_word:
+                continue
+            
+            target_vector = word_embeddings[word_index.loc[target_word,"index"]].cuda()
+            
+            #compute the similarity between target vector and all the other
+            dot_products = torch.matmul(word_embeddings, target_vector.unsqueeze(1)).squeeze(1) # shape 
+            
+            cosine_similarities = dot_products /  (full_norm * torch.norm(target_vector))
+            
+            similarity_score_per_word[target_word] = cosine_similarities.cpu()
+            
+            
+        similarity_score_dict = {
+            "similarity_score_dict": similarity_score_per_word,
+            "word_index": word_index,
+        }
+            
+        torch.save(similarity_score_dict, "../data/similarity_score_all_dict.pt")
+        self.similarity_score_dict = similarity_score_dict
             
     #     @profile
     #     def process_data_point(d):
