@@ -3,6 +3,10 @@ This repo contains the official code for the [Competition of Mechanisms: Tracing
 ](https://arxiv.org/abs/2402.11655) paper.
 The datasets used are also available on [HuggingFace](https://huggingface.co/datasets/francescortu/comp-mech)
 
+
+<p align="center">
+    <img src="comp.png" width="700">
+</p>
 ## Run the Experiments
 
 ### LogitLens, Logit Attribution, Attention Pattern
